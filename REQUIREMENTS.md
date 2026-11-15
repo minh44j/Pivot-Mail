@@ -28,7 +28,29 @@ Out of scope for v1: Calendar, Contacts, AI assist, itinerary/shipping-doc autom
 ## Case + reference rules (confirmed)
 - Matching: **auto-match by reference**. A reference in subject/body links a message to its existing case; mail with no known reference starts a new case.
 - Storage: **own database + Gmail labels**. DB holds cases, status, owner, counters. A Gmail label (`Cases/<REF>`) mirrors each case so Gmail stays consistent.
-- Reference format: ⚠️ undefined. Generator must be: unique, never reused, atomic under concurrent users (DB sequence/transaction per prefix), parseable by regex.
+- Reference format: observed from Pivot OS screenshot, last issued `PS2600874` (Shabija Althaf). ⚠️ Inferred, unconfirmed: `PS` + `26` (year) + `00874` (5-digit sequence). Generator must be: unique, never reused, atomic under concurrent users, parseable by regex.
+
+## Reference Generator (in-mail popup) — replaces the Pivot OS trip
+Today: staff leave the mailbox, open **Pivot OS → Reference Generator**, enter details, get a number. Pivot Mail brings this into a **ribbon button → popup**.
+
+**Popup fields** (mirror Pivot OS Pivot Shipping form):
+| Field | Type | Rules |
+|---|---|---|
+| Client | Autocomplete (company) | Required; must match client master list |
+| What are we handling | Single choice: Freight + clearance / Freight only / Clearance only | Required |
+| Moves by | Single choice: Sea / Air / Land | Required |
+| Route From / To | Autocomplete, standard port names | Required; validate against standard port list (UN/LOCODE ⚠️ confirm) |
+| Cargo & notes | Optional text (e.g. "2×40HQ machinery, ~46 CBM") | Optional |
+| Salesperson | Single choice (avatar chips) | Required |
+
+**Actions:** `Open job & generate number` → shows reference → **Copy reference** and **Copy subject** buttons (subject = `[<REF>] <client> – <from> → <to>` ⚠️ subject template to confirm). Footer shows "last issued" (reference + who).
+
+**Rules**
+- Single source of truth for the counter. ⚠️ Pivot Mail must NOT run a second counter alongside Pivot OS — see open question.
+- Generate button disabled until required fields valid; double-click safe (idempotency key per submit).
+- Creating the reference also creates the case record and the `Cases/<REF>` Gmail label.
+- Pivot Travel Management uses a different form/format. ⚠️ Not yet provided.
+- Popup must work from compose, reading pane, and a blank mailbox state.
 
 ### Edge cases to design for
 - Reply with edited/stripped subject → fall back to Gmail `threadId` match.
@@ -45,7 +67,7 @@ Out of scope for v1: Calendar, Contacts, AI assist, itinerary/shipping-doc autom
 - Keyboard shortcuts, density options, accessible contrast.
 
 ## Open questions
-1. ⚠️ Reference format and rules (company/department codes, sequence reset, separators).
+1. ⚠️ Confirm reference format (`PS`+YY+5-digit seq?), yearly reset, Travel Management format, and whether Pivot Mail calls Pivot OS for the number or replaces its generator.
 2. ⚠️ Data residency: DB now stores case metadata. Do message bodies stay on-device only? (Default: yes.)
 3. Shared mailbox method: Workspace delegation, Google Group collaborative inbox, or separate accounts?
 4. Case lifecycle: statuses (open/pending/closed), ownership, and who may create/merge/split.
