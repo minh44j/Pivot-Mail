@@ -100,6 +100,7 @@ export function FolderPane({ accounts, messages, activeAccountId, selection, lab
           </div>
         )
       })}
+      <p className="preview-note">Preview build · mock data</p>
     </nav>
   )
 }

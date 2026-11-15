@@ -4,13 +4,12 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
-import { Ribbon } from './components/Ribbon'
+import { Toolbar } from './components/Toolbar'
 import { FolderPane } from './components/FolderPane'
 import type { FolderSel } from './components/FolderPane'
 import { MessageList } from './components/MessageList'
 import { ReadingPane } from './components/ReadingPane'
 import { Composer } from './components/Composer'
-import { Icon } from './components/Icon'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -184,26 +183,9 @@ export default function App() {
 
   return (
     <div className="app" data-density={density}>
-      <header className="topbar">
-        <div className="brand">
-          <span className="logo" aria-hidden="true">
-            P
-          </span>
-          <span className="brand-name">Pivot Mail</span>
-        </div>
-        <label className="search topsearch">
-          <Icon name="search" size={16} />
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search mail  (try from: or has:attachment)"
-            aria-label="Search mail"
-          />
-        </label>
-        <span className="muted env">Preview · mock data</span>
-      </header>
-      <Ribbon
+      <Toolbar
+        query={query}
+        onQuery={setQuery}
         hasSelection={hasSel}
         threaded={threaded}
         pane={pane}

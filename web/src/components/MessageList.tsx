@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Density, Row } from '../types'
-import { formatListTime, groupLabel, initials } from '../util'
+import { formatListTime, groupLabel } from '../util'
+import { COLOURS } from '../data/colours'
 import { Icon } from './Icon'
 
 interface Props {
@@ -113,10 +114,7 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, onUn
                   style={{ position: 'absolute', top: y, height: rowH }}
                   onClick={() => onSelect(msg.id)}
                 >
-                  <span className={`stripe${msg.colour ? ` c-${msg.colour}` : ''}`} />
-                  <span className="avatar" aria-hidden="true">
-                    {initials(msg.from.name)}
-                  </span>
+                  <span className={`udot${unread ? ' on' : ''}`} role="img" aria-label={unread ? 'Unread' : ''} aria-hidden={!unread} />
                   <div className="row-main">
                     <div className="row-top">
                       <span className="from">{msg.folder === 'sent' || msg.folder === 'drafts' ? `To: ${msg.to[0]?.name ?? ''}` : msg.from.name}</span>
@@ -129,6 +127,9 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, onUn
                         <span className="icon-inline" title={`${msg.attachments.length} attachment(s)`}>
                           <Icon name="clip" size={14} />
                         </span>
+                      )}
+                      {msg.colour && (
+                        <span className={`dot c-${msg.colour}`} title={`Category: ${COLOURS.find((c) => c.id === msg.colour)?.label ?? ''}`} />
                       )}
                       {msg.flagged && (
                         <span className="icon-inline flag" title="Flagged">
