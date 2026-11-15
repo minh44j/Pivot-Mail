@@ -151,11 +151,52 @@ export function Toolbar(p: Props) {
               </>
             )}
           </Menu>
-          <Menu icon="menu" tone="gray" label="View">
+          <Menu icon="settings" tone="gray" label="Settings">
             {(close) => (
               <>
-                <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onSettings()
+                    close()
+                  }}
+                >
+                  <span className="ph">
+                    <Icon name="settings" size={14} />
+                  </span>
+                  All settings…
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onHelp()
+                    close()
+                  }}
+                >
+                  <span className="ph" />
+                  Keyboard shortcuts
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onPerformance()
+                    close()
+                  }}
+                >
+                  <span className="ph">
+                    <Icon name="layout" size={14} />
+                  </span>
+                  Staff performance (admin)
+                </button>
                 <div className="menu-sep" role="separator" />
+                <div className="menu-head">View</div>
+                <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />
                 <div className="menu-head">Reading pane</div>
                 {(['right', 'bottom', 'off'] as const).map((v) => (
                   <Check
@@ -169,7 +210,6 @@ export function Toolbar(p: Props) {
                     }}
                   />
                 ))}
-                <div className="menu-sep" role="separator" />
                 <div className="menu-head">List density</div>
                 {(['comfortable', 'compact'] as const).map((v) => (
                   <Check
@@ -198,46 +238,6 @@ export function Toolbar(p: Props) {
                     <Icon name="bell" size={14} />
                   </span>
                   {notifLabel}
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onPerformance()
-                    close()
-                  }}
-                >
-                  <span className="ph">
-                    <Icon name="layout" size={14} />
-                  </span>
-                  Staff performance (admin)
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onSettings()
-                    close()
-                  }}
-                >
-                  <span className="ph">
-                    <Icon name="menu" size={14} />
-                  </span>
-                  Settings…
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onHelp()
-                    close()
-                  }}
-                >
-                  <span className="ph" />
-                  Keyboard shortcuts
                 </button>
                 <Check
                   role="menuitemcheckbox"
