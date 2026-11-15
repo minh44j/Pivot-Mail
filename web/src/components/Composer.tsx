@@ -29,6 +29,8 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
   }))
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [dragging, setDragging] = useState(false)
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+  const [expanded, setExpanded] = useState(false)
   const first = useRef(true)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -101,6 +103,29 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
     onSend(d)
   }
 
+  /** Expanded = same box as the reading pane (falls back to the list pane when the reader is hidden). */
+  const measure = () => {
+    const el = document.querySelector<HTMLElement>('.workspace > .reader') ?? document.querySelector<HTMLElement>('.workspace > .list')
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
+  }
+  const toggleExpanded = () => {
+    if (expanded) {
+      setExpanded(false)
+      setRect(null)
+    } else {
+      measure()
+      setExpanded(true)
+    }
+  }
+  useEffect(() => {
+    if (!expanded) return
+    const onResize = () => measure()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [expanded])
+
   const close = () => {
     onClose()
   }
@@ -113,7 +138,8 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
 
   return (
     <div
-      className={`composer${dragging ? ' drag' : ''}`}
+      className={`composer${dragging ? ' drag' : ''}${expanded && rect ? ' expanded' : ''}`}
+      style={expanded && rect ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height, right: 'auto', bottom: 'auto' } : undefined}
       role="dialog"
       aria-label="New message"
       onDragOver={(e) => {
@@ -138,6 +164,9 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       <header className="composer-head">
         <strong className="grow ellipsis">{d.subject || 'New message'}</strong>
         <span className="muted">{saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : ''}</span>
+        <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'} title={expanded ? 'Restore size' : 'Expand to reading pane size'}>
+          <Icon name={expanded ? 'collapse' : 'expand'} />
+        </button>
         <button type="button" className="icon-btn" onClick={close} aria-label="Close and keep draft" title="Close (draft is kept)">
           <Icon name="close" />
         </button>

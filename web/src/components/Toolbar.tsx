@@ -32,15 +32,16 @@ interface Props {
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
-function Item(props: { icon: IconName; label: string; onClick?: () => void; disabled?: boolean }) {
+function Item(props: { icon: IconName; label: string; title?: string; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button type="button" className="tb" onClick={props.onClick} disabled={props.disabled} title={props.label} aria-label={props.label}>
+    <button type="button" className="tb" onClick={props.onClick} disabled={props.disabled} title={props.title ?? props.label}>
       <Icon name={props.icon} size={18} />
+      <span className="tb-label">{props.label}</span>
     </button>
   )
 }
 
-function Menu(props: { icon: IconName; label: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
+function Menu(props: { icon: IconName; label: string; title?: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const pop = useRef<HTMLDivElement>(null)
@@ -79,9 +80,12 @@ function Menu(props: { icon: IconName; label: string; disabled?: boolean; childr
 
   return (
     <>
-      <button ref={btn} type="button" className="tb tb-menu" onClick={toggle} disabled={props.disabled} title={props.label} aria-label={props.label} aria-haspopup="menu" aria-expanded={open}>
-        <Icon name={props.icon} size={18} />
-        <Icon name="chevron" size={10} />
+      <button ref={btn} type="button" className="tb tb-menu" onClick={toggle} disabled={props.disabled} title={props.title ?? props.label} aria-haspopup="menu" aria-expanded={open}>
+        <span className="tb-icons">
+          <Icon name={props.icon} size={18} />
+          <Icon name="chevron" size={10} />
+        </span>
+        <span className="tb-label">{props.label}</span>
       </button>
       {pos && (
         <div ref={pop} className="popover" role="menu" style={{ top: pos.top, left: pos.left }}>
@@ -130,9 +134,9 @@ export function Toolbar(p: Props) {
           <Item icon="forward" label="Forward" disabled={none} onClick={p.onForward} />
         </div>
         <div className="tb-group" role="group" aria-label="Tag">
-          <Item icon="eye" label="Mark read or unread" disabled={none} onClick={p.onToggleUnread} />
+          <Item icon="eye" label="Read/Unread" title="Mark as read or unread" disabled={none} onClick={p.onToggleUnread} />
           <Item icon="flag" label="Flag" disabled={none} onClick={p.onToggleFlag} />
-          <Menu icon="tag" label="Colour category" disabled={none}>
+          <Menu icon="tag" label="Colour" title="Colour category" disabled={none}>
             {(close) => (
               <>
                 {COLOURS.map((c) => (
@@ -198,7 +202,7 @@ export function Toolbar(p: Props) {
               </>
             )}
           </Menu>
-          <Menu icon="menu" label="View options">
+          <Menu icon="menu" label="View" title="View options">
             {(close) => (
               <>
                 <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />

@@ -144,12 +144,16 @@ small {
 }
 .tb {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-width: 44px;
-  height: 44px;
-  padding: 0 8px;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.15;
+  white-space: nowrap;
   border: 0;
   border-radius: var(--r-sm);
   background: none;
@@ -166,8 +170,16 @@ small {
   color: var(--label-2);
   opacity: 0.45;
 }
-.tb-menu svg:last-child {
+.tb-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.tb-icons svg:last-child {
   opacity: 0.6;
+}
+.tb-label {
+  color: inherit;
 }
 .tb-new {
   display: inline-flex;
@@ -323,10 +335,16 @@ small {
 .only-mobile {
   display: inline-grid;
 }
+.only-desktop {
+  display: none !important;
+}
 
 @media (min-width: 900px) {
   .only-mobile {
     display: none;
+  }
+  .only-desktop {
+    display: inline-grid !important;
   }
   .toolbar {
     flex-wrap: nowrap;
@@ -344,13 +362,13 @@ small {
     order: 0;
     margin-left: auto;
   }
-  .tb,
+  .tb {
+    min-width: 52px;
+    min-height: 48px;
+  }
   .tb-new,
   .tb-search {
-    height: 32px;
-  }
-  .tb {
-    min-width: 32px;
+    height: 34px;
   }
   .tb-new {
     order: 3;
@@ -1106,4 +1124,9 @@ small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.composer.expanded {
+  border-radius: 0;
+  box-shadow: -1px 0 0 var(--separator);
 }
