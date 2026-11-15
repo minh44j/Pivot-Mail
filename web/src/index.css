@@ -2892,3 +2892,109 @@ kbd {
   height: 52px;
   font-size: 15px;
 }
+
+/* recipient chips and suggestions */
+.recip {
+  position: relative;
+  align-items: flex-start;
+}
+.recip .field-inner {
+  flex: 1;
+  align-items: flex-start;
+  min-width: 0;
+}
+.rwrap {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 0;
+}
+.rwrap input {
+  flex: 1 1 120px;
+  min-width: 80px;
+  min-height: 24px;
+  border: 0;
+  background: none;
+  outline: none;
+}
+.rchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0 4px 0 9px;
+  border-radius: 12px;
+  background: var(--fill-2);
+  font-size: 12px;
+}
+.rchip.bad {
+  background: color-mix(in srgb, var(--ic-red) 12%, var(--content));
+  box-shadow: inset 0 0 0 1px var(--ic-red);
+}
+.rchip button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--label-2);
+}
+.rchip button:hover {
+  color: var(--label);
+  background: var(--fill-2);
+}
+.recip-pop {
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 56px;
+  width: min(420px, calc(100% - 64px));
+  margin: 2px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--content);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+.recip-pop li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.recip-pop li.on {
+  background: var(--accent-fill);
+  color: #fff;
+}
+.recip-pop li.on small {
+  color: rgba(255, 255, 255, 0.8);
+}
+.recip-pop strong,
+.recip-pop small {
+  display: block;
+}
+.recip-pop .avatar {
+  width: 28px;
+  height: 28px;
+}
+.recip-pop li.on .avatar {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

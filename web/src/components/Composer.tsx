@@ -7,8 +7,10 @@ import type { Template } from '../data/templates'
 import { platform } from '../platform'
 import { bodyText, escapeHtml, safeUrl, sanitizeHtml, signatureHtml, textToHtml } from '../richtext'
 import { formatSize } from '../util'
+import { EMAIL_RE, bareAddress } from '../data/contacts'
 import { matchCopiedEmail } from '../emailClipboard'
 import { FileIcon } from './FileIcon'
+import { RecipientField } from './RecipientField'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 
@@ -40,6 +42,12 @@ function readerBox(): Box | null {
   return { top: r.top, left: r.left, width: r.width, height: r.height }
 }
 
+/** Prefilled addresses become chips: every finished address ends with a separator. */
+function asChips(v: string | undefined): string {
+  const t = (v ?? '').trim().replace(/[;,\s]+$/, '')
+  return t ? `${t}, ` : ''
+}
+
 function sigFor(accounts: Account[], id: string): string {
   return signatureHtml(accounts.find((a) => a.id === id)?.signature ?? '')
 }
@@ -67,7 +75,7 @@ function FBtn(props: { label: string; active?: boolean; onClick: () => void; ico
 export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
-  const [d, setD] = useState<ComposeInit>(() => ({ ...init, body: initialHtml }))
+  const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [dragging, setDragging] = useState(false)
   // The new message window opens at the size of the reading pane. The corner button switches to a small floating window.
@@ -138,7 +146,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       const parsed = JSON.parse(raw) as ComposeInit
       const body = sanitizeHtml(parsed.body ?? '')
       if (ed.current) ed.current.innerHTML = body
-      setD({ ...parsed, bcc: parsed.bcc ?? '', body })
+      setD({ ...parsed, to: asChips(parsed.to), cc: asChips(parsed.cc), bcc: asChips(parsed.bcc), body })
       setShowBcc(Boolean(parsed.bcc))
       onToast('Unsent draft restored')
     } catch {
@@ -301,6 +309,11 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       onToast('Add at least one recipient')
       return
     }
+    const bad = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => t.trim()).filter(Boolean).filter((t) => !EMAIL_RE.test(bareAddress(t)))
+    if (bad.length > 0) {
+      onToast(`Fix the highlighted address: ${bad[0]}`)
+      return
+    }
     finished.current = true
     platform.storage.remove(DRAFT_KEY)
     onSend(d)
@@ -415,27 +428,20 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
             ))}
           </select>
         </label>
-        <label className="field">
-          <span>To</span>
-          <input value={d.to} onChange={(e) => setD({ ...d, to: e.target.value })} inputMode="email" autoFocus={!d.to} />
-        </label>
-        <div className="field">
-          <label className="grow field-inner">
-            <span>Cc</span>
-            <input value={d.cc} onChange={(e) => setD({ ...d, cc: e.target.value })} inputMode="email" />
-          </label>
-          {!showBcc && (
-            <button type="button" className="link" onClick={() => setShowBcc(true)}>
-              Bcc
-            </button>
-          )}
-        </div>
-        {showBcc && (
-          <label className="field">
-            <span>Bcc</span>
-            <input value={d.bcc} onChange={(e) => setD({ ...d, bcc: e.target.value })} inputMode="email" />
-          </label>
-        )}
+        <RecipientField label="To" value={d.to} onChange={(v) => setD((p) => ({ ...p, to: v }))} autoFocus={!d.to} />
+        <RecipientField
+          label="Cc"
+          value={d.cc}
+          onChange={(v) => setD((p) => ({ ...p, cc: v }))}
+          rightSlot={
+            !showBcc ? (
+              <button type="button" className="link" onClick={() => setShowBcc(true)}>
+                Bcc
+              </button>
+            ) : undefined
+          }
+        />
+        {showBcc && <RecipientField label="Bcc" value={d.bcc} onChange={(v) => setD((p) => ({ ...p, bcc: v }))} />}
         <label className="field">
           <span>Subject</span>
           <input value={d.subject} onChange={(e) => setD({ ...d, subject: e.target.value })} />
