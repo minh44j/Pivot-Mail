@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Attachment, Colour, ComposeInit, Density, MobileView, Message, PaneLayout, Row } from './types'
+import type { Account, Attachment, Colour, ComposeInit, Density, MobileView, Message, PaneLayout, Row } from './types'
+import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { platform } from './platform'
@@ -16,6 +17,8 @@ import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
 import { SignIn } from './components/SignIn'
 import { PerformancePage } from './components/PerformancePage'
+import { SettingsPage } from './components/SettingsPage'
+import { SettingsContext, mergeColours } from './settings'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -32,6 +35,33 @@ function usePersisted<T extends string | boolean>(key: string, initial: T, valid
   )
   return [value, set]
 }
+
+function useStored<T>(key: string, initial: T, valid: (v: unknown) => v is T): [T, (v: T) => void] {
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const raw = platform.storage.get(key)
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw)
+        if (valid(parsed)) return parsed
+      }
+    } catch {
+      /* fall through to the default */
+    }
+    return initial
+  })
+  const set = useCallback(
+    (v: T) => {
+      setValue(v)
+      platform.storage.set(key, JSON.stringify(v))
+    },
+    [key],
+  )
+  return [value, set]
+}
+
+const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
+const isTemplates = (v: unknown): v is Template[] =>
+  Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
 
 const FOLDER_TITLES: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', archive: 'Archive', deleted: 'Deleted Items' }
 
@@ -55,7 +85,10 @@ export default function App() {
   const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
   const [refOpen, setRefOpen] = useState(false)
-  const [screen, setScreen] = useState<'mail' | 'performance'>('mail')
+  const [screen, setScreen] = useState<'mail' | 'performance' | 'settings'>('mail')
+  const [signatures, setSignatures] = useStored<Record<string, string>>('pm.signatures', {}, isRecord)
+  const [customTemplates, setCustomTemplates] = useStored<Template[]>('pm.templates', [], isTemplates)
+  const [colourNames, setColourNames] = useStored<Record<string, string>>('pm.colours', {}, isRecord)
   const [role, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
   const [online, setOnline] = useState(() => navigator.onLine)
   const [syncing, setSyncing] = useState(false)
@@ -83,6 +116,15 @@ export default function App() {
     const set = new Set(ids)
     setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, ...change } : m)))
   }, [])
+
+  const accounts = useMemo<Account[]>(() => ACCOUNTS.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [signatures])
+  const settingsValue = useMemo(
+    () => ({
+      templates: [...TEMPLATES.map((t): Template => ({ ...t, scope: 'builtin' })), ...customTemplates],
+      colours: mergeColours(colourNames as Partial<Record<Colour, string>>),
+    }),
+    [customTemplates, colourNames],
+  )
 
   const rows = useMemo<Row[]>(() => {
     const parsed = parseQuery(query)
@@ -231,6 +273,11 @@ export default function App() {
       const t = e.target as HTMLElement
       const typing = t.matches('input, textarea, select, [contenteditable="true"]')
       const mod = e.ctrlKey || e.metaKey
+      if (mod && e.key === ',') {
+        e.preventDefault()
+        setScreen('settings')
+        return
+      }
       if (mod && e.key.toLowerCase() === 'n' && !compose && !refOpen) {
         e.preventDefault()
         openCompose()
@@ -267,6 +314,39 @@ export default function App() {
 
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
 
+  if (screen === 'settings') {
+    return (
+      <SettingsContext.Provider value={settingsValue}>
+        <SettingsPage
+          role={role}
+          accounts={accounts}
+          onSignature={(id, text) => setSignatures({ ...signatures, [id]: text })}
+          templates={settingsValue.templates}
+          onSaveTemplate={(t) => setCustomTemplates(customTemplates.some((x) => x.id === t.id) ? customTemplates.map((x) => (x.id === t.id ? t : x)) : [...customTemplates, t])}
+          onDeleteTemplate={(id) => setCustomTemplates(customTemplates.filter((x) => x.id !== id))}
+          colourNames={colourNames as Partial<Record<Colour, string>>}
+          onColourName={(c, name) => setColourNames({ ...colourNames, [c]: name })}
+          onResetColours={() => setColourNames({})}
+          threaded={threaded}
+          onThreaded={setThreaded}
+          pane={pane}
+          onPane={setPane}
+          density={density}
+          onDensity={setDensity}
+          notifications={notif}
+          onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
+          onBack={() => setScreen('mail')}
+          onToast={showToast}
+        />
+        {toast && (
+          <div className="toast" role="status">
+            {toast}
+          </div>
+        )}
+      </SettingsContext.Provider>
+    )
+  }
+
   if (screen === 'performance') {
     return (
       <>
@@ -283,6 +363,7 @@ export default function App() {
   const emptyText = query.trim() ? `No results for “${query.trim()}”` : unreadOnly ? 'No unread messages' : 'Nothing in this folder'
 
   return (
+    <SettingsContext.Provider value={settingsValue}>
     <div className="app" data-density={density}>
       <Toolbar
         query={query}
@@ -314,6 +395,7 @@ export default function App() {
         role={role}
         onRole={setRole}
         onPerformance={() => setScreen('performance')}
+        onSettings={() => setScreen('settings')}
       />
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
@@ -362,7 +444,7 @@ export default function App() {
         <Composer
           key={composeKey}
           init={compose}
-          accounts={ACCOUNTS}
+          accounts={accounts}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
           onSend={() => {
@@ -381,5 +463,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </SettingsContext.Provider>
   )
 }

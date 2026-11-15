@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Colour, Density, PaneLayout } from '../types'
-import { TEMPLATES } from '../data/templates'
 import type { Template } from '../data/templates'
-import { COLOURS } from '../data/colours'
+import { useSettings } from '../settings'
 import logoMark from '../assets/brand/logo-mark.png'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
@@ -35,6 +34,7 @@ interface Props {
   role: 'admin' | 'staff'
   onRole: (r: 'admin' | 'staff') => void
   onPerformance: () => void
+  onSettings: () => void
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
@@ -112,7 +112,8 @@ function Check(props: { checked: boolean; label: string; role: 'menuitemcheckbox
 }
 
 export function Toolbar(p: Props) {
-  const categories = Array.from(new Set(TEMPLATES.map((t) => t.category)))
+  const { templates, colours } = useSettings()
+  const categories = Array.from(new Set(templates.map((t) => t.category)))
   const none = !p.hasSelection
   const notifLabel =
     p.notifications === 'granted'
@@ -143,7 +144,7 @@ export function Toolbar(p: Props) {
           <Menu icon="tag" label="Colour" title="Colour category" disabled={none}>
             {(close) => (
               <>
-                {COLOURS.map((c) => (
+                {colours.map((c) => (
                   <button
                     key={c.id}
                     type="button"
@@ -187,7 +188,7 @@ export function Toolbar(p: Props) {
                   <div key={cat}>
                     {i > 0 && <div className="menu-sep" role="separator" />}
                     <div className="menu-head">{cat}</div>
-                    {TEMPLATES.filter((t) => t.category === cat).map((t) => (
+                    {templates.filter((t) => t.category === cat).map((t) => (
                       <button
                         key={t.id}
                         type="button"
@@ -268,6 +269,20 @@ export function Toolbar(p: Props) {
                     <Icon name="layout" size={14} />
                   </span>
                   Staff performance (admin)
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onSettings()
+                    close()
+                  }}
+                >
+                  <span className="ph">
+                    <Icon name="menu" size={14} />
+                  </span>
+                  Settings…
                 </button>
                 <Check
                   role="menuitemcheckbox"

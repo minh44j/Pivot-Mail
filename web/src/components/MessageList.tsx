@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Density, Row } from '../types'
 import { formatListTime, groupLabel } from '../util'
-import { COLOURS } from '../data/colours'
+import { useSettings } from '../settings'
 import { Icon } from './Icon'
 
 interface Props {
@@ -24,6 +24,7 @@ type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: R
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
 export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack, onContext, emptyText, sync, onSync }: Props) {
+  const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
@@ -147,7 +148,7 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                         </span>
                       )}
                       {msg.colour && (
-                        <span className={`dot c-${msg.colour}`} title={`Category: ${COLOURS.find((c) => c.id === msg.colour)?.label ?? ''}`} />
+                        <span className={`dot c-${msg.colour}`} title={`Category: ${colours.find((c) => c.id === msg.colour)?.label ?? ''}`} />
                       )}
                       {msg.flagged && (
                         <span className="icon-inline flag" title="Flagged">

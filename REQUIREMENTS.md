@@ -138,3 +138,8 @@ Admin-only dashboard inside Pivot Mail. Per-staff metrics:
 3. Shared mailbox method: confirm migration from shared password to delegation or Google Group (see Risks).
 4. Case lifecycle: statuses (open/pending/closed), ownership, and who may create/merge/split.
 5. Drive: one root folder per company, with a subfolder per reference?
+
+
+## UI build status (preview, sample data)
+Built: sign-in, Outlook-style three-pane mail with multi-mailbox sidebar, rich-text composer (formatting, links, lists, Bcc, signature, templates at cursor), message context menu and drag to folder, sync status, Reference popup (mock counter), admin Staff performance page, Settings (general, signatures, templates, colour categories).
+Not built: Google sign-in and Gmail sync, safe HTML message viewer, search suggestions, case folders, Drive, real analytics collection, server-side roles.

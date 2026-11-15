@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Account, Attachment, ComposeInit } from '../types'
-import { TEMPLATES, applyTemplate } from '../data/templates'
+import { applyTemplate } from '../data/templates'
+import { useSettings } from '../settings'
 import type { Template } from '../data/templates'
 import { platform } from '../platform'
 import { bodyText, escapeHtml, safeUrl, sanitizeHtml, signatureHtml, textToHtml } from '../richtext'
@@ -47,6 +48,7 @@ function FBtn(props: { label: string; active?: boolean; onClick: () => void; ico
 }
 
 export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
+  const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, body: initialHtml }))
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
@@ -347,12 +349,12 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
           aria-label="Insert template"
           value=""
           onChange={(e) => {
-            const t = TEMPLATES.find((x) => x.id === e.target.value)
+            const t = templates.find((x) => x.id === e.target.value)
             if (t) insertTemplate(t)
           }}
         >
           <option value="">Templates…</option>
-          {TEMPLATES.map((t) => (
+          {templates.map((t) => (
             <option key={t.id} value={t.id}>
               {t.category} – {t.name}
             </option>

@@ -1,6 +1,8 @@
 export interface Template {
   id: string
-  category: 'Quotes' | 'Client onboarding' | 'Marketing' | 'Follow-up'
+  category: string
+  /** builtin = shipped starter (read-only), personal = one person, shared = whole team (admin-managed) */
+  scope?: 'builtin' | 'personal' | 'shared'
   name: string
   subject: string
   body: string

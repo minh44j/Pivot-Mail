@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { Colour } from '../types'
-import { COLOURS } from '../data/colours'
+import { useSettings } from '../settings'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 
@@ -19,6 +19,7 @@ interface Props {
 
 /** Right-click menu: keyboard (arrows, Enter, Esc) and pointer, clamped inside the viewport. */
 export function ContextMenu({ x, y, entries, onClose }: Props) {
+  const { colours } = useSettings()
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -66,7 +67,7 @@ export function ContextMenu({ x, y, entries, onClose }: Props) {
         if (en.type === 'swatches') {
           return (
             <div key={i} className="swatches" role="group" aria-label="Colour category">
-              {COLOURS.map((c) => (
+              {colours.map((c) => (
                 <button
                   key={c.id}
                   type="button"
