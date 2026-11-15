@@ -19,11 +19,30 @@ interface Props {
   selection: FolderSel
   labels: string[]
   onSelect: (s: FolderSel) => void
+  onDropMessage: (messageId: string, target: FolderSel) => void
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, messages, selection, labels, onSelect }: Props) {
+export function FolderPane({ accounts, messages, selection, labels, onSelect, onDropMessage }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [over, setOver] = useState<string | null>(null)
+
+  const dropProps = (key: string, target: FolderSel) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (e.dataTransfer.types.includes('application/x-pivot-msg')) {
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        setOver(key)
+      }
+    },
+    onDragLeave: () => setOver((o) => (o === key ? null : o)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      setOver(null)
+      const id = e.dataTransfer.getData('application/x-pivot-msg')
+      if (id) onDropMessage(id, target)
+    },
+  })
 
   const unread = (accountId: string, folder: FolderId): number => messages.filter((m) => m.accountId === accountId && m.folder === folder && m.unread).length
   const unreadLabel = (accountId: string, label: string): number =>
@@ -54,7 +73,7 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect }: 
                   const on = isActive(a.id, 'folder', f.id)
                   return (
                     <li key={f.id}>
-                      <button type="button" className={`folder${on ? ' active' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'folder', id: f.id })}>
+                      <button type="button" className={`folder${on ? ' active' : ''}${over === `${a.id}/${f.id}` ? ' drop' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'folder', id: f.id })} {...dropProps(`${a.id}/${f.id}`, { accountId: a.id, kind: 'folder', id: f.id })}>
                         <Icon name={f.icon} size={15} />
                         <span className="grow">{f.label}</span>
                         {count > 0 && <span className="count">{count}</span>}
@@ -67,7 +86,7 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect }: 
                   const on = isActive(a.id, 'label', l)
                   return (
                     <li key={l}>
-                      <button type="button" className={`folder${on ? ' active' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'label', id: l })}>
+                      <button type="button" className={`folder${on ? ' active' : ''}${over === `${a.id}/label:${l}` ? ' drop' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'label', id: l })} {...dropProps(`${a.id}/label:${l}`, { accountId: a.id, kind: 'label', id: l })}>
                         <Icon name="folder" size={15} />
                         <span className="grow">{l}</span>
                         {count > 0 && <span className="count">{count}</span>}

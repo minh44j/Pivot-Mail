@@ -34,6 +34,8 @@ Out of scope for v1: Calendar, Contacts, AI assist, itinerary/shipping-doc autom
 - Storage: **own database + Gmail labels**. DB holds cases, status, owner, counters. A Gmail label (`Cases/<REF>`) mirrors each case so Gmail stays consistent.
 - Reference format: observed from Pivot OS screenshot, last issued `PS2600874` (Shabija Althaf). ⚠️ Inferred, unconfirmed: `PS` + `26` (year) + `00874` (5-digit sequence). Generator must be: unique, never reused, atomic under concurrent users, parseable by regex.
 
+> **Status (UI preview built):** the popup exists in the web app (toolbar "Ref no."), but it uses a **mock counter stored in the browser** (starts at 90000, so preview numbers cannot collide with real ones) and shows a "Preview only" banner. It does not talk to Pivot OS. Real counter, client master, port list and salesperson list come from Pivot OS later. Travel Management form not built (form not provided yet).
+
 ## Reference Generator (in-mail popup) — replaces the Pivot OS trip
 Today: staff leave the mailbox, open **Pivot OS → Reference Generator**, enter details, get a number. Pivot Mail brings this into a **ribbon button → popup**.
 

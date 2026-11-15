@@ -26,6 +26,7 @@ const PATHS = {
   threads: 'M4 6h16|M4 12h12|M4 18h8',
   menu: 'M4 6h16|M4 12h16|M4 18h16',
   lock: 'M6 11h12v9H6z|M8 11V8a4 4 0 018 0v3',
+  hash: 'M5 9h14|M5 15h14|M10 4L8 20|M16 4l-2 16',
   expand: 'M15 3h6v6|M9 21H3v-6|M21 3l-7 7|M3 21l7-7',
   collapse: 'M4 14h6v6|M20 10h-6V4|M14 10l7-7|M3 21l7-7',
 } as const

@@ -10,6 +10,10 @@ import type { FolderSel } from './components/FolderPane'
 import { MessageList } from './components/MessageList'
 import { ReadingPane } from './components/ReadingPane'
 import { Composer } from './components/Composer'
+import { ContextMenu } from './components/ContextMenu'
+import type { MenuEntry } from './components/ContextMenu'
+import { RefGenerator } from './components/RefGenerator'
+import { SignIn } from './components/SignIn'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -46,6 +50,23 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [notif, setNotif] = useState(platform.notificationState())
   const toastTimer = useRef<number | undefined>(undefined)
+  const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
+  const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [refOpen, setRefOpen] = useState(false)
+  const [online, setOnline] = useState(() => navigator.onLine)
+  const [syncing, setSyncing] = useState(false)
+  const [lastSync, setLastSync] = useState(() => new Date())
+
+  useEffect(() => {
+    const up = () => setOnline(true)
+    const down = () => setOnline(false)
+    window.addEventListener('online', up)
+    window.addEventListener('offline', down)
+    return () => {
+      window.removeEventListener('online', up)
+      window.removeEventListener('offline', down)
+    }
+  }, [])
 
   const showToast = useCallback((m: string) => {
     setToast(m)
@@ -137,6 +158,65 @@ export default function App() {
     showToast(label)
   }
 
+  const syncNow = () => {
+    if (!online || syncing) return
+    setSyncing(true)
+    window.setTimeout(() => {
+      setSyncing(false)
+      setLastSync(new Date())
+    }, 900)
+  }
+
+  const idsOf = (m: Message): string[] => messages.filter((x) => x.accountId === m.accountId && (threaded ? x.threadId === m.threadId : x.id === m.id)).map((x) => x.id)
+
+  /** Drag a message (or its conversation) onto a sidebar folder or label. Same mailbox only. */
+  const dropMessage = (id: string, target: FolderSel) => {
+    const m = messages.find((x) => x.id === id)
+    if (!m) return
+    if (m.accountId !== target.accountId) {
+      showToast("Mail can't be moved between mailboxes")
+      return
+    }
+    const ids = idsOf(m)
+    if (target.kind === 'folder') {
+      if (m.folder === target.id) return
+      patch(ids, { folder: target.id })
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+      showToast(`Moved to ${FOLDER_TITLES[target.id] ?? target.id}`)
+    } else {
+      const set = new Set(ids)
+      setMessages((prev) => prev.map((x) => (set.has(x.id) && !x.labels.includes(target.id) ? { ...x, labels: [...x.labels, target.id] } : x)))
+      showToast(`Added to ${target.id}`)
+    }
+  }
+
+  const ctxEntries = (): MenuEntry[] => {
+    if (!ctx) return []
+    const row = rows.find((r) => r.msg.id === ctx.id)
+    if (!row) return []
+    const m = row.msg
+    const ids = idsOf(m)
+    const moveTo = (folder: Message['folder']) => () => {
+      patch(ids, { folder })
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+      showToast(`Moved to ${FOLDER_TITLES[folder] ?? folder}`)
+    }
+    const targets = (['inbox', 'archive', 'deleted'] as const).filter((f) => f !== m.folder)
+    return [
+      { type: 'item', label: 'Reply', icon: 'reply', onSelect: () => reply(false) },
+      { type: 'item', label: 'Reply all', icon: 'replyAll', onSelect: () => reply(true) },
+      { type: 'item', label: 'Forward', icon: 'forward', onSelect: forward },
+      { type: 'sep' },
+      { type: 'item', label: m.unread ? 'Mark as read' : 'Mark as unread', icon: 'eye', onSelect: () => patch(ids, { unread: !m.unread }) },
+      { type: 'item', label: m.flagged ? 'Remove flag' : 'Flag', icon: 'flag', onSelect: () => patch(ids, { flagged: !m.flagged }) },
+      { type: 'head', label: 'Colour category' },
+      { type: 'swatches', current: m.colour, onPick: (c) => patch(ids, { colour: c }) },
+      { type: 'sep' },
+      { type: 'head', label: 'Move to' },
+      ...targets.map((f): MenuEntry => ({ type: 'item', label: FOLDER_TITLES[f] ?? f, icon: f === 'inbox' ? 'inbox' : f === 'archive' ? 'archive' : 'trash', onSelect: moveTo(f), danger: f === 'deleted' })),
+    ]
+  }
+
   const colourSelected = (c: Colour | undefined) => {
     if (selectedRow) patch(thread.map((m) => m.id), { colour: c })
   }
@@ -147,12 +227,12 @@ export default function App() {
       const t = e.target as HTMLElement
       const typing = t.matches('input, textarea, select, [contenteditable="true"]')
       const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key.toLowerCase() === 'n' && !compose) {
+      if (mod && e.key.toLowerCase() === 'n' && !compose && !refOpen) {
         e.preventDefault()
         openCompose()
         return
       }
-      if (typing || compose) return
+      if (typing || compose || refOpen || ctx) return
       const idx = rows.findIndex((r) => r.msg.id === selectedId)
       if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault()
@@ -181,6 +261,10 @@ export default function App() {
   const hasSel = Boolean(selectedRow)
   const showReader = pane !== 'off'
 
+  if (!entered) return <SignIn onPreview={() => setEntered(true)} />
+
+  const emptyText = query.trim() ? `No results for “${query.trim()}”` : unreadOnly ? 'No unread messages' : 'Nothing in this folder'
+
   return (
     <div className="app" data-density={density}>
       <Toolbar
@@ -208,6 +292,8 @@ export default function App() {
         onPane={setPane}
         onDensity={setDensity}
         onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
+        onRef={() => setRefOpen(true)}
+        onSignOut={() => setEntered(false)}
       />
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
@@ -220,6 +306,7 @@ export default function App() {
             setSelectedId(null)
             setView('list')
           }}
+          onDropMessage={dropMessage}
         />
         <MessageList
           rows={rows}
@@ -231,6 +318,13 @@ export default function App() {
           onUnreadOnly={setUnreadOnly}
           onSelect={select}
           onBack={() => setView('folders')}
+          onContext={(id, x, y) => {
+            select(id)
+            setCtx({ id, x, y })
+          }}
+          emptyText={emptyText}
+          sync={{ state: !online ? 'offline' : syncing ? 'syncing' : 'synced', last: lastSync }}
+          onSync={syncNow}
         />
         {showReader && (
           <ReadingPane
@@ -259,6 +353,8 @@ export default function App() {
           onToast={showToast}
         />
       )}
+      {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {refOpen && <RefGenerator onClose={() => setRefOpen(false)} onToast={showToast} onNewMail={(subject) => openCompose({ subject })} />}
       {toast && (
         <div className="toast" role="status">
           {toast}

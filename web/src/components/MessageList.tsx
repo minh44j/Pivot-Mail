@@ -14,12 +14,16 @@ interface Props {
   onUnreadOnly: (v: boolean) => void
   onSelect: (id: string) => void
   onBack: () => void
+  onContext: (id: string, x: number, y: number) => void
+  emptyText: string
+  sync: { state: 'synced' | 'syncing' | 'offline'; last: Date }
+  onSync: () => void
 }
 
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack }: Props) {
+export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack, onContext, emptyText, sync, onSync }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
@@ -95,7 +99,7 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
       </header>
       <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="listbox" aria-label="Messages" tabIndex={0}>
         {rows.length === 0 ? (
-          <div className="empty">No messages</div>
+          <div className="empty">{emptyText}</div>
         ) : (
           <div style={{ height: offsets.total, position: 'relative' }}>
             {items.slice(start, end).map((it, i) => {
@@ -117,6 +121,16 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                   className={`row${sel ? ' sel' : ''}${unread ? ' unread' : ''}${msg.colour ? ` tint-${msg.colour}` : ''}`}
                   style={{ position: 'absolute', top: y, height: rowH }}
                   onClick={() => onSelect(msg.id)}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/x-pivot-msg', msg.id)
+                    e.dataTransfer.setData('text/plain', msg.subject)
+                    e.dataTransfer.effectAllowed = 'move'
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    onContext(msg.id, e.clientX, e.clientY)
+                  }}
                 >
                   <span className={`udot${unread ? ' on' : ''}`} role="img" aria-label={unread ? 'Unread' : ''} aria-hidden={!unread} />
                   <div className="row-main">
@@ -149,6 +163,19 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
           </div>
         )}
       </div>
+      <footer className="list-foot" aria-live="polite">
+        <span className={`sync-dot ${sync.state}`} aria-hidden="true" />
+        <span className="grow">
+          {sync.state === 'offline'
+            ? 'Offline. Changes will sync when you reconnect.'
+            : sync.state === 'syncing'
+              ? 'Syncing…'
+              : `Synced ${sync.last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · sample data`}
+        </span>
+        <button type="button" className="link" onClick={onSync} disabled={sync.state !== 'synced'}>
+          Sync now
+        </button>
+      </footer>
     </section>
   )
 }

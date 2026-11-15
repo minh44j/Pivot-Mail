@@ -29,6 +29,8 @@ interface Props {
   onPane: (p: PaneLayout) => void
   onDensity: (d: Density) => void
   onEnableNotifications: () => void
+  onRef: () => void
+  onSignOut: () => void
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
@@ -175,6 +177,7 @@ export function Toolbar(p: Props) {
         </div>
 
         <div className="tb-group tb-extra" role="group" aria-label="More">
+          <Item icon="hash" label="Ref no." title="Generate a reference number" onClick={p.onRef} />
           <Menu icon="template" label="Templates">
             {(close) => (
               <>
@@ -249,6 +252,18 @@ export function Toolbar(p: Props) {
                     <Icon name="bell" size={14} />
                   </span>
                   {notifLabel}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onSignOut()
+                    close()
+                  }}
+                >
+                  <span className="ph" />
+                  Sign out (preview)
                 </button>
               </>
             )}
