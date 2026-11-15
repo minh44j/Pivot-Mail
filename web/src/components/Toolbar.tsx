@@ -32,6 +32,9 @@ interface Props {
   onEnableNotifications: () => void
   onRef: () => void
   onSignOut: () => void
+  role: 'admin' | 'staff'
+  onRole: (r: 'admin' | 'staff') => void
+  onPerformance: () => void
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
@@ -252,6 +255,30 @@ export function Toolbar(p: Props) {
                   </span>
                   {notifLabel}
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onPerformance()
+                    close()
+                  }}
+                >
+                  <span className="ph">
+                    <Icon name="layout" size={14} />
+                  </span>
+                  Staff performance (admin)
+                </button>
+                <Check
+                  role="menuitemcheckbox"
+                  checked={p.role === 'staff'}
+                  label="Preview as staff"
+                  onSelect={() => {
+                    p.onRole(p.role === 'staff' ? 'admin' : 'staff')
+                    close()
+                  }}
+                />
+                <div className="menu-sep" role="separator" />
                 <button
                   type="button"
                   role="menuitem"

@@ -15,6 +15,7 @@ import { ContextMenu } from './components/ContextMenu'
 import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
 import { SignIn } from './components/SignIn'
+import { PerformancePage } from './components/PerformancePage'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -54,6 +55,8 @@ export default function App() {
   const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
   const [refOpen, setRefOpen] = useState(false)
+  const [screen, setScreen] = useState<'mail' | 'performance'>('mail')
+  const [role, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
   const [online, setOnline] = useState(() => navigator.onLine)
   const [syncing, setSyncing] = useState(false)
   const [lastSync, setLastSync] = useState(() => new Date())
@@ -264,6 +267,19 @@ export default function App() {
 
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
 
+  if (screen === 'performance') {
+    return (
+      <>
+        <PerformancePage role={role} onBack={() => setScreen('mail')} onToast={showToast} />
+        {toast && (
+          <div className="toast" role="status">
+            {toast}
+          </div>
+        )}
+      </>
+    )
+  }
+
   const emptyText = query.trim() ? `No results for “${query.trim()}”` : unreadOnly ? 'No unread messages' : 'Nothing in this folder'
 
   return (
@@ -295,6 +311,9 @@ export default function App() {
         onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
         onRef={() => setRefOpen(true)}
         onSignOut={() => setEntered(false)}
+        role={role}
+        onRole={setRole}
+        onPerformance={() => setScreen('performance')}
       />
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
