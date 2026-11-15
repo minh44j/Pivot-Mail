@@ -1,92 +1,153 @@
-import logoMark from '../assets/brand/logo-mark.png'
 import logoLockup from '../assets/brand/logo-lockup.png'
 
 interface Props {
   onPreview: () => void
 }
 
-/** Original artwork: route arcs between a ship and a plane over a soft blue gradient. */
-function Artwork() {
+/* ---- artwork pieces (original, drawn in code; brand palette from the logo) ---- */
+
+function waves(y: number, width: number): string {
+  const n = Math.ceil(width / 60) + 2
+  return `M-30 ${y} q30 -14 60 0${' t60 0'.repeat(n)}`
+}
+
+/** Container ship, drawn upward from its waterline at (0, 0). Width 180. */
+function Ship() {
+  const tops = ['#ffffff', '#b8f3df', '#02b789', '#ffffff', '#b8f3df']
+  const upper = ['#02b789', '#ffffff', '#b8f3df', '#ffffff']
   return (
-    <svg className="art-svg" viewBox="0 0 640 760" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
-      <defs>
-        <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#0a3a9e" />
-          <stop offset="0.55" stopColor="#0a5fd6" />
-          <stop offset="1" stopColor="#1a8cff" />
-        </linearGradient>
-        <radialGradient id="glow" cx="0.8" cy="0.15" r="0.7">
-          <stop offset="0" stopColor="#7fd0ff" stopOpacity="0.55" />
-          <stop offset="1" stopColor="#7fd0ff" stopOpacity="0" />
-        </radialGradient>
-        <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#0a4fc0" stopOpacity="0" />
-          <stop offset="1" stopColor="#06286b" stopOpacity="0.85" />
-        </linearGradient>
-      </defs>
-      <rect width="640" height="760" fill="url(#sky)" />
-      <rect width="640" height="760" fill="url(#glow)" />
+    <g className="art-bob">
+      {tops.map((c, i) => (
+        <rect key={`a${i}`} x={14 + i * 24} y={-18} width="22" height="16" rx="2" fill={c} />
+      ))}
+      {upper.map((c, i) => (
+        <rect key={`b${i}`} x={26 + i * 24} y={-36} width="22" height="16" rx="2" fill={c} />
+      ))}
+      <rect x="142" y="-46" width="30" height="44" rx="3" fill="#fff" />
+      <rect x="148" y="-40" width="18" height="6" rx="1.5" fill="#162328" opacity="0.75" />
+      <rect x="148" y="-30" width="18" height="6" rx="1.5" fill="#162328" opacity="0.55" />
+      <path d="M0 -2 H180 L160 28 H20 Z" fill="#162328" />
+      <path d="M6 6 H174" stroke="#02b789" strokeWidth="3" />
+    </g>
+  )
+}
 
-      {/* globe lines */}
-      <g fill="none" stroke="#fff" strokeOpacity="0.12" strokeWidth="1.2">
-        <circle cx="470" cy="250" r="230" />
-        <circle cx="470" cy="250" r="170" />
-        <ellipse cx="470" cy="250" rx="230" ry="90" />
-        <ellipse cx="470" cy="250" rx="90" ry="230" />
-        <path d="M240 250H700" />
-      </g>
+/** Plane, nose pointing up at (0, 0). Rotate to the heading + 90 degrees. */
+function Plane() {
+  return (
+    <g className="art-fly">
+      <path d="M0 -16 L3 -5 L21 4 L21 9 L3 6 L2 15 L8 19 L8 21 L0 19.5 L-8 21 L-8 19 L-2 15 L-3 6 L-21 9 L-21 4 L-3 -5 Z" fill="#fff" />
+    </g>
+  )
+}
 
-      {/* stars / lights */}
-      <g fill="#fff">
-        {[
-          [70, 80, 2.2, 0.5],
-          [150, 150, 1.6, 0.4],
-          [260, 60, 1.8, 0.45],
-          [350, 130, 2.4, 0.5],
-          [560, 70, 1.8, 0.4],
-          [600, 180, 1.4, 0.35],
-          [40, 260, 1.6, 0.35],
-          [120, 330, 2, 0.4],
-        ].map(([cx, cy, r, o]) => (
-          <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} opacity={o} />
+function Pin({ x, y }: { x: number; y: number }) {
+  return (
+    <g>
+      <circle cx={x} cy={y} r="15" fill="#fff" opacity="0.2" />
+      <circle cx={x} cy={y} r="7" fill="#fff" />
+    </g>
+  )
+}
+
+function Globe({ cx, cy, r }: { cx: number; cy: number; r: number }) {
+  return (
+    <g fill="none" stroke="#fff" strokeOpacity="0.13" strokeWidth="1.3">
+      <circle cx={cx} cy={cy} r={r} />
+      <circle cx={cx} cy={cy} r={r * 0.72} />
+      <ellipse cx={cx} cy={cy} rx={r} ry={r * 0.38} />
+      <ellipse cx={cx} cy={cy} rx={r * 0.38} ry={r} />
+      <path d={`M${cx - r} ${cy}H${cx + r}`} />
+    </g>
+  )
+}
+
+function Lights({ pts }: { pts: [number, number, number, number][] }) {
+  return (
+    <g fill="#fff">
+      {pts.map(([x, y, r, o]) => (
+        <circle key={`${x}-${y}`} cx={x} cy={y} r={r} opacity={o} />
+      ))}
+    </g>
+  )
+}
+
+function Sea({ y, w, h, lines }: { y: number; w: number; h: number; lines: number[] }) {
+  return (
+    <g>
+      <rect y={y} width={w} height={h} fill="url(#sea)" />
+      <g fill="none" stroke="#fff" strokeOpacity="0.26" strokeWidth="1.6" strokeLinecap="round">
+        {lines.map((ly) => (
+          <path key={ly} d={waves(ly, w)} />
         ))}
       </g>
+    </g>
+  )
+}
 
-      {/* route arc: ship (origin) to plane (destination) */}
-      <path d="M157 512 C 200 360, 400 250, 560 150" fill="none" stroke="#fff" strokeOpacity="0.7" strokeWidth="2" strokeDasharray="2 10" strokeLinecap="round" />
-      <circle cx="157" cy="512" r="7" fill="#fff" />
-      <circle cx="157" cy="512" r="14" fill="#fff" opacity="0.22" />
-      <circle cx="560" cy="150" r="7" fill="#fff" />
-      <circle cx="560" cy="150" r="14" fill="#fff" opacity="0.22" />
+const SEA_DEF = (
+  <defs>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stopColor="#0b1a1f" stopOpacity="0" />
+      <stop offset="1" stopColor="#0b1a1f" stopOpacity="0.8" />
+    </linearGradient>
+  </defs>
+)
 
-      {/* plane */}
-      <g className="art-plane" transform="translate(405 245) rotate(-38) scale(1.5)">
-        <path d="M0 -16 L3 -5 L21 4 L21 9 L3 6 L2 15 L8 19 L8 21 L0 19.500 L-8 21 L-8 19 L-2 15 L-3 6 L-21 9 L-21 4 L-3 -5 Z" fill="#fff" />
+function ArtDesktop() {
+  return (
+    <svg className="art-svg desk" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
+      {SEA_DEF}
+      <Globe cx={1130} cy={300} r={300} />
+      <Lights
+        pts={[
+          [120, 110, 2.2, 0.5],
+          [310, 220, 1.6, 0.4],
+          [520, 90, 1.8, 0.45],
+          [760, 160, 2.4, 0.4],
+          [1330, 80, 1.8, 0.4],
+          [1390, 420, 1.4, 0.35],
+          [70, 400, 1.6, 0.35],
+          [220, 480, 2, 0.4],
+        ]}
+      />
+      <path d="M312 596 C 300 100, 500 -100, 1230 170" fill="none" stroke="#fff" strokeOpacity="0.75" strokeWidth="2.2" strokeDasharray="2 11" strokeLinecap="round" />
+      <Pin x={312} y={596} />
+      <Pin x={1230} y={170} />
+      <g transform="translate(935 82) rotate(103) scale(1.9)">
+        <Plane />
       </g>
-
-      {/* sea */}
-      <rect y="560" width="640" height="200" fill="url(#sea)" />
-      <g fill="none" stroke="#fff" strokeOpacity="0.28" strokeWidth="1.6" strokeLinecap="round">
-        <path d="M-10 640 q30 -14 60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0" />
-        <path d="M-40 676 q30 -14 60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0" />
-        <path d="M-10 714 q30 -14 60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0 t60 0" />
+      <Sea y={690} w={1440} h={210} lines={[745, 800, 858]} />
+      <g transform="translate(120 650) scale(1.45)">
+        <Ship />
       </g>
+    </svg>
+  )
+}
 
-      {/* container ship */}
-      <g className="art-ship" transform="translate(40 560)">
-        <g>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <rect key={`a${i}`} x={14 + i * 24} y={-18} width="22" height="16" rx="2" fill={['#ffffff', '#cfe6ff', '#ffffff', '#9fd0ff', '#ffffff'][i]} />
-          ))}
-          {[0, 1, 2, 3].map((i) => (
-            <rect key={`b${i}`} x={26 + i * 24} y={-36} width="22" height="16" rx="2" fill={['#cfe6ff', '#ffffff', '#9fd0ff', '#cfe6ff'][i]} />
-          ))}
-          <rect x="142" y="-44" width="30" height="42" rx="3" fill="#fff" />
-          <rect x="148" y="-38" width="18" height="6" rx="1.500" fill="#0a5fd6" opacity="0.7" />
-          <rect x="148" y="-28" width="18" height="6" rx="1.500" fill="#0a5fd6" opacity="0.5" />
-          <path d="M0 -2 H180 L160 28 H20 Z" fill="#0a2f78" />
-          <path d="M6 6 H174" stroke="#fff" strokeOpacity="0.5" strokeWidth="2" />
-        </g>
+function ArtMobile() {
+  return (
+    <svg className="art-svg mob" viewBox="0 0 480 330" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">
+      {SEA_DEF}
+      <Globe cx={350} cy={100} r={170} />
+      <Lights
+        pts={[
+          [60, 40, 2, 0.5],
+          [150, 100, 1.6, 0.4],
+          [250, 20, 1.8, 0.45],
+          [455, 200, 1.6, 0.35],
+          [30, 190, 1.6, 0.35],
+        ]}
+      />
+      <path d="M150 222 C 190 130, 320 80, 405 56" fill="none" stroke="#fff" strokeOpacity="0.75" strokeWidth="2" strokeDasharray="2 10" strokeLinecap="round" />
+      <Pin x={150} y={222} />
+      <Pin x={405} y={56} />
+      <g transform="translate(322 90) rotate(66) scale(1.5)">
+        <Plane />
+      </g>
+      <Sea y={282} w={480} h={48} lines={[300, 318]} />
+      <g transform="translate(40 262)">
+        <Ship />
       </g>
     </svg>
   )
@@ -98,7 +159,6 @@ function MiniInbox() {
       <div className="art-card-head">
         <span className="dot c-blue" />
         <b>Inbox</b>
-        <i />
       </div>
       {[
         { w: 62, c: 'c-orange', unread: true, att: true },
@@ -120,50 +180,43 @@ function MiniInbox() {
 }
 
 /**
- * Sign-in screen. Google login is not connected yet (needs the Workspace OAuth app),
- * so the only working path is the sample-data preview.
+ * Sign-in screen. One brand-gradient canvas with artwork, and a white sheet with a curved edge
+ * (bottom sheet on phones, floating card on larger screens).
+ * Google login is not connected yet (needs the Workspace OAuth app), so the only working path
+ * is the sample-data preview.
  */
 export function SignIn({ onPreview }: Props) {
   return (
     <main className="signin">
-      <section className="signin-art">
-        <Artwork />
-        <div className="art-copy">
-          <span className="art-tile">
-            <img src={logoMark} alt="Pivot Mail" />
-          </span>
-          <h2>
-            Your mail, at the
-            <br />
-            speed of your work.
-          </h2>
-          <p>One calm inbox for every Pivot mailbox, built for the travel and shipping teams.</p>
+      <ArtDesktop />
+      <ArtMobile />
+      <MiniInbox />
+
+      <div className="signin-hero">
+        <h2>Your mail, at the speed of your work.</h2>
+      </div>
+
+      <section className="signin-panel" aria-labelledby="signin-title">
+        <img className="logo-lockup" src={logoLockup} alt="Pivot Mail" />
+        <h1 id="signin-title">Sign in</h1>
+        <p className="muted lead">Use your Pivot Workspace account to open your mailboxes.</p>
+
+        <button type="button" className="btn wide google" disabled aria-describedby="signin-note">
+          Continue with Google
+        </button>
+        <p id="signin-note" className="signin-note">
+          Google sign-in is not connected yet.
+        </p>
+
+        <div className="or" role="separator">
+          <span>or</span>
         </div>
-        <MiniInbox />
-      </section>
 
-      <section className="signin-panel">
-        <div className="signin-card">
-          <img className="logo-lockup" src={logoLockup} alt="Pivot Mail" />
-          <h1>Sign in</h1>
-          <p className="muted lead">Use your Pivot Workspace account to open your mailboxes.</p>
+        <button type="button" className="btn primary wide" onClick={onPreview} autoFocus>
+          Open preview with sample data
+        </button>
+        <p className="signin-note">Sample data only. No real mail is read or stored.</p>
 
-          <button type="button" className="btn wide google" disabled aria-describedby="signin-note">
-            Continue with Google
-          </button>
-          <p id="signin-note" className="signin-note">
-            Google sign-in is not connected yet.
-          </p>
-
-          <div className="or" role="separator">
-            <span>or</span>
-          </div>
-
-          <button type="button" className="btn primary wide" onClick={onPreview} autoFocus>
-            Open preview with sample data
-          </button>
-          <p className="signin-note">Sample data only. No real mail is read or stored.</p>
-        </div>
         <footer className="signin-foot">
           <span>Pivot Travel Management</span>
           <span aria-hidden="true">·</span>
