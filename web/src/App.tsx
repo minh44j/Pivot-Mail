@@ -10,6 +10,7 @@ import type { FolderSel } from './components/FolderPane'
 import { MessageList } from './components/MessageList'
 import { ReadingPane } from './components/ReadingPane'
 import { Composer } from './components/Composer'
+import { Icon } from './components/Icon'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -188,9 +189,18 @@ export default function App() {
           <span className="logo" aria-hidden="true">
             P
           </span>
-          Pivot Mail
+          <span className="brand-name">Pivot Mail</span>
         </div>
-        <span className="grow" />
+        <label className="search topsearch">
+          <Icon name="search" size={16} />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search mail  (try from: or has:attachment)"
+            aria-label="Search mail"
+          />
+        </label>
         <span className="muted env">Preview · mock data</span>
       </header>
       <Ribbon
@@ -239,10 +249,8 @@ export default function App() {
           rows={rows}
           selectedId={selectedId}
           density={density}
-          query={query}
           unreadOnly={unreadOnly}
           title={title}
-          onQuery={setQuery}
           onUnreadOnly={setUnreadOnly}
           onSelect={select}
           onBack={() => setView('folders')}

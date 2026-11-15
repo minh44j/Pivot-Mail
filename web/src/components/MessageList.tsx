@@ -7,10 +7,8 @@ interface Props {
   rows: Row[]
   selectedId: string | null
   density: Density
-  query: string
   unreadOnly: boolean
   title: string
-  onQuery: (q: string) => void
   onUnreadOnly: (v: boolean) => void
   onSelect: (id: string) => void
   onBack: () => void
@@ -19,7 +17,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, query, unreadOnly, title, onQuery, onUnreadOnly, onSelect, onBack }: Props) {
+export function MessageList({ rows, selectedId, density, unreadOnly, title, onUnreadOnly, onSelect, onBack }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
@@ -90,16 +88,6 @@ export function MessageList({ rows, selectedId, density, query, unreadOnly, titl
           </button>
         </div>
       </header>
-      <label className="search">
-        <Icon name="search" size={16} />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-          placeholder="Search mail  (try from: or has:attachment)"
-          aria-label="Search mail"
-        />
-      </label>
       <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="listbox" aria-label="Messages" tabIndex={0}>
         {rows.length === 0 ? (
           <div className="empty">No messages</div>

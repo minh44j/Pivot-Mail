@@ -28,7 +28,23 @@ export function FolderPane({ accounts, messages, activeAccountId, selection, lab
 
   return (
     <nav className="folders" aria-label="Mail folders">
-      <div className="pane-title">Accounts</div>
+      <div className="pane-title">Favourites</div>
+      <ul className="folder-list fav">
+        {FOLDERS.filter((f) => ['inbox', 'drafts', 'sent'].includes(f.id)).map((f) => {
+          const count = f.id === 'inbox' ? unreadIn(activeAccountId, 'inbox') : 0
+          const on = selection.kind === 'folder' && selection.id === f.id
+          return (
+            <li key={f.id}>
+              <button type="button" className={`folder${on ? ' active' : ''}`} onClick={() => onSelect({ kind: 'folder', id: f.id })}>
+                <Icon name={f.icon} size={16} />
+                <span className="grow">{f.label}</span>
+                {count > 0 && <span className="count">{count}</span>}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      <div className="pane-title">Mailboxes</div>
       {accounts.map((a) => {
         const active = a.id === activeAccountId
         const n = unreadIn(a.id, 'inbox')

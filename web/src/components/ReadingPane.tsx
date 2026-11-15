@@ -38,8 +38,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
           <Icon name="back" />
         </button>
         <h2>{subject}</h2>
-      </header>
-      <div className="reader-actions">
+        <div className="reader-actions">
         <button type="button" onClick={onReply}>
           <Icon name="reply" size={16} /> Reply
         </button>
@@ -49,7 +48,8 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         <button type="button" onClick={onForward}>
           <Icon name="forward" size={16} /> Forward
         </button>
-      </div>
+        </div>
+      </header>
       <div className="reader-scroll">
         {messages.map((m) => {
           const expanded = open.has(m.id)

@@ -29,6 +29,15 @@ interface Props {
   onEnableNotifications: () => void
 }
 
+function Group(props: { label: string; children: ReactNode }) {
+  return (
+    <div className="group" role="group" aria-label={props.label}>
+      <div className="group-items">{props.children}</div>
+      <div className="group-label">{props.label}</div>
+    </div>
+  )
+}
+
 function Btn(props: { icon: IconName; label: string; onClick?: () => void; disabled?: boolean; primary?: boolean; pressed?: boolean; children?: ReactNode }) {
   return (
     <button
@@ -98,128 +107,136 @@ export function Ribbon(p: Props) {
       <div className="ribbon-body">
         {tab === 'home' ? (
           <>
-            <Btn icon="compose" label="New mail" primary onClick={p.onNew} />
-            <span className="sep" />
-            <Btn icon="trash" label="Delete" disabled={sel} onClick={p.onDelete} />
-            <Btn icon="archive" label="Archive" disabled={sel} onClick={p.onArchive} />
-            <span className="sep" />
-            <Btn icon="reply" label="Reply" disabled={sel} onClick={p.onReply} />
-            <Btn icon="replyAll" label="Reply all" disabled={sel} onClick={p.onReplyAll} />
-            <Btn icon="forward" label="Forward" disabled={sel} onClick={p.onForward} />
-            <span className="sep" />
-            <Btn icon="eye" label="Read / Unread" disabled={sel} onClick={p.onToggleUnread} />
-            <Btn icon="flag" label="Flag" disabled={sel} onClick={p.onToggleFlag} />
-            <Menu icon="tag" label="Colour" disabled={sel}>
-              {(close) => (
-                <>
-                  {COLOURS.map((c) => (
+            <Group label="New">
+              <Btn icon="compose" label="New mail" primary onClick={p.onNew} />
+              <Menu icon="template" label="Templates">
+                {(close) => (
+                  <>
+                    {categories.map((cat) => (
+                      <div key={cat}>
+                        <div className="menu-head">{cat}</div>
+                        {TEMPLATES.filter((t) => t.category === cat).map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            role="menuitem"
+                            className="menu-item"
+                            onClick={() => {
+                              p.onTemplate(t)
+                              close()
+                            }}
+                          >
+                            {t.name}
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </>
+                )}
+              </Menu>
+            </Group>
+            <Group label="Delete">
+              <Btn icon="trash" label="Delete" disabled={sel} onClick={p.onDelete} />
+              <Btn icon="archive" label="Archive" disabled={sel} onClick={p.onArchive} />
+            </Group>
+            <Group label="Respond">
+              <Btn icon="reply" label="Reply" disabled={sel} onClick={p.onReply} />
+              <Btn icon="replyAll" label="Reply all" disabled={sel} onClick={p.onReplyAll} />
+              <Btn icon="forward" label="Forward" disabled={sel} onClick={p.onForward} />
+            </Group>
+            <Group label="Tags">
+              <Btn icon="eye" label="Read / Unread" disabled={sel} onClick={p.onToggleUnread} />
+              <Btn icon="flag" label="Flag" disabled={sel} onClick={p.onToggleFlag} />
+              <Menu icon="tag" label="Colour" disabled={sel}>
+                {(close) => (
+                  <>
+                    {COLOURS.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        role="menuitem"
+                        className="menu-item"
+                        onClick={() => {
+                          p.onColour(c.id)
+                          close()
+                        }}
+                      >
+                        <span className={`dot c-${c.id}`} /> {c.label}
+                      </button>
+                    ))}
                     <button
-                      key={c.id}
                       type="button"
                       role="menuitem"
                       className="menu-item"
                       onClick={() => {
-                        p.onColour(c.id)
+                        p.onColour(undefined)
                         close()
                       }}
                     >
-                      <span className={`dot c-${c.id}`} /> {c.label}
+                      <span className="dot" /> Clear colour
                     </button>
-                  ))}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="menu-item"
-                    onClick={() => {
-                      p.onColour(undefined)
-                      close()
-                    }}
-                  >
-                    <span className="dot" /> Clear colour
-                  </button>
-                </>
-              )}
-            </Menu>
-            <span className="sep" />
-            <Menu icon="template" label="Templates">
-              {(close) => (
-                <>
-                  {categories.map((cat) => (
-                    <div key={cat}>
-                      <div className="menu-head">{cat}</div>
-                      {TEMPLATES.filter((t) => t.category === cat).map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          role="menuitem"
-                          className="menu-item"
-                          onClick={() => {
-                            p.onTemplate(t)
-                            close()
-                          }}
-                        >
-                          {t.name}
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </>
-              )}
-            </Menu>
+                  </>
+                )}
+              </Menu>
+            </Group>
           </>
         ) : (
           <>
-            <Btn icon="threads" label="Group by conversation" pressed={p.threaded} onClick={() => p.onThreaded(!p.threaded)} />
-            <span className="sep" />
-            <Menu icon="layout" label="Reading pane">
-              {(close) => (
-                <>
-                  {(['right', 'bottom', 'off'] as const).map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={p.pane === v}
-                      className="menu-item"
-                      onClick={() => {
-                        p.onPane(v)
-                        close()
-                      }}
-                    >
-                      {p.pane === v ? <Icon name="check" size={14} /> : <span className="ph" />} {v === 'right' ? 'Right' : v === 'bottom' ? 'Bottom' : 'Off'}
-                    </button>
-                  ))}
-                </>
-              )}
-            </Menu>
-            <Menu icon="menu" label="Density">
-              {(close) => (
-                <>
-                  {(['comfortable', 'compact'] as const).map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={p.density === v}
-                      className="menu-item"
-                      onClick={() => {
-                        p.onDensity(v)
-                        close()
-                      }}
-                    >
-                      {p.density === v ? <Icon name="check" size={14} /> : <span className="ph" />} {v === 'comfortable' ? 'Comfortable' : 'Compact'}
-                    </button>
-                  ))}
-                </>
-              )}
-            </Menu>
-            <span className="sep" />
-            <Btn
-              icon="bell"
-              label={p.notifications === 'granted' ? 'Notifications on' : p.notifications === 'denied' ? 'Notifications blocked' : p.notifications === 'unsupported' ? 'Notifications unavailable' : 'Enable notifications'}
-              disabled={p.notifications !== 'default'}
-              onClick={p.onEnableNotifications}
-            />
+            <Group label="Messages">
+              <Btn icon="threads" label="Conversations" pressed={p.threaded} onClick={() => p.onThreaded(!p.threaded)} />
+            </Group>
+            <Group label="Layout">
+              <Menu icon="layout" label="Reading pane">
+                {(close) => (
+                  <>
+                    {(['right', 'bottom', 'off'] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={p.pane === v}
+                        className="menu-item"
+                        onClick={() => {
+                          p.onPane(v)
+                          close()
+                        }}
+                      >
+                        {p.pane === v ? <Icon name="check" size={14} /> : <span className="ph" />} {v === 'right' ? 'Right' : v === 'bottom' ? 'Bottom' : 'Off'}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </Menu>
+              <Menu icon="menu" label="Density">
+                {(close) => (
+                  <>
+                    {(['comfortable', 'compact'] as const).map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={p.density === v}
+                        className="menu-item"
+                        onClick={() => {
+                          p.onDensity(v)
+                          close()
+                        }}
+                      >
+                        {p.density === v ? <Icon name="check" size={14} /> : <span className="ph" />} {v === 'comfortable' ? 'Comfortable' : 'Compact'}
+                      </button>
+                    ))}
+                  </>
+                )}
+              </Menu>
+            </Group>
+            <Group label="Alerts">
+              <Btn
+                icon="bell"
+                label={p.notifications === 'granted' ? 'Notifications on' : p.notifications === 'denied' ? 'Notifications blocked' : p.notifications === 'unsupported' ? 'Notifications unavailable' : 'Enable notifications'}
+                disabled={p.notifications !== 'default'}
+                onClick={p.onEnableNotifications}
+              />
+            </Group>
           </>
         )}
       </div>
