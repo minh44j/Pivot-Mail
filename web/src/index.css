@@ -2331,20 +2331,13 @@ code {
   background: var(--separator);
 }
 
-/* hover actions on message rows (Outlook style) */
+/* message row actions: always visible, quiet until the row is hovered or selected */
 .row-actions {
   position: absolute;
-  top: 6px;
-  right: 8px;
+  right: 6px;
+  bottom: 4px;
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--r-md);
-  background: var(--content);
-  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.1s;
+  gap: 0;
 }
 .row-actions button {
   display: grid;
@@ -2355,6 +2348,12 @@ code {
   border-radius: var(--r-sm);
   background: none;
   color: var(--label-2);
+  opacity: 0.75;
+}
+.row:hover .row-actions button,
+.row.sel .row-actions button,
+.row:focus-within .row-actions button {
+  opacity: 1;
 }
 .row-actions button:hover {
   background: var(--fill-2);
@@ -2362,16 +2361,30 @@ code {
 }
 .row-actions button[aria-pressed='true'] {
   color: var(--c-orange);
+  opacity: 1;
 }
-@media (hover: hover) {
-  .row:hover .row-actions,
-  .row:focus-within .row-actions {
-    opacity: 1;
-    pointer-events: auto;
+.row-main .preview {
+  padding-right: 144px;
+}
+[data-density='compact'] .row-main .row-sub {
+  padding-right: 144px;
+}
+@media (max-width: 899px) {
+  .row-actions {
+    bottom: 2px;
   }
-  .row:hover .time,
-  .row:focus-within .time {
-    visibility: hidden;
+  .row-actions button {
+    width: 44px;
+    height: 44px;
+  }
+  .row-actions .ra-extra {
+    display: none;
+  }
+  .row-main .preview {
+    padding-right: 140px;
+  }
+  [data-density='compact'] .row-main .row-sub {
+    padding-right: 140px;
   }
 }
 .reader-touch {

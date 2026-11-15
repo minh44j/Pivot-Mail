@@ -4,6 +4,18 @@ import { formatListTime, groupLabel } from '../util'
 import { useSettings } from '../settings'
 import { Icon } from './Icon'
 
+/** Phones and narrow windows get taller rows so the touch-sized buttons fit. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 899px)').matches)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 899px)')
+    const on = () => setNarrow(mq.matches)
+    mq.addEventListener('change', on)
+    return () => mq.removeEventListener('change', on)
+  }, [])
+  return narrow
+}
+
 interface Props {
   rows: Row[]
   selectedId: string | null
@@ -29,7 +41,8 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
-  const rowH = density === 'compact' ? 52 : 72
+  const narrow = useNarrow()
+  const rowH = density === 'compact' ? (narrow ? 64 : 52) : narrow ? 88 : 72
   const headH = 28
 
   const items = useMemo<Item[]>(() => {
@@ -145,13 +158,13 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       <button type="button" title="Delete" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
                         <Icon name="trash" size={15} />
                       </button>
-                      <button type="button" title="Archive" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
+                      <button type="button" className="ra-extra" title="Archive" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
                         <Icon name="archive" size={15} />
                       </button>
                       <button type="button" title={msg.flagged ? 'Remove flag' : 'Flag'} aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
                         <Icon name="flag" size={15} />
                       </button>
-                      <button type="button" title={unread ? 'Mark as read' : 'Mark as unread'} aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
+                      <button type="button" className="ra-extra" title={unread ? 'Mark as read' : 'Mark as unread'} aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
                         <Icon name="eye" size={15} />
                       </button>
                       <button
@@ -176,11 +189,6 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       )}
                       {msg.colour && (
                         <span className={`dot c-${msg.colour}`} title={`Category: ${colours.find((c) => c.id === msg.colour)?.label ?? ''}`} />
-                      )}
-                      {msg.flagged && (
-                        <span className="icon-inline flag" title="Flagged">
-                          <Icon name="flag" size={14} />
-                        </span>
                       )}
                     </div>
                     {density === 'comfortable' && <div className="preview">{msg.body.replace(/\s+/g, ' ')}</div>}
