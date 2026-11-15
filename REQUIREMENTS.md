@@ -13,6 +13,10 @@ Status: DRAFT. Items marked ⚠️ are unconfirmed.
 4. Familiar UX for Outlook users (low migration friction).
 5. Internal only, under 25 staff, Pivot Workspace domain.
 
+## Phasing (confirmed)
+- **Phase 1 (now): core mail** — auth, sync, read/send/reply/forward, labels/search/filters, multiple accounts/shared mailboxes, Outlook-like UI.
+- **Phase 2 (later, set up in Pivot OS first): Reference Generator, case folders, Drive.** Designs below are kept for reference; do not build yet. Keep hooks in architecture (ribbon slot, case-label namespace `Cases/`).
+
 ## v1 scope (mandatory)
 | # | Feature | Notes |
 |---|---|---|
