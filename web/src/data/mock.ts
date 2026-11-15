@@ -38,6 +38,7 @@ interface Seed {
   labels?: string[]
   from: Person
   to?: string
+  cc?: string[]
   subject: string
   body: string
   ago: number
@@ -48,11 +49,11 @@ interface Seed {
 }
 
 const seeds: Seed[] = [
-  { id: 'm1', thread: 't1', account: 'ops', labels: ['Clients'], from: P.acme, subject: 'Booking request – 2×40HQ machinery', body: 'Hello,\n\nWe would like to book 2×40HQ of machinery from the origin port to the destination port. Cargo is ready.\n\nPlease share your best rate and transit time.\n\nThanks,\nHana', ago: 8, unread: true, colour: 'orange', files: [att('a1', 'packing-list.pdf', 184_000), att('a2', 'commercial-invoice.pdf', 226_000)] },
+  { id: 'm1', thread: 't1', account: 'ops', labels: ['Clients'], cc: ['accounts@pivot.example', 'sales@pivot.example'], from: P.acme, subject: 'Booking request – 2×40HQ machinery', body: 'Hello,\n\nWe would like to book 2×40HQ of machinery from the origin port to the destination port. Cargo is ready.\n\nPlease share your best rate and transit time.\n\nThanks,\nHana', ago: 8, unread: true, colour: 'orange', files: [att('a1', 'packing-list.pdf', 184_000), att('a2', 'commercial-invoice.pdf', 226_000)] },
   { id: 'm2', thread: 't2', account: 'ops', labels: ['Vendors'], from: P.blue, subject: 'Vessel schedule update', body: 'Dear team,\n\nPlease note the vessel schedule has changed. Updated cut-off and ETA are in the attached sheet.\n\nRegards,\nLiam', ago: 35, unread: true, flagged: true, files: [att('a3', 'schedule-update.xlsx', 48_000)] },
   { id: 'm3', thread: 't3', account: 'ops', labels: ['Clients'], from: P.cust, subject: 'Customs clearance – documents pending', body: 'Hi,\n\nWe are waiting for the original documents to complete clearance. Please confirm when they are couriered.\n\nDiego', ago: 95, unread: true, colour: 'red' },
   { id: 'm4', thread: 't4', account: 'ops', labels: ['Finance'], from: P.fin, subject: 'Statement of account – October', body: 'Dear customer,\n\nPlease find the October statement attached. Kindly arrange settlement per the agreed terms.\n\nAccounts', ago: 180, files: [att('a4', 'statement-oct.pdf', 92_000)] },
-  { id: 'm5', thread: 't5', account: 'ops', labels: ['Clients'], from: P.gulf, subject: 'Re: Delivery order request', body: 'Thanks. Please issue the delivery order as discussed.\n\nSara', ago: 300, colour: 'green' },
+  { id: 'm5', thread: 't5', account: 'ops', labels: ['Clients'], cc: ['accounts@pivot.example'], from: P.gulf, subject: 'Re: Delivery order request', body: 'Thanks. Please issue the delivery order as discussed.\n\nSara', ago: 300, colour: 'green' },
   { id: 'm5b', thread: 't5', account: 'ops', labels: ['Clients'], from: P.gulf, subject: 'Delivery order request', body: 'Hello,\n\nCould you please issue the delivery order for the shipment arriving tomorrow?\n\nSara', ago: 1500, colour: 'green' },
   { id: 'm5c', thread: 't5', account: 'ops', folder: 'sent', labels: ['Clients'], from: { name: 'Operations', email: 'ops@pivot.example' }, to: 'sara@gulfcargo.example', subject: 'Re: Delivery order request', body: 'Hi Sara,\n\nWe will issue it once the release is confirmed.\n\nOperations Desk', ago: 1400 },
   { id: 'm6', thread: 't6', account: 'ticketing', from: P.trip, subject: 'Group travel – 12 passengers', body: 'Hello,\n\nWe need a quotation for 12 passengers travelling next month. Passport copies are attached.\n\nPriya', ago: 12, unread: true, colour: 'blue', files: [att('a5', 'passports.pdf', 1_240_000), att('a6', 'travel-request.xlsx', 36_000)] },
@@ -65,6 +66,8 @@ const seeds: Seed[] = [
   { id: 'm13', thread: 't13', account: 'me', folder: 'archive', from: P.sky, subject: 'Archived: last season schedule', body: 'For reference.\n\nNoor', ago: 9000 },
 ]
 
+const accountOf = (id: string): Account => ACCOUNTS.find((a) => a.id === id) ?? (ACCOUNTS[0] as Account)
+
 const mapped: Message[] = seeds.map((s) => ({
   id: s.id,
   threadId: s.thread,
@@ -72,7 +75,8 @@ const mapped: Message[] = seeds.map((s) => ({
   folder: s.folder ?? 'inbox',
   labels: s.labels ?? [],
   from: s.from,
-  to: [{ name: s.to ?? 'Me', email: s.to ?? 'you@pivot.example' }],
+  to: [{ name: s.to ?? accountOf(s.account).name, email: s.to ?? accountOf(s.account).email }],
+  cc: s.cc?.map((e) => ({ name: e, email: e })),
   subject: s.subject,
   body: s.body,
   date: minutesAgo(s.ago),
@@ -95,7 +99,7 @@ const filler: Message[] = Array.from({ length: 240 }, (_, i) => {
     folder: 'inbox',
     labels: [],
     from,
-    to: [{ name: 'Me', email: 'you@pivot.example' }],
+    to: [{ name: accountOf(i % 3 === 0 ? 'ops' : i % 3 === 1 ? 'ticketing' : 'me').name, email: accountOf(i % 3 === 0 ? 'ops' : i % 3 === 1 ? 'ticketing' : 'me').email }],
     subject,
     body: `Hello,\n\nRegarding ${subject.toLowerCase()}. Please advise at your earliest convenience.\n\n${from.name}`,
     date: minutesAgo(600 + i * 55),

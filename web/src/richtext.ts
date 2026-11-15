@@ -10,7 +10,7 @@ export function textToHtml(text: string): string {
 }
 
 const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'MATH', 'FORM', 'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'LINK', 'META', 'TITLE', 'HEAD'])
-const ALLOWED = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'BR', 'P', 'DIV', 'BLOCKQUOTE', 'A', 'SPAN'])
+const ALLOWED = new Set(['HR', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'BR', 'P', 'DIV', 'BLOCKQUOTE', 'A', 'SPAN'])
 
 export function safeUrl(raw: string): string | null {
   const v = raw.trim()
@@ -55,7 +55,7 @@ export function sanitizeHtml(html: string): string {
       for (const attr of Array.from(el.attributes)) {
         const keep =
           (el.tagName === 'A' && attr.name === 'href') ||
-          (el.tagName === 'DIV' && attr.name === 'data-sig') ||
+          (el.tagName === 'DIV' && (attr.name === 'data-sig' || attr.name === 'data-quote')) ||
           (el.tagName === 'DIV' && attr.name === 'contenteditable' && attr.value === 'false')
         if (!keep) el.removeAttribute(attr.name)
       }

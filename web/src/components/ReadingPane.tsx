@@ -90,7 +90,8 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
                 <span className="grow">
                   <strong>{m.from.name}</strong> <small>&lt;{m.from.email}&gt;</small>
                   <small className="block">
-                    To: {m.to.map((t) => t.email).join(', ')} · {formatFullDate(m.date)}
+                    To: {m.to.map((t) => t.email).join(', ')}
+                    {m.cc && m.cc.length > 0 && <> · Cc: {m.cc.map((t) => t.email).join(', ')}</>} · {formatFullDate(m.date)}
                   </small>
                 </span>
                 {m.attachments.length > 0 && <Icon name="clip" size={14} />}

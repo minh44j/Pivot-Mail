@@ -143,3 +143,11 @@ Admin-only dashboard inside Pivot Mail. Per-staff metrics:
 ## UI build status (preview, sample data)
 Built: sign-in, Outlook-style three-pane mail with multi-mailbox sidebar, rich-text composer (formatting, links, lists, Bcc, signature, templates at cursor), message context menu and drag to folder, sync status, Reference popup (mock counter), admin Staff performance page, Settings (general, signatures, templates, colour categories).
 Not built: Google sign-in and Gmail sync, safe HTML message viewer, search suggestions, case folders, Drive, real analytics collection, server-side roles.
+
+## Threading and reply format (confirmed direction)
+- **Threads:** Gmail `threadId` is the key. A reply must carry the same `threadId` plus `In-Reply-To` and `References` headers and keep the subject (`Re: …`), or Gmail starts a new thread. ⚠️ Verify against Gmail API docs before building send.
+- **List:** one row per conversation (newest message, count badge, unread if any unread). Toggle in View menu.
+- **Reading pane:** all messages of the thread, oldest first, newest expanded; each has its own sender, To, Cc and date, separated by a rule.
+- **Reply / Reply all / Forward:** Reply goes to the sender; Reply all adds everyone on To and Cc except you; Forward starts a new message with the attachments. Subject gets `Re:` / `Fwd:` once.
+- **Quoted original (Outlook style, no side bar):** new text first, then signature, then a rule, then a header block (From, Sent, To, Cc, Subject), then the original text. Implemented in the composer (`data-quote` block).
+- Later: collapse long quoted history in the reading pane ("show trimmed content"), needs the safe HTML viewer.

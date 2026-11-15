@@ -59,6 +59,9 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
   const first = useRef(true)
+  const latest = useRef(d)
+  const finished = useRef(false)
+  const touched = useRef(false)
   const ed = useRef<HTMLDivElement>(null)
   const savedRange = useRef<Range | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -125,12 +128,14 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Autosave 1.2 s after the last edit.
+  // Autosave 1.2 s after the last edit. Closing earlier still keeps the draft (see unmount below).
   useEffect(() => {
+    latest.current = d
     if (first.current) {
       first.current = false
       return
     }
+    touched.current = true
     setSaved('saving')
     const t = window.setTimeout(() => {
       platform.storage.set(DRAFT_KEY, JSON.stringify(d))
@@ -138,6 +143,14 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
     }, 1200)
     return () => window.clearTimeout(t)
   }, [d])
+
+  // Closing the window keeps what was typed, even inside the 1.2 s autosave delay.
+  useEffect(
+    () => () => {
+      if (touched.current && !finished.current) platform.storage.set(DRAFT_KEY, JSON.stringify(latest.current))
+    },
+    [],
+  )
 
   /** Insert a template at the caret. An empty message is replaced by the template (signature kept). */
   const insertTemplate = (t: Template) => {
@@ -158,7 +171,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
         const anchorEl = sel?.anchorNode ? (sel.anchorNode.nodeType === Node.TEXT_NODE ? sel.anchorNode.parentElement : (sel.anchorNode as Element)) : null
         if (!sel || !sel.anchorNode || !el.contains(sel.anchorNode) || anchorEl?.closest('[data-sig]')) {
           // No caret in the editor: insert at the end of the writing area (before signature and quote).
-          const writing = Array.from(el.children).filter((c) => !c.matches('[data-sig], blockquote'))
+          const writing = Array.from(el.children).filter((c) => !c.matches('[data-sig], [data-quote]'))
           const r = document.createRange()
           r.selectNodeContents(writing[writing.length - 1] ?? el)
           r.collapse(false)
@@ -204,7 +217,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       tmp.innerHTML = sigFor(accounts, d.accountId)
       const node = tmp.firstElementChild
       if (node) {
-        const quote = el.querySelector('blockquote')
+        const quote = el.querySelector('[data-quote]')
         if (quote) el.insertBefore(node, quote)
         else el.appendChild(node)
       }
@@ -269,6 +282,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       onToast('Add at least one recipient')
       return
     }
+    finished.current = true
     platform.storage.remove(DRAFT_KEY)
     onSend(d)
   }
@@ -297,6 +311,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
   }, [expanded])
 
   const discard = () => {
+    finished.current = true
     platform.storage.remove(DRAFT_KEY)
     onClose()
     onToast('Draft discarded')
@@ -482,7 +497,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
               e.preventDefault()
               el.focus()
               const r = document.createRange()
-              const writing = Array.from(el.children).filter((c) => !c.matches('[data-sig], blockquote'))
+              const writing = Array.from(el.children).filter((c) => !c.matches('[data-sig], [data-quote]'))
               r.selectNodeContents(writing[0] ?? el.firstElementChild)
               r.collapse(false)
               const sel = document.getSelection()

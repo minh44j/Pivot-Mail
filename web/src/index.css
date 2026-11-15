@@ -2456,3 +2456,13 @@ code {
     transform: none;
   }
 }
+
+/* quoted original message (Outlook style: rule + header block, no side bar) */
+.editor [data-quote] {
+  color: var(--label);
+}
+.editor hr {
+  margin: 14px 0 10px;
+  border: 0;
+  border-top: 1px solid var(--label-2);
+}

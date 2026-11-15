@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Account, Attachment, Colour, ComposeInit, Density, MobileView, Message, PaneLayout, Row } from './types'
+import type { Account, Attachment, Colour, ComposeInit, Density, MobileView, Message, PaneLayout, Person, Row } from './types'
 import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
@@ -180,12 +180,19 @@ export default function App() {
     [accountId],
   )
 
-  const quote = (m: Message): string => `<br><br><blockquote>On ${escapeHtml(new Date(m.date).toLocaleString())}, ${escapeHtml(m.from.name)} wrote:<br>${textToHtml(m.body)}</blockquote>`
+  /** Outlook-style quoted message: a rule, a From/Sent/To/Cc/Subject block, then the original text. No side bar. */
+  const quote = (m: Message): string => {
+    const d = new Date(m.date)
+    const sent = `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+    const who = (p: Person): string => `${escapeHtml(p.name)} &lt;${escapeHtml(p.email)}&gt;`
+    const cc = m.cc && m.cc.length > 0 ? `<br><b>Cc:</b> ${m.cc.map(who).join('; ')}` : ''
+    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sent)}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${textToHtml(m.body)}</div></div>`
+  }
   const last = thread[thread.length - 1]
   const reply = (all: boolean) => {
     if (!last) return
     const acc = ACCOUNTS.find((a) => a.id === accountId)
-    const cc = all ? last.to.map((t) => t.email).filter((e) => e !== acc?.email && e !== last.from.email).join(', ') : ''
+    const cc = all ? [...last.to, ...(last.cc ?? [])].map((t) => t.email).filter((e) => e !== acc?.email && e !== last.from.email).join(', ') : ''
     openCompose({ to: last.from.email, cc, subject: /^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`, body: quote(last) })
   }
   const forward = () => {

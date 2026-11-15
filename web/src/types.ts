@@ -30,6 +30,7 @@ export interface Message {
   labels: string[]
   from: Person
   to: Person[]
+  cc?: Person[]
   subject: string
   body: string
   date: string
