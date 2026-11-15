@@ -155,21 +155,21 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       <span className="time">{formatListTime(msg.date)}</span>
                     </div>
                     <div className="row-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-                      <button type="button" title="Delete" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
-                        <Icon name="trash" size={15} tone="red" />
+                      <button data-tone="red" type="button" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
+                        <Icon name="trash" size={15} />
                       </button>
-                      <button type="button" className="ra-extra" title="Archive" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
-                        <Icon name="archive" size={15} tone="purple" />
+                      <button data-tone="purple" type="button" className="ra-extra" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
+                        <Icon name="archive" size={15} />
                       </button>
-                      <button type="button" title={msg.flagged ? 'Remove flag' : 'Flag'} aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
-                        <Icon name="flag" size={15} tone="orange" />
+                      <button data-tone="orange" type="button" aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
+                        <Icon name="flag" size={15} />
                       </button>
-                      <button type="button" className="ra-extra" title={unread ? 'Mark as read' : 'Mark as unread'} aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
-                        <Icon name="eye" size={15} tone="blue" />
+                      <button data-tone="blue" type="button" className="ra-extra" aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
+                        <Icon name="eye" size={15} />
                       </button>
-                      <button
+                      <button data-tone="gray"
                         type="button"
-                        title="More: colour, move"
+                       
                         aria-label={`More actions: ${msg.subject}`}
                         aria-haspopup="menu"
                         onClick={(e) => {
@@ -177,7 +177,7 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                           onContext(msg.id, r.left - 180, r.bottom + 4)
                         }}
                       >
-                        <Icon name="more" size={15} tone="gray" />
+                        <Icon name="more" size={15} />
                       </button>
                     </div>
                     <div className="row-sub">

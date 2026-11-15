@@ -2363,8 +2363,32 @@ code {
   background: none;
   transform: scale(1.18);
 }
+.row-actions button svg {
+  color: var(--ic-gray);
+  transition: color 0.1s;
+}
+.row-actions button[data-tone='red']:hover svg,
+.row-actions button[data-tone='red']:focus-visible svg {
+  color: var(--ic-red);
+}
+.row-actions button[data-tone='purple']:hover svg,
+.row-actions button[data-tone='purple']:focus-visible svg {
+  color: var(--ic-purple);
+}
+.row-actions button[data-tone='orange']:hover svg,
+.row-actions button[data-tone='orange']:focus-visible svg,
+.row-actions button[aria-pressed='true'] svg {
+  color: var(--ic-orange);
+}
+.row-actions button[data-tone='blue']:hover svg,
+.row-actions button[data-tone='blue']:focus-visible svg {
+  color: var(--ic-blue);
+}
+.row-actions button[data-tone='gray']:hover svg,
+.row-actions button[data-tone='gray']:focus-visible svg {
+  color: var(--label);
+}
 .row-actions button[aria-pressed='true'] {
-  color: var(--c-orange);
   opacity: 1;
 }
 .row-main .preview {
