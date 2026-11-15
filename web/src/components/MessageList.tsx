@@ -15,6 +15,7 @@ interface Props {
   onSelect: (id: string) => void
   onBack: () => void
   onContext: (id: string, x: number, y: number) => void
+  onRowAction: (id: string, action: 'delete' | 'flag' | 'unread') => void
   emptyText: string
   sync: { state: 'synced' | 'syncing' | 'offline'; last: Date }
   onSync: () => void
@@ -23,7 +24,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack, onContext, emptyText, sync, onSync }: Props) {
+export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -98,7 +99,7 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
           </button>
         </div>
       </header>
-      <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="listbox" aria-label="Messages" tabIndex={0}>
+      <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="list" aria-label="Messages" tabIndex={0}>
         {rows.length === 0 ? (
           <div className="empty">{emptyText}</div>
         ) : (
@@ -117,8 +118,8 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
               return (
                 <div
                   key={it.key}
-                  role="option"
-                  aria-selected={sel}
+                  role="listitem"
+                  aria-current={sel ? 'true' : undefined}
                   className={`row${sel ? ' sel' : ''}${unread ? ' unread' : ''}${msg.colour ? ` tint-${msg.colour}` : ''}`}
                   style={{ position: 'absolute', top: y, height: rowH }}
                   onClick={() => onSelect(msg.id)}
@@ -139,6 +140,17 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       <span className="from">{msg.folder === 'sent' || msg.folder === 'drafts' ? `To: ${msg.to[0]?.name ?? ''}` : msg.from.name}</span>
                       {count > 1 && <span className="thread-count">{count}</span>}
                       <span className="time">{formatListTime(msg.date)}</span>
+                    </div>
+                    <div className="row-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+                      <button type="button" title="Delete" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
+                        <Icon name="trash" size={15} />
+                      </button>
+                      <button type="button" title={msg.flagged ? 'Remove flag' : 'Flag'} aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
+                        <Icon name="flag" size={15} />
+                      </button>
+                      <button type="button" title={unread ? 'Mark as read' : 'Mark as unread'} aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
+                        <Icon name="eye" size={15} />
+                      </button>
                     </div>
                     <div className="row-sub">
                       <span className="subject">{msg.subject}</span>

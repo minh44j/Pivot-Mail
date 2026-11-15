@@ -4,7 +4,7 @@ import type { Account, Colour, Density, PaneLayout } from '../types'
 import { COLOURS } from '../data/colours'
 import type { Template } from '../data/templates'
 import { mergeColours } from '../settings'
-import logoMark from '../assets/brand/logo-mark.png'
+import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
 type Section = 'general' | 'signatures' | 'templates' | 'colours'
@@ -162,7 +162,8 @@ export function SettingsPage(p: Props) {
         <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={p.onBack} aria-label="Back to mail" title="Back to mail">
           <Icon name="back" />
         </button>
-        <img src={logoMark} alt="" className="logo-mark" />
+        <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />
+        <span className="head-divider" aria-hidden="true" />
         <h1>Settings</h1>
       </header>
 

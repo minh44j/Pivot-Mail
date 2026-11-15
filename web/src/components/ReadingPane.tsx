@@ -12,9 +12,14 @@ interface Props {
   onBack: () => void
   onToast: (m: string) => void
   onForwardWith: (files: Attachment[]) => void
+  onDelete: () => void
+  onFlag: () => void
+  onUnread: () => void
+  flagged: boolean
+  unread: boolean
 }
 
-export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith }: Props) {
+export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread }: Props) {
   const lastId = messages[messages.length - 1]?.id ?? ''
   // Reset expansion when the conversation changes, derived during render (no effect).
   const [state, setState] = useState<{ key: string; open: Set<string> }>({ key: lastId, open: new Set([lastId]) })
@@ -48,6 +53,17 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         <button type="button" onClick={onForward}>
           <Icon name="forward" size={16} /> Forward
         </button>
+        <span className="reader-touch">
+          <button type="button" onClick={onDelete} aria-label="Delete" title="Delete">
+            <Icon name="trash" size={18} />
+          </button>
+          <button type="button" onClick={onFlag} aria-label={flagged ? 'Remove flag' : 'Flag'} aria-pressed={flagged} title={flagged ? 'Remove flag' : 'Flag'}>
+            <Icon name="flag" size={18} />
+          </button>
+          <button type="button" onClick={onUnread} aria-label={unread ? 'Mark as read' : 'Mark as unread'} title={unread ? 'Mark as read' : 'Mark as unread'}>
+            <Icon name="eye" size={18} />
+          </button>
+        </span>
         </div>
       </header>
       <div className="reader-scroll">

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import type { Colour, Density, PaneLayout } from '../types'
 import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
-import logoMark from '../assets/brand/logo-mark.png'
+import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 
@@ -19,10 +19,7 @@ interface Props {
   onReply: () => void
   onReplyAll: () => void
   onForward: () => void
-  onDelete: () => void
   onArchive: () => void
-  onToggleUnread: () => void
-  onToggleFlag: () => void
   onColour: (c: Colour | undefined) => void
   onTemplate: (t: Template) => void
   onThreaded: (v: boolean) => void
@@ -126,11 +123,10 @@ export function Toolbar(p: Props) {
 
   return (
     <header className="toolbar" role="toolbar" aria-label="Mail toolbar">
-      <img className="logo-mark" src={logoMark} alt="Pivot Mail" />
+      <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
 
       <div className="tb-scroll">
-        <div className="tb-group" role="group" aria-label="Mailbox actions">
-          <Item icon="trash" label="Delete" disabled={none} onClick={p.onDelete} />
+        <div className="tb-group" role="group" aria-label="Archive">
           <Item icon="archive" label="Archive" disabled={none} onClick={p.onArchive} />
         </div>
         <div className="tb-group" role="group" aria-label="Respond">
@@ -139,8 +135,6 @@ export function Toolbar(p: Props) {
           <Item icon="forward" label="Forward" disabled={none} onClick={p.onForward} />
         </div>
         <div className="tb-group" role="group" aria-label="Tag">
-          <Item icon="eye" label="Read/Unread" title="Mark as read or unread" disabled={none} onClick={p.onToggleUnread} />
-          <Item icon="flag" label="Flag" disabled={none} onClick={p.onToggleFlag} />
           <Menu icon="tag" label="Colour" title="Colour category" disabled={none}>
             {(close) => (
               <>

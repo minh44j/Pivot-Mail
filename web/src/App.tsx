@@ -236,6 +236,23 @@ export default function App() {
     }
   }
 
+  /** Hover buttons on a message row: act on that conversation without selecting it. */
+  const rowAction = (id: string, action: 'delete' | 'flag' | 'unread') => {
+    const m = messages.find((x) => x.id === id)
+    if (!m) return
+    const ids = idsOf(m)
+    if (action === 'delete') {
+      patch(ids, { folder: 'deleted' })
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+      showToast('Moved to Deleted Items')
+    } else if (action === 'flag') {
+      patch(ids, { flagged: !m.flagged })
+    } else {
+      const anyUnread = messages.some((x) => ids.includes(x.id) && x.unread)
+      patch(ids, { unread: !anyUnread })
+    }
+  }
+
   const ctxEntries = (): MenuEntry[] => {
     if (!ctx) return []
     const row = rows.find((r) => r.msg.id === ctx.id)
@@ -377,10 +394,7 @@ export default function App() {
         onReply={() => reply(false)}
         onReplyAll={() => reply(true)}
         onForward={forward}
-        onDelete={() => moveSelected('deleted', 'Moved to Deleted')}
         onArchive={() => moveSelected('archive', 'Archived')}
-        onToggleUnread={() => selectedRow && patch(thread.map((m) => m.id), { unread: !selectedRow.msg.unread })}
-        onToggleFlag={() => selectedRow && patch(thread.map((m) => m.id), { flagged: !selectedRow.msg.flagged })}
         onColour={colourSelected}
         onTemplate={(t) => {
           if (!compose) openCompose()
@@ -424,6 +438,7 @@ export default function App() {
             select(id)
             setCtx({ id, x, y })
           }}
+          onRowAction={rowAction}
           emptyText={emptyText}
           sync={{ state: !online ? 'offline' : syncing ? 'syncing' : 'synced', last: lastSync }}
           onSync={syncNow}
@@ -437,6 +452,11 @@ export default function App() {
             onBack={() => setView('list')}
             onToast={showToast}
             onForwardWith={(files: Attachment[]) => openCompose({ attachments: files })}
+            onDelete={() => selectedRow && rowAction(selectedRow.msg.id, 'delete')}
+            onFlag={() => selectedRow && rowAction(selectedRow.msg.id, 'flag')}
+            onUnread={() => selectedRow && rowAction(selectedRow.msg.id, 'unread')}
+            flagged={Boolean(selectedRow?.msg.flagged)}
+            unread={Boolean(selectedRow?.unread)}
           />
         )}
       </main>

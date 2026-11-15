@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { STAFF, aggregate, buildDays, csvCell, fmtClock, fmtDuration } from '../data/performance'
 import type { Aggregate, DayStat, StaffMember } from '../data/performance'
 import { initials } from '../util'
-import logoMark from '../assets/brand/logo-mark.png'
+import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
 type Range = 1 | 7 | 30
@@ -227,7 +227,7 @@ export function PerformancePage({ role, onBack, onToast }: Props) {
     return (
       <main className="perf">
         <div className="perf-forbidden">
-          <img src={logoMark} alt="Pivot Mail" className="logo-mark" />
+          <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />
           <h1>Admin only</h1>
           <p className="muted">This page is available to administrators. In the real app the server refuses this request for other roles.</p>
           <button type="button" className="btn primary" onClick={onBack}>
@@ -255,7 +255,8 @@ export function PerformancePage({ role, onBack, onToast }: Props) {
         <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onBack} aria-label="Back to mail" title="Back to mail">
           <Icon name="back" />
         </button>
-        <img src={logoMark} alt="" className="logo-mark" />
+        <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />
+        <span className="head-divider" aria-hidden="true" />
         <h1>Staff performance</h1>
         <span className="grow" />
         <div className="seg" role="group" aria-label="Date range">
