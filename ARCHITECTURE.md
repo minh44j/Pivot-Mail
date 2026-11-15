@@ -15,6 +15,14 @@ Phase 1: web app (PWA). Phase 2: same codebase wrapped as a desktop app (Tauri p
 | Local cache | IndexedDB (web) → SQLite (desktop) behind one storage interface | Offline reading, fast search |
 | Auth | OAuth 2.0 Authorization Code + PKCE | Works for web now and desktop (loopback redirect) later |
 
+| Case database | Postgres (e.g. Supabase) holding cases, references, status, owner, atomic counters | Confirmed in discovery; see `REQUIREMENTS.md`. Message bodies stay on-device (⚠️ confirm) |
+| Reference Generator | Server-side, transactional counter per prefix; client never generates IDs | Uniqueness under concurrency |
+| Case linking | Reference regex → else Gmail `threadId` → else new case; dedupe on `Message-ID` | Auto-match by reference |
+| Drive | Drive API, per-reference case folders | v1 integration |
+| UI | Outlook-like three-pane, mobile-first collapse | Confirmed |
+
+Requirements, scope and open questions live in `REQUIREMENTS.md`.
+
 ## Desktop-ready rules (apply from day one)
 
 1. No browser-only APIs outside `src/platform/` — wrap storage, notifications, file save, deep links behind interfaces.
