@@ -1167,36 +1167,119 @@ small {
   width: 100%;
 }
 
-/* ---------- sign-in ---------- */
+/* ---------- sign-in (art panel + form, Outlook / Gmail style) ---------- */
 .signin {
   display: grid;
-  place-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 300px minmax(0, 1fr);
   min-height: 100dvh;
-  padding: 24px var(--gutter);
-  background: var(--sidebar);
+  background: var(--content);
+}
+.signin-art {
+  position: relative;
+  overflow: hidden;
+  background: #0a5fd6;
+  color: #fff;
+}
+.art-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.art-copy {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px var(--gutter);
+  padding-top: calc(20px + env(safe-area-inset-top));
+  max-width: 460px;
+}
+.art-copy .mark {
+  order: 0;
+  align-self: flex-start;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(8px);
+}
+.art-copy h2 {
+  display: none;
+  margin: 8px 0 0;
+  font-size: 34px;
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.art-copy p {
+  display: none;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  opacity: 0.92;
+}
+.art-card {
+  display: none;
+}
+.signin-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 24px var(--gutter) calc(24px + env(safe-area-inset-bottom));
+  background: var(--content);
 }
 .signin-card {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   width: min(380px, 100%);
-  padding: 32px 28px;
-  border-radius: var(--r-lg);
-  background: var(--content);
-  box-shadow: var(--shadow);
-  text-align: center;
+}
+.signin-card .mark.big {
+  display: none;
 }
 .signin-card h1 {
-  margin: 4px 0 0;
-  font-size: 24px;
-  letter-spacing: -0.01em;
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .signin-card p {
   margin: 0;
 }
+.signin-card .lead {
+  margin-bottom: 8px;
+  font-size: 14px;
+}
 .signin-note {
-  margin: -4px 0 8px !important;
+  font-size: 12px;
+  color: var(--label-2);
+}
+.btn.google {
+  border: 1px solid var(--separator);
+  background: var(--content);
+}
+.or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  color: var(--label-2);
+  font-size: 12px;
+}
+.or::before,
+.or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--separator);
+}
+.signin-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 10px;
   font-size: 12px;
   color: var(--label-2);
 }
@@ -1205,6 +1288,120 @@ small {
   height: 56px;
   border-radius: var(--r-md);
   font-size: 26px;
+}
+.signin-card .mark {
+  order: 0;
+}
+@media (min-width: 900px) {
+  .signin {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-rows: 1fr;
+  }
+  .art-copy {
+    padding: 56px 56px 0;
+    gap: 14px;
+  }
+  .art-copy h2,
+  .art-copy p {
+    display: block;
+  }
+  .art-card {
+    position: absolute;
+    right: 48px;
+    top: 38%;
+    display: block;
+    width: 270px;
+    padding: 12px;
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--label);
+    box-shadow: 0 18px 48px rgba(3, 20, 70, 0.35);
+    animation: float 7s ease-in-out infinite;
+  }
+  .signin-panel {
+    padding: 48px;
+  }
+  .signin-card .mark.big {
+    display: grid;
+    margin-bottom: 8px;
+  }
+  .signin-card h1 {
+    font-size: 30px;
+  }
+}
+.art-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 8px;
+  font-size: 13px;
+}
+.art-card-head i {
+  flex: 1;
+}
+.art-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 4px;
+  border-top: 1px solid var(--separator);
+}
+.art-udot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.art-udot.on {
+  background: var(--accent);
+}
+.art-lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 5px;
+}
+.art-lines i {
+  display: block;
+  height: 7px;
+  border-radius: 4px;
+  background: var(--fill-2);
+}
+.art-lines i:first-child {
+  height: 8px;
+  background: #3a3a3f;
+  opacity: 0.75;
+}
+.art-lines em {
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  background: var(--sidebar);
+  font-size: 10px;
+  font-style: normal;
+  color: var(--label-2);
+}
+.art-ship {
+  animation: bob 5s ease-in-out infinite;
+}
+.art-plane {
+  animation: fly 6s ease-in-out infinite;
+}
+@keyframes float {
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes bob {
+  50% {
+    transform: translate(40px, 566px);
+  }
+}
+@keyframes fly {
+  50% {
+    transform: translate(415px, 238px) rotate(-38deg) scale(1.5);
+  }
 }
 
 /* ---------- list footer / sync ---------- */
@@ -1489,4 +1686,9 @@ small {
 }
 .signin-card .mark {
   order: 0;
+}
+@media (min-width: 900px) and (max-width: 1199px) {
+  .art-copy p {
+    display: none;
+  }
 }
