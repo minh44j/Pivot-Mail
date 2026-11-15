@@ -2568,3 +2568,8 @@ code {
     margin-right: var(--gutter);
   }
 }
+@media (min-width: 900px) {
+  .toolbar .tb-search {
+    margin: 0;
+  }
+}
