@@ -5,6 +5,8 @@ import { platform } from '../platform'
 import { initials } from '../util'
 import { Icon } from './Icon'
 
+const TONES = ['blue', 'purple', 'green', 'orange', 'teal', 'red']
+
 interface Props {
   onClose: () => void
   onToast: (m: string) => void
@@ -171,7 +173,8 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
               <span id="lbl-scope">What are we handling?</span>
               <div className="opts" role="radiogroup" aria-labelledby="lbl-scope">
                 {SCOPES.map((s) => (
-                  <button key={s.id} type="button" role="radio" aria-checked={scope === s.id} className={`opt${scope === s.id ? ' on' : ''}`} onClick={() => setScope(s.id)}>
+                  <button key={s.id} type="button" role="radio" aria-checked={scope === s.id} className={`opt${scope === s.id ? ' on' : ''}`} data-tone={s.tone} onClick={() => setScope(s.id)}>
+                    <Icon name={s.icon} size={16} />
                     {s.label}
                   </button>
                 ))}
@@ -188,12 +191,14 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
                     role="radio"
                     aria-checked={mode === m.id}
                     className={`opt${mode === m.id ? ' on' : ''}`}
+                    data-tone={m.tone}
                     onClick={() => {
                       setMode(m.id)
                       setFrom('')
                       setTo('')
                     }}
                   >
+                    <Icon name={m.icon} size={16} />
                     {m.label}
                   </button>
                 ))}
@@ -231,7 +236,9 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
               <div className="sp-row" role="radiogroup" aria-labelledby="lbl-sales">
                 {SALESPEOPLE.map((s) => (
                   <button key={s.id} type="button" role="radio" aria-checked={sales === s.id} className={`sp${sales === s.id ? ' on' : ''}`} onClick={() => setSales(s.id)}>
-                    <span className="avatar">{initials(s.name)}</span>
+                    <span className="avatar" data-tone={TONES[s.id.charCodeAt(0) % TONES.length]}>
+                      {initials(s.name)}
+                    </span>
                     <small>{s.name}</small>
                   </button>
                 ))}

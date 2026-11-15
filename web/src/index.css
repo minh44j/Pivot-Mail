@@ -1687,9 +1687,16 @@ small {
   gap: 6px;
 }
 .opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  font-size: 13px;
   min-height: 44px;
-  padding: 0 10px;
+  padding: 0 6px;
   border: 0;
   border-radius: var(--r-md);
   background: var(--fill);
@@ -1697,10 +1704,32 @@ small {
 .opt:hover {
   background: var(--fill-2);
 }
+.opt svg {
+  color: var(--t, var(--label-2));
+  flex: none;
+}
 .opt.on {
-  background: var(--accent-fill);
+  background: var(--t, var(--accent-fill));
   color: #fff;
   font-weight: 600;
+}
+.opt.on svg {
+  color: #fff;
+}
+[data-tone='red'] { --t: var(--ic-red); }
+[data-tone='orange'] { --t: var(--ic-orange); }
+[data-tone='blue'] { --t: var(--ic-blue); }
+[data-tone='purple'] { --t: var(--ic-purple); }
+[data-tone='green'] { --t: var(--ic-green); }
+[data-tone='teal'] { --t: var(--ic-teal); }
+.sp .avatar[data-tone] {
+  background: color-mix(in srgb, var(--t) 16%, white);
+  color: var(--t);
+  font-weight: 600;
+}
+.sp.on .avatar[data-tone] {
+  background: var(--t);
+  color: #fff;
 }
 @media (min-width: 640px) {
   .opt {
@@ -1729,10 +1758,7 @@ small {
 .sp.on {
   background: var(--selection);
 }
-.sp.on .avatar {
-  background: var(--accent-fill);
-  color: #fff;
-}
+
 .last {
   margin: 0;
   font-size: 12px;

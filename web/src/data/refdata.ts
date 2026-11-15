@@ -6,16 +6,16 @@
 export type Scope = 'freight-clearance' | 'freight' | 'clearance'
 export type Mode = 'sea' | 'air' | 'land'
 
-export const SCOPES: { id: Scope; label: string }[] = [
-  { id: 'freight-clearance', label: 'Freight + clearance' },
-  { id: 'freight', label: 'Freight only' },
-  { id: 'clearance', label: 'Clearance only' },
+export const SCOPES: { id: Scope; label: string; icon: 'boxes' | 'package' | 'clearance'; tone: string }[] = [
+  { id: 'freight-clearance', label: 'Freight + clearance', icon: 'boxes', tone: 'purple' },
+  { id: 'freight', label: 'Freight only', icon: 'package', tone: 'green' },
+  { id: 'clearance', label: 'Clearance only', icon: 'clearance', tone: 'orange' },
 ]
 
-export const MODES: { id: Mode; label: string }[] = [
-  { id: 'sea', label: 'Sea' },
-  { id: 'air', label: 'Air' },
-  { id: 'land', label: 'Land' },
+export const MODES: { id: Mode; label: string; icon: 'ship' | 'plane' | 'truck'; tone: string }[] = [
+  { id: 'sea', label: 'Sea', icon: 'ship', tone: 'blue' },
+  { id: 'air', label: 'Air', icon: 'plane', tone: 'teal' },
+  { id: 'land', label: 'Land', icon: 'truck', tone: 'red' },
 ]
 
 export const CLIENTS = [
