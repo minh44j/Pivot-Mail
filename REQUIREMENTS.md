@@ -46,7 +46,10 @@ Today: staff leave the mailbox, open **Pivot OS → Reference Generator**, enter
 **Actions:** `Open job & generate number` → shows reference → **Copy reference** and **Copy subject** buttons (subject = `[<REF>] <client> – <from> → <to>` ⚠️ subject template to confirm). Footer shows "last issued" (reference + who).
 
 **Rules**
-- Single source of truth for the counter. ⚠️ Pivot Mail must NOT run a second counter alongside Pivot OS — see open question.
+- **Decision (confirmed): Pivot Mail replaces the Pivot OS generator and becomes the sole issuer.** Format confirmed as `PS` + YY + 5-digit sequence (e.g. `PS2600874`).
+- Cutover plan (must not skip): (1) read the current Pivot OS counter at cutover; (2) freeze Pivot OS generator (read-only); (3) seed Pivot Mail counter at last issued + 1 (`PS2600875` if 874 is still the latest); (4) import historical references so none can be reissued; (5) keep Pivot OS as read-only lookup until verified. Running both generators in parallel is forbidden (duplicate risk).
+- Counter rules: one counter per prefix + year; transactional increment; gaps allowed, reuse never; yearly reset at 1 Jan ⚠️ confirm; `YY` taken from server date in Pivot's timezone ⚠️ confirm timezone.
+- Both companies supported. Pivot Shipping form is defined above; ⚠️ Pivot Travel Management form, prefix and fields not yet provided.
 - Generate button disabled until required fields valid; double-click safe (idempotency key per submit).
 - Creating the reference also creates the case record and the `Cases/<REF>` Gmail label.
 - Pivot Travel Management uses a different form/format. ⚠️ Not yet provided.
@@ -67,7 +70,7 @@ Today: staff leave the mailbox, open **Pivot OS → Reference Generator**, enter
 - Keyboard shortcuts, density options, accessible contrast.
 
 ## Open questions
-1. ⚠️ Confirm reference format (`PS`+YY+5-digit seq?), yearly reset, Travel Management format, and whether Pivot Mail calls Pivot OS for the number or replaces its generator.
+1. ⚠️ Pivot Travel Management reference form: prefix, fields, format. Also confirm yearly reset, timezone, and how to read the current Pivot OS counter and history for migration.
 2. ⚠️ Data residency: DB now stores case metadata. Do message bodies stay on-device only? (Default: yes.)
 3. Shared mailbox method: Workspace delegation, Google Group collaborative inbox, or separate accounts?
 4. Case lifecycle: statuses (open/pending/closed), ownership, and who may create/merge/split.
