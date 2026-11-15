@@ -178,3 +178,8 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - Operators in the query show as removable filter chips above the list.
 - Scope toggle: This folder / All folders (all folders excludes Deleted Items, current mailbox only).
 - Recent and saved searches are stored per browser (`pm.recent`, `pm.saved`); they will move to the user profile with the real backend.
+
+## Folder management (status: built in preview)
+- Custom folders are per mailbox: New folder, Rename, Delete (confirmation), drag to reorder, or Move up/down from the folder menu (right-click or ⋯).
+- Rename updates the label on all messages; delete removes only the label, never mail. Names: 1–40 characters, unique per mailbox, no `, / \`, system names reserved.
+- Stored per browser (`pm.folders`) for now; Gmail labels will back this when sync is connected. ⚠️ Verify: Gmail uses "/" for nested labels, so nesting is a later decision.

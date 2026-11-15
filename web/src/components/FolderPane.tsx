@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Account, FolderId, Message } from '../types'
+import { ContextMenu } from './ContextMenu'
 import { Icon } from './Icon'
 import type { IconName, Tone } from './Icon'
 
@@ -17,13 +18,18 @@ interface Props {
   accounts: Account[]
   messages: Message[]
   selection: FolderSel
-  labels: string[]
+  folders: Record<string, string[]>
+  onFolderAction: (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) => void
+  onReorder: (accountId: string, name: string, before: string | null) => void
   onSelect: (s: FolderSel) => void
   onDropMessage: (messageIds: string[], target: FolderSel) => void
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, messages, selection, labels, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, messages, selection, folders, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+  const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
+  const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
+  const [slot, setSlot] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [over, setOver] = useState<string | null>(null)
 
@@ -81,19 +87,80 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
                     </li>
                   )
                 })}
-                {labels.map((l) => {
+                {(folders[a.id] ?? []).map((l) => {
                   const count = unreadLabel(a.id, l)
                   const on = isActive(a.id, 'label', l)
+                  const mine = drag?.accountId === a.id
                   return (
-                    <li key={l}>
+                    <li
+                      key={l}
+                      className={`custom${mine && slot === l ? ' slot' : ''}${drag?.name === l && mine ? ' dragging' : ''}`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/x-pivot-folder', l)
+                        e.dataTransfer.effectAllowed = 'move'
+                        setDrag({ accountId: a.id, name: l })
+                      }}
+                      onDragEnd={() => {
+                        setDrag(null)
+                        setSlot(null)
+                      }}
+                      onDragOver={(e) => {
+                        if (mine && e.dataTransfer.types.includes('application/x-pivot-folder')) {
+                          e.preventDefault()
+                          setSlot(l)
+                        }
+                      }}
+                      onDrop={(e) => {
+                        if (mine && drag && e.dataTransfer.types.includes('application/x-pivot-folder')) {
+                          e.preventDefault()
+                          onReorder(a.id, drag.name, l)
+                          setDrag(null)
+                          setSlot(null)
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setMenu({ x: e.clientX, y: e.clientY, accountId: a.id, name: l })
+                      }}
+                    >
                       <button type="button" className={`folder${on ? ' active' : ''}${over === `${a.id}/label:${l}` ? ' drop' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'label', id: l })} {...dropProps(`${a.id}/label:${l}`, { accountId: a.id, kind: 'label', id: l })}>
-                        <Icon name="folder" size={15} tone="gray" />
+                        <Icon name="folder" size={15} tone="blue" />
                         <span className="grow">{l}</span>
                         {count > 0 && <span className="count">{count}</span>}
+                      </button>
+                      <button type="button" className="folder-more" aria-label={`Folder options: ${l}`} aria-haspopup="menu" onClick={(e) => {
+                        const r = e.currentTarget.getBoundingClientRect()
+                        setMenu({ x: r.left, y: r.bottom + 2, accountId: a.id, name: l })
+                      }}>
+                        <Icon name="more" size={14} />
                       </button>
                     </li>
                   )
                 })}
+                {drag?.accountId === a.id && (
+                  <li
+                    className={`slot-end${slot === '\u0000end' ? ' slot' : ''}`}
+                    onDragOver={(e) => {
+                      if (e.dataTransfer.types.includes('application/x-pivot-folder')) {
+                        e.preventDefault()
+                        setSlot('\u0000end')
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      onReorder(a.id, drag.name, null)
+                      setDrag(null)
+                      setSlot(null)
+                    }}
+                  />
+                )}
+                <li>
+                  <button type="button" className="folder add" onClick={() => onFolderAction(a.id, 'new')}>
+                    <Icon name="plus" size={15} tone="green" />
+                    <span className="grow">New folder</span>
+                  </button>
+                </li>
                 <li>
                   <button type="button" className="folder disabled" disabled>
                     <Icon name="lock" size={15} tone="gray" />
@@ -106,6 +173,20 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
           </section>
         )
       })}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          entries={[
+            { type: 'item', label: 'Rename…', icon: 'draft', tone: 'blue', onSelect: () => onFolderAction(menu.accountId, 'rename', menu.name) },
+            { type: 'item', label: 'Move up', icon: 'chevron', disabled: (folders[menu.accountId] ?? [])[0] === menu.name, onSelect: () => { const l = folders[menu.accountId] ?? []; const i = l.indexOf(menu.name); onReorder(menu.accountId, menu.name, l[i - 1] ?? null) } },
+            { type: 'item', label: 'Move down', icon: 'chevron', disabled: (folders[menu.accountId] ?? []).at(-1) === menu.name, onSelect: () => { const l = folders[menu.accountId] ?? []; const i = l.indexOf(menu.name); onReorder(menu.accountId, menu.name, l[i + 2] ?? null) } },
+            { type: 'sep' },
+            { type: 'item', label: 'Delete folder…', icon: 'trash', tone: 'red', danger: true, onSelect: () => onFolderAction(menu.accountId, 'delete', menu.name) },
+          ]}
+        />
+      )}
       <p className="preview-note">Preview build · mock data</p>
     </nav>
   )

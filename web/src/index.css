@@ -3271,3 +3271,53 @@ kbd {
   border-top: 0;
   padding-top: 2px;
 }
+
+/* Folder management */
+.folder-list li.custom {
+  position: relative;
+  list-style: none;
+}
+.folder-list li.custom .folder {
+  width: 100%;
+}
+.folder-more {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+  padding: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--fill-2);
+  color: var(--label-2);
+  cursor: pointer;
+}
+li.custom:hover .folder-more,
+.folder-more:focus-visible {
+  display: inline-flex;
+}
+li.custom:hover .count {
+  visibility: hidden;
+}
+li.custom.dragging {
+  opacity: 0.45;
+}
+li.custom.slot {
+  box-shadow: 0 -2px 0 var(--ic-blue);
+}
+li.slot-end {
+  height: 6px;
+}
+li.slot-end.slot {
+  box-shadow: 0 -2px 0 var(--ic-blue);
+}
+.folder.add {
+  color: var(--label-2);
+}
+.modal.small {
+  width: min(400px, calc(100vw - 32px));
+}
+.btn.primary.danger {
+  background: var(--ic-red);
+}

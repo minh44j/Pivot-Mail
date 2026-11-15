@@ -3,6 +3,8 @@ import type { Account, Attachment, Colour, ComposeInit, Density, MobileView, Mes
 import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
+import { FolderDialog } from './components/FolderDialog'
+import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
 import { escapeHtml, textToHtml } from './richtext'
@@ -67,6 +69,7 @@ function useStored<T>(key: string, initial: T, valid: (v: unknown) => v is T): [
 }
 
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+const isFolderMap = (v: unknown): v is Record<string, string[]> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every(isStrings)
 const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
@@ -182,6 +185,42 @@ export default function App() {
   )
   const queryChips = useMemo(() => query.split(/\s+/).filter((t) => /^(from|to|subject|label|has|is):\S+/i.test(t)), [query])
   const removeChip = (tok: string) => setQuery(query.split(/\s+/).filter((t) => t && t !== tok).join(' '))
+
+  const [folders, setFolders] = useStored<Record<string, string[]>>('pm.folders', Object.fromEntries(ACCOUNTS.map((x) => [x.id, [...LABELS]])), isFolderMap)
+  const [folderDlg, setFolderDlg] = useState<FolderDialogState | null>(null)
+  const folderAction = (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) =>
+    setFolderDlg(action === 'new' ? { mode: 'new', accountId } : { mode: action, accountId, name: name ?? '' })
+  const reorderFolder = (accountId: string, name: string, before: string | null) => {
+    const list = (folders[accountId] ?? []).filter((x) => x !== name)
+    const at = before === null ? list.length : list.indexOf(before)
+    list.splice(at < 0 ? list.length : at, 0, name)
+    setFolders({ ...folders, [accountId]: list })
+  }
+  const submitFolder = (value: string) => {
+    const dlg = folderDlg
+    if (!dlg) return
+    const list = folders[dlg.accountId] ?? []
+    if (dlg.mode === 'new') {
+      setFolders({ ...folders, [dlg.accountId]: [...list, value] })
+      showToast(`Folder “${value}” created`)
+    } else if (dlg.mode === 'rename') {
+      if (value !== dlg.name) {
+        setFolders({ ...folders, [dlg.accountId]: list.map((x) => (x === dlg.name ? value : x)) })
+        setMessages((prev) => prev.map((m) => (m.accountId === dlg.accountId && m.labels.includes(dlg.name) ? { ...m, labels: m.labels.map((l) => (l === dlg.name ? value : l)) } : m)))
+        if (sel.kind === 'label' && sel.accountId === dlg.accountId && sel.id === dlg.name) setSel({ ...sel, id: value })
+        showToast(`Renamed to “${value}”`)
+      }
+    } else {
+      setFolders({ ...folders, [dlg.accountId]: list.filter((x) => x !== dlg.name) })
+      setMessages((prev) => prev.map((m) => (m.accountId === dlg.accountId && m.labels.includes(dlg.name) ? { ...m, labels: m.labels.filter((l) => l !== dlg.name) } : m)))
+      if (sel.kind === 'label' && sel.accountId === dlg.accountId && sel.id === dlg.name) {
+        setSel({ accountId: dlg.accountId, kind: 'folder', id: 'inbox' })
+        setSelectedId(null)
+      }
+      showToast(`Folder “${dlg.name}” deleted. No mail was deleted.`)
+    }
+    setFolderDlg(null)
+  }
 
   const [now] = useState(() => new Date())
   /** Messages of the open folder or label, before search and smart filters. */
@@ -754,7 +793,9 @@ export default function App() {
           accounts={ACCOUNTS}
           messages={messages}
           selection={sel}
-          labels={LABELS}
+          folders={folders}
+          onFolderAction={folderAction}
+          onReorder={reorderFolder}
           onSelect={(s) => {
             setSel(s)
             setSelectedId(null)
@@ -840,12 +881,22 @@ export default function App() {
       {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
       {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {folderDlg && (
+        <FolderDialog
+          state={folderDlg}
+          accountName={ACCOUNTS.find((x) => x.id === folderDlg.accountId)?.name ?? ''}
+          existing={folders[folderDlg.accountId] ?? []}
+          count={folderDlg.mode === 'delete' ? messages.filter((m) => m.accountId === folderDlg.accountId && m.labels.includes(folderDlg.name)).length : 0}
+          onSubmit={submitFolder}
+          onClose={() => setFolderDlg(null)}
+        />
+      )}
       {help && <ShortcutHelp onClose={() => setHelp(false)} />}
       {jump && (
         <FolderJump
           mode={jump}
           accounts={ACCOUNTS}
-          labels={LABELS}
+          folders={folders}
           accountId={accountId}
           onClose={() => setJump(null)}
           onPick={(s) => {
