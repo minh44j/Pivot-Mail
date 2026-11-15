@@ -16,7 +16,9 @@ interface Props {
   onToggleSmart: (k: SmartKey) => void
   title: string
   subtitle: string
-  onSelect: (id: string) => void
+  picked: string[]
+  onRowClick: (id: string, mods: { ctrl: boolean; shift: boolean }) => void
+  onToggle: (id: string) => void
   onBack: () => void
   onContext: (id: string, x: number, y: number) => void
   onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
@@ -28,7 +30,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, onSelect, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
+export function MessageList({ rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -85,7 +87,7 @@ export function MessageList({ rows, selectedId, density, smart, smartCounts, sho
   while (end < items.length && (offsets.o[end] ?? 0) < scrollTop + height + rowH * 4) end++
 
   return (
-    <section className="list" aria-label="Message list">
+    <section className="list" aria-label="Message list" data-multi={picked.length > 1 ? 'true' : undefined}>
       <header className="list-head">
         <button type="button" className="icon-btn only-mobile" onClick={onBack} aria-label="Back to folders">
           <Icon name="back" />
@@ -125,17 +127,18 @@ export function MessageList({ rows, selectedId, density, smart, smartCounts, sho
               }
               const { msg, count, unread } = it.row
               const sel = msg.id === selectedId
+              const isPicked = picked.includes(msg.id)
               return (
                 <div
                   key={it.key}
                   role="listitem"
                   aria-current={sel ? 'true' : undefined}
-                  className={`row${sel ? ' sel' : ''}${unread ? ' unread' : ''}${msg.colour ? ` tint-${msg.colour}` : ''}`}
+                  className={`row${sel ? ' sel' : ''}${isPicked ? ' picked' : ''}${unread ? ' unread' : ''}${msg.colour ? ` tint-${msg.colour}` : ''}`}
                   style={{ position: 'absolute', top: y, height: rowH }}
-                  onClick={() => onSelect(msg.id)}
+                  onClick={(e) => onRowClick(msg.id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData('application/x-pivot-msg', msg.id)
+                    e.dataTransfer.setData('application/x-pivot-msg', isPicked && picked.length > 1 ? picked.join(',') : msg.id)
                     e.dataTransfer.setData('text/plain', msg.subject)
                     e.dataTransfer.effectAllowed = 'move'
                   }}
@@ -144,6 +147,20 @@ export function MessageList({ rows, selectedId, density, smart, smartCounts, sho
                     onContext(msg.id, e.clientX, e.clientY)
                   }}
                 >
+                  <button
+                    type="button"
+                    className="rcheck"
+                    role="checkbox"
+                    aria-checked={isPicked}
+                    aria-label={`Select: ${msg.subject}`}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onToggle(msg.id)
+                    }}
+                    onDoubleClick={(e) => e.stopPropagation()}
+                  >
+                    {isPicked && <Icon name="check" size={12} />}
+                  </button>
                   <span className={`udot${unread ? ' on' : ''}`} role="img" aria-label={unread ? 'Unread' : ''} aria-hidden={!unread} />
                   <div className="row-main">
                     <div className="row-top">

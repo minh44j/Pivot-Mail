@@ -19,7 +19,7 @@ interface Props {
   selection: FolderSel
   labels: string[]
   onSelect: (s: FolderSel) => void
-  onDropMessage: (messageId: string, target: FolderSel) => void
+  onDropMessage: (messageIds: string[], target: FolderSel) => void
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
@@ -39,8 +39,8 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
     onDrop: (e: React.DragEvent) => {
       e.preventDefault()
       setOver(null)
-      const id = e.dataTransfer.getData('application/x-pivot-msg')
-      if (id) onDropMessage(id, target)
+      const ids = e.dataTransfer.getData('application/x-pivot-msg').split(',').filter(Boolean)
+      if (ids.length > 0) onDropMessage(ids, target)
     },
   })
 

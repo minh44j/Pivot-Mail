@@ -25,6 +25,7 @@ import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
 import { FolderJump } from './components/FolderJump'
 import { ShortcutHelp } from './components/ShortcutHelp'
+import { BulkPanel } from './components/BulkPanel'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -76,6 +77,9 @@ export default function App() {
   const [sel, setSel] = useState<FolderSel>({ accountId: 'me', kind: 'folder', id: 'inbox' })
   const accountId = sel.accountId
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  /** Conversations selected together (Ctrl/Shift click, checkboxes, Ctrl+A). Empty when only one is open. */
+  const [picked, setPicked] = useState<string[]>([])
+  const anchorId = useRef<string | null>(null)
   const [query, setQuery] = useState('')
   const [smart, setSmart] = useState<SmartKey[]>([])
   const [showSmart, setShowSmart] = usePersisted<boolean>('pm.smart', true, (v) => v === 'true' || v === 'false')
@@ -144,6 +148,10 @@ export default function App() {
     setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, ...change } : m)))
   }, [])
 
+  const pushUndo = useCallback((group: Message[]) => {
+    undoStack.current.push(group)
+  }, [])
+
   const undo = () => {
     const snap = undoStack.current.pop()
     if (!snap) {
@@ -192,6 +200,8 @@ export default function App() {
   }, [scope, query, smart, now, threaded])
 
   const selectedRow = rows.find((r) => r.msg.id === selectedId)
+  const pickedRows = useMemo(() => picked.filter((id) => rows.some((r) => r.msg.id === id)), [picked, rows])
+  const multi = pickedRows.length > 1
   const thread = useMemo<Message[]>(() => {
     if (!selectedRow) return []
     if (!threaded) return [selectedRow.msg]
@@ -206,6 +216,8 @@ export default function App() {
   const select = useCallback(
     (id: string) => {
       setSelectedId(id)
+      setPicked([])
+      anchorId.current = id
       setView('read')
       const row = rows.find((r) => r.msg.id === id)
       if (row) {
@@ -261,17 +273,6 @@ export default function App() {
     openCompose({ subject: /^fwd?:/i.test(last.subject) ? last.subject : `Fwd: ${last.subject}`, body: quote(last), attachments: last.attachments })
   }
 
-  const moveSelected = (folder: Message['folder'], label: string) => {
-    if (!selectedRow) return
-    const idx = rows.findIndex((r) => r.msg.id === selectedRow.msg.id)
-    const ids = thread.map((m) => m.id)
-    patch(ids, { folder })
-    const next = rows[idx + 1] ?? rows[idx - 1]
-    setSelectedId(next ? next.msg.id : null)
-    if (!next) setView('list')
-    showToast(`${label} · ${MOD}+Z to undo`)
-  }
-
   const syncNow = () => {
     if (!online || syncing) return
     setSyncing(true)
@@ -283,75 +284,179 @@ export default function App() {
 
   const idsOf = (m: Message): string[] => messages.filter((x) => x.accountId === m.accountId && (threaded ? x.threadId === m.threadId : x.id === m.id)).map((x) => x.id)
 
-  /** Drag a message (or its conversation) onto a sidebar folder or label. Same mailbox only. */
-  const dropMessage = (id: string, target: FolderSel) => {
-    const m = messages.find((x) => x.id === id)
-    if (!m) return
-    if (m.accountId !== target.accountId) {
-      showToast("Mail can't be moved between mailboxes")
-      return
+  type BulkOp =
+    | { kind: 'delete' }
+    | { kind: 'archive' }
+    | { kind: 'toggleRead' }
+    | { kind: 'read'; read: boolean }
+    | { kind: 'toggleFlag' }
+    | { kind: 'toggleImportant' }
+    | { kind: 'colour'; c: Colour | undefined }
+    | { kind: 'move'; target: FolderSel }
+
+  /** Rows the keyboard and toolbar act on: the whole selection, or the open conversation. */
+  const selRows = (): string[] => (multi ? pickedRows : selectedId ? [selectedId] : [])
+  /** Rows a row-level action (hover bar, right-click, drag) acts on. */
+  const rowsFor = (id: string): string[] => (multi && pickedRows.includes(id) ? pickedRows : [id])
+
+  const rowsToMids = (rowIds: string[]): string[] => {
+    const out = new Set<string>()
+    for (const id of rowIds) {
+      const m = messages.find((x) => x.id === id)
+      if (m) for (const x of idsOf(m)) out.add(x)
     }
-    const ids = idsOf(m)
-    if (target.kind === 'folder') {
-      if (m.folder === target.id) return
-      patch(ids, { folder: target.id })
-      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast(`Moved to ${FOLDER_TITLES[target.id] ?? target.id} · ${MOD}+Z to undo`)
-    } else {
-      const set = new Set(ids)
-      setMessages((prev) => prev.map((x) => (set.has(x.id) && !x.labels.includes(target.id) ? { ...x, labels: [...x.labels, target.id] } : x)))
-      showToast(`Added to ${target.id}`)
+    return [...out]
+  }
+
+  /** The row to open after these rows leave the list. */
+  const nextRowAfter = (rowIds: string[]): Row | undefined => {
+    const gone = new Set(rowIds)
+    const first = Math.min(...rowIds.map((id) => rows.findIndex((r) => r.msg.id === id)).filter((i) => i >= 0))
+    const remaining = rows.filter((r) => !gone.has(r.msg.id))
+    return remaining[Math.min(Number.isFinite(first) ? first : 0, remaining.length - 1)]
+  }
+
+  /** One place for every action on one or many conversations, so keyboard, hover bar, menus and the bulk panel agree. */
+  const runOp = (rowIds: string[], op: BulkOp) => {
+    const mids = rowsToMids(rowIds)
+    if (mids.length === 0) return
+    const group = messages.filter((m) => mids.includes(m.id))
+    const many = rowIds.length > 1 ? ` (${rowIds.length} conversations)` : ''
+    const leave = (label: string) => {
+      if (selectedId && rowIds.includes(selectedId)) {
+        const next = nextRowAfter(rowIds)
+        setSelectedId(next ? next.msg.id : null)
+        if (!next) setView('list')
+      }
+      setPicked([])
+      showToast(`${label}${many} · ${MOD}+Z to undo`)
+    }
+    switch (op.kind) {
+      case 'delete':
+        patch(mids, { folder: 'deleted' })
+        leave('Moved to Deleted Items')
+        break
+      case 'archive':
+        patch(mids, { folder: 'archive' })
+        leave('Archived')
+        break
+      case 'toggleRead':
+        patch(mids, { unread: !group.some((m) => m.unread) })
+        break
+      case 'read':
+        patch(mids, { unread: !op.read })
+        break
+      case 'toggleFlag':
+        patch(mids, { flagged: !group.every((m) => m.flagged) })
+        break
+      case 'toggleImportant':
+        patch(mids, { important: !group.every((m) => m.important) })
+        break
+      case 'colour': {
+        patch(mids, { colour: op.c })
+        const label = settingsValue.colours.find((c) => c.id === op.c)?.label
+        showToast(op.c ? `Category: ${label}${many}` : `Category cleared${many}`)
+        break
+      }
+      case 'move': {
+        const t = op.target
+        if (group.some((m) => m.accountId !== t.accountId)) {
+          showToast("Mail can't be moved between mailboxes")
+          return
+        }
+        if (t.kind === 'folder') {
+          if (group.every((m) => m.folder === t.id)) return
+          patch(mids, { folder: t.id })
+          leave(`Moved to ${FOLDER_TITLES[t.id] ?? t.id}`)
+        } else {
+          const set = new Set(mids)
+          pushUndo(group)
+          setMessages((prev) => prev.map((x) => (set.has(x.id) && !x.labels.includes(t.id) ? { ...x, labels: [...x.labels, t.id] } : x)))
+          showToast(`Added to ${t.id}${many}`)
+        }
+        break
+      }
     }
   }
 
-  /** Hover buttons on a message row: act on that conversation without selecting it. */
+  /** Drag onto a sidebar folder or label. Same mailbox only. */
+  const dropMessages = (ids: string[], target: FolderSel) => runOp(ids, { kind: 'move', target })
+
+  /** Hover buttons on a message row. Acts on the whole selection when the row is part of it. */
   const rowAction = (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => {
-    const m = messages.find((x) => x.id === id)
-    if (!m) return
-    const ids = idsOf(m)
-    if (action === 'delete') {
-      patch(ids, { folder: 'deleted' })
-      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast(`Moved to Deleted Items · ${MOD}+Z to undo`)
-    } else if (action === 'archive') {
-      patch(ids, { folder: 'archive' })
-      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast(`Archived · ${MOD}+Z to undo`)
-    } else if (action === 'flag') {
-      patch(ids, { flagged: !m.flagged })
-    } else {
-      const anyUnread = messages.some((x) => ids.includes(x.id) && x.unread)
-      patch(ids, { unread: !anyUnread })
+    const ids = rowsFor(id)
+    if (action === 'delete') runOp(ids, { kind: 'delete' })
+    else if (action === 'archive') runOp(ids, { kind: 'archive' })
+    else if (action === 'flag') runOp(ids, { kind: 'toggleFlag' })
+    else runOp(ids, { kind: 'toggleRead' })
+  }
+
+  /** Click on a row: plain opens it, Ctrl/Cmd toggles it in the selection, Shift selects a range. */
+  const rowClick = (id: string, mods: { ctrl: boolean; shift: boolean }) => {
+    if (mods.shift && anchorId.current) {
+      const a = rows.findIndex((r) => r.msg.id === anchorId.current)
+      const b = rows.findIndex((r) => r.msg.id === id)
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = [Math.min(a, b), Math.max(a, b)]
+        setPicked(rows.slice(lo, hi + 1).map((r) => r.msg.id))
+        setSelectedId(id)
+        return
+      }
     }
+    if (mods.ctrl) {
+      toggleRow(id)
+      return
+    }
+    select(id)
+  }
+  const toggleRow = (id: string) => {
+    const base = pickedRows.length > 0 ? pickedRows : selectedId ? [selectedId] : []
+    const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
+    anchorId.current = id
+    setPicked(next)
+    if (next.includes(id)) setSelectedId(id)
+    else if (next.length > 0) setSelectedId(next[next.length - 1] as string)
   }
 
   const ctxEntries = (): MenuEntry[] => {
     if (!ctx) return []
-    const row = rows.find((r) => r.msg.id === ctx.id)
-    if (!row) return []
-    const m = row.msg
-    const ids = idsOf(m)
-    const moveTo = (folder: Message['folder']) => () => {
-      patch(ids, { folder })
-      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast(`Moved to ${FOLDER_TITLES[folder] ?? folder}`)
-    }
+    const m = messages.find((x) => x.id === ctx.id)
+    if (!m) return []
+    const rowIds = rowsFor(ctx.id)
+    const bulkMode = rowIds.length > 1
+    const group = messages.filter((x) => rowsToMids(rowIds).includes(x.id))
+    const anyUnread = group.some((x) => x.unread)
+    const allFlagged = group.every((x) => x.flagged)
+    const allImportant = group.every((x) => x.important)
     const targets = (['inbox', 'archive', 'deleted'] as const).filter((f) => f !== m.folder)
-    return [
-      { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false) },
-      { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true) },
-      { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: forward },
-      { type: 'item', label: 'Copy email', icon: 'copy', tone: 'purple', onSelect: () => void copyEmail(m) },
-      { type: 'sep' },
-      { type: 'item', label: m.unread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => patch(ids, { unread: !m.unread }) },
-      { type: 'item', label: m.flagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => patch(ids, { flagged: !m.flagged }) },
-      { type: 'item', label: m.important ? 'Remove importance' : 'Mark as important', icon: 'important', tone: 'red', onSelect: () => patch(ids, { important: !m.important }) },
+    const out: MenuEntry[] = []
+    if (bulkMode) out.push({ type: 'head', label: `${rowIds.length} conversations selected` })
+    else
+      out.push(
+        { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false) },
+        { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true) },
+        { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: forward },
+        { type: 'item', label: 'Copy email', icon: 'copy', tone: 'purple', onSelect: () => void copyEmail(m) },
+        { type: 'sep' },
+      )
+    out.push(
+      { type: 'item', label: anyUnread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => runOp(rowIds, { kind: 'toggleRead' }) },
+      { type: 'item', label: allFlagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => runOp(rowIds, { kind: 'toggleFlag' }) },
+      { type: 'item', label: allImportant ? 'Remove importance' : 'Mark as important', icon: 'important', tone: 'red', onSelect: () => runOp(rowIds, { kind: 'toggleImportant' }) },
       { type: 'head', label: 'Colour category' },
-      { type: 'swatches', current: m.colour, onPick: (c) => patch(ids, { colour: c }) },
+      { type: 'swatches', current: bulkMode ? undefined : m.colour, onPick: (c) => runOp(rowIds, { kind: 'colour', c }) },
       { type: 'sep' },
       { type: 'head', label: 'Move to' },
-      ...targets.map((f): MenuEntry => ({ type: 'item', label: FOLDER_TITLES[f] ?? f, icon: f === 'inbox' ? 'inbox' : f === 'archive' ? 'archive' : 'trash', tone: f === 'inbox' ? 'blue' : f === 'archive' ? 'purple' : 'red', onSelect: moveTo(f), danger: f === 'deleted' })),
-    ]
+      ...targets.map((f): MenuEntry => ({
+        type: 'item',
+        label: FOLDER_TITLES[f] ?? f,
+        icon: f === 'inbox' ? 'inbox' : f === 'archive' ? 'archive' : 'trash',
+        tone: f === 'inbox' ? 'blue' : f === 'archive' ? 'purple' : 'red',
+        onSelect: () => runOp(rowIds, { kind: 'move', target: { accountId: m.accountId, kind: 'folder', id: f } }),
+        danger: f === 'deleted',
+      })),
+    )
+    return out
   }
 
   const focusSearch = () => {
@@ -433,20 +538,22 @@ export default function App() {
       const colourKey = /^Digit[0-6]$/.test(e.code) ? Number(e.code.slice(5)) : -1
 
       if (mod && e.shiftKey && !e.altKey && e.code === 'Digit1') {
-        if (!selectedRow) return
+        if (selRows().length === 0) return
         e.preventDefault()
-        patch(thread.map((m) => m.id), { important: !selectedRow.msg.important })
+        runOp(selRows(), { kind: 'toggleImportant' })
       } else if (mod && e.altKey && colourKey >= 0) {
-        if (!selectedRow) return
+        if (selRows().length === 0) return
         e.preventDefault()
-        const c = colourKey === 0 ? undefined : settingsValue.colours[colourKey - 1]
-        patch(thread.map((m) => m.id), { colour: c?.id })
-        showToast(c ? `Category: ${c.label}` : 'Category cleared')
+        runOp(selRows(), { kind: 'colour', c: colourKey === 0 ? undefined : settingsValue.colours[colourKey - 1]?.id })
+      } else if (mod && !e.altKey && !e.shiftKey && lk === 'a' && !inReader) {
+        e.preventDefault()
+        setPicked(rows.map((r) => r.msg.id))
+        if (!selectedId && rows[0]) setSelectedId(rows[0].msg.id)
       } else if (mod && !e.altKey && !e.shiftKey && lk === 'z') {
         e.preventDefault()
         undo()
       } else if (mod && e.shiftKey && lk === 'v') {
-        if (!selectedRow) return
+        if (selRows().length === 0) return
         e.preventDefault()
         setJump('move')
       } else if (mod && !e.altKey && lk === 'r') {
@@ -458,13 +565,13 @@ export default function App() {
         e.preventDefault()
         forward()
       } else if (mod && !e.altKey && !e.shiftKey && (lk === 'q' || lk === 'u')) {
-        if (!selectedRow) return
+        if (selRows().length === 0) return
         e.preventDefault()
-        patch(thread.map((m) => m.id), { unread: lk === 'u' })
+        runOp(selRows(), { kind: 'read', read: lk === 'q' })
       } else if (mod && !e.altKey && !e.shiftKey && lk === 'd') {
-        if (!selectedRow) return
+        if (selRows().length === 0) return
         e.preventDefault()
-        moveSelected('deleted', 'Moved to Deleted Items')
+        runOp(selRows(), { kind: 'delete' })
       } else if (mod && !e.altKey && !e.shiftKey && lk === 'c') {
         // Leave normal text copying alone: only copy the email when nothing is highlighted and focus is not on the attachments.
         if (!selectedRow || window.getSelection()?.toString() || t.closest('.attbar')) return
@@ -481,6 +588,19 @@ export default function App() {
       } else if (k === '?') {
         e.preventDefault()
         setHelp(true)
+      } else if (!inReader && e.shiftKey && (k === 'ArrowDown' || k === 'ArrowUp')) {
+        // Shift+arrows extend the selection from the anchor.
+        e.preventDefault()
+        const from = rows.findIndex((r) => r.msg.id === (anchorId.current ?? selectedId))
+        const to = Math.max(0, Math.min(rows.length - 1, (idx < 0 ? 0 : idx) + (k === 'ArrowDown' ? 1 : -1)))
+        const start = from < 0 ? to : from
+        const [lo, hi] = [Math.min(start, to), Math.max(start, to)]
+        setPicked(rows.slice(lo, hi + 1).map((r) => r.msg.id))
+        if (!anchorId.current && rows[start]) anchorId.current = rows[start].msg.id
+        if (rows[to]) setSelectedId(rows[to].msg.id)
+      } else if (k === 'Escape' && pickedRows.length > 0) {
+        e.preventDefault()
+        setPicked([])
       } else if (!inReader && (k === 'ArrowDown' || lk === 'j')) {
         e.preventDefault()
         go(idx + 1)
@@ -505,15 +625,15 @@ export default function App() {
         window.setTimeout(() => {
           if (!document.querySelector('[role="dialog"]')) document.querySelector<HTMLElement>('.reader-scroll')?.focus()
         }, 0)
-      } else if (k === 'Delete' && selectedRow) {
+      } else if (k === 'Delete' && selRows().length > 0) {
         e.preventDefault()
-        moveSelected('deleted', 'Moved to Deleted Items')
-      } else if ((k === 'Backspace' || lk === 'e') && selectedRow) {
+        runOp(selRows(), { kind: 'delete' })
+      } else if ((k === 'Backspace' || lk === 'e') && selRows().length > 0) {
         e.preventDefault()
-        moveSelected('archive', 'Archived')
-      } else if (k === 'Insert' && selectedRow) {
+        runOp(selRows(), { kind: 'archive' })
+      } else if (k === 'Insert' && selRows().length > 0) {
         e.preventDefault()
-        patch(thread.map((m) => m.id), { flagged: !selectedRow.msg.flagged })
+        runOp(selRows(), { kind: 'toggleFlag' })
       }
     }
     window.addEventListener('keydown', onKey)
@@ -617,7 +737,7 @@ export default function App() {
             setSelectedId(null)
             setView('list')
           }}
-          onDropMessage={dropMessage}
+          onDropMessage={dropMessages}
         />
         <MessageList
           rows={rows}
@@ -629,10 +749,12 @@ export default function App() {
           onToggleSmart={toggleSmart}
           title={title}
           subtitle={ACCOUNTS.find((a) => a.id === accountId)?.email ?? ''}
-          onSelect={select}
+          picked={pickedRows}
+          onRowClick={rowClick}
+          onToggle={toggleRow}
           onBack={() => setView('folders')}
           onContext={(id, x, y) => {
-            select(id)
+            if (!(multi && pickedRows.includes(id))) select(id)
             setCtx({ id, x, y })
           }}
           onRowAction={rowAction}
@@ -640,7 +762,24 @@ export default function App() {
           sync={{ state: !online ? 'offline' : syncing ? 'syncing' : 'synced', last: lastSync }}
           onSync={syncNow}
         />
-        {showReader && (
+        {showReader && multi && (
+          <BulkPanel
+            count={pickedRows.length}
+            subjects={pickedRows.map((id) => rows.find((r) => r.msg.id === id)?.msg.subject ?? '')}
+            anyUnread={messages.some((m) => rowsToMids(pickedRows).includes(m.id) && m.unread)}
+            allFlagged={messages.filter((m) => rowsToMids(pickedRows).includes(m.id)).every((m) => m.flagged)}
+            allImportant={messages.filter((m) => rowsToMids(pickedRows).includes(m.id)).every((m) => m.important)}
+            onDelete={() => runOp(pickedRows, { kind: 'delete' })}
+            onArchive={() => runOp(pickedRows, { kind: 'archive' })}
+            onMove={() => setJump('move')}
+            onToggleRead={() => runOp(pickedRows, { kind: 'toggleRead' })}
+            onToggleFlag={() => runOp(pickedRows, { kind: 'toggleFlag' })}
+            onToggleImportant={() => runOp(pickedRows, { kind: 'toggleImportant' })}
+            onColour={(c) => runOp(pickedRows, { kind: 'colour', c })}
+            onClear={() => setPicked([])}
+          />
+        )}
+        {showReader && !multi && (
           <ReadingPane
             messages={thread}
             onReply={() => reply(false)}
@@ -672,6 +811,8 @@ export default function App() {
           onToast={showToast}
         />
       )}
+      {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
+      {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
       {help && <ShortcutHelp onClose={() => setHelp(false)} />}
       {jump && (
@@ -683,7 +824,7 @@ export default function App() {
           onClose={() => setJump(null)}
           onPick={(s) => {
             if (jump === 'move') {
-              if (selectedRow) dropMessage(selectedRow.msg.id, s)
+              if (selRows().length > 0) dropMessages(selRows(), s)
             } else goTo(s)
           }}
         />
