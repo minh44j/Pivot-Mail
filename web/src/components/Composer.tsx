@@ -24,6 +24,22 @@ interface Props {
 
 const DRAFT_KEY = 'pm.draft'
 
+interface Box {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+/** The reading pane's box (or the list pane when the reader is hidden). Null on phones, where the composer is already full screen. */
+function readerBox(): Box | null {
+  if (!window.matchMedia('(min-width: 900px)').matches) return null
+  const el = document.querySelector<HTMLElement>('.workspace > .reader') ?? document.querySelector<HTMLElement>('.workspace > .list')
+  if (!el) return null
+  const r = el.getBoundingClientRect()
+  return { top: r.top, left: r.left, width: r.width, height: r.height }
+}
+
 function sigFor(accounts: Account[], id: string): string {
   return signatureHtml(accounts.find((a) => a.id === id)?.signature ?? '')
 }
@@ -54,8 +70,9 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, body: initialHtml }))
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [dragging, setDragging] = useState(false)
-  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
-  const [expanded, setExpanded] = useState(false)
+  // The new message window opens at the size of the reading pane. The corner button switches to a small floating window.
+  const [rect, setRect] = useState<Box | null>(readerBox)
+  const [expanded, setExpanded] = useState(() => readerBox() !== null)
   const [showBcc, setShowBcc] = useState(Boolean(init.bcc))
   const [fmt, setFmt] = useState({ bold: false, italic: false, underline: false, ul: false, ol: false })
   const [linkOpen, setLinkOpen] = useState(false)
@@ -289,13 +306,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
     onSend(d)
   }
 
-  /** Expanded = same box as the reading pane (falls back to the list pane when the reader is hidden). */
-  const measure = () => {
-    const el = document.querySelector<HTMLElement>('.workspace > .reader') ?? document.querySelector<HTMLElement>('.workspace > .list')
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
-  }
+  const measure = () => setRect(readerBox())
   const toggleExpanded = () => {
     if (expanded) {
       setExpanded(false)
