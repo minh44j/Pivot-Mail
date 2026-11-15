@@ -183,12 +183,12 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                     <div className="row-sub">
                       <span className="subject">{msg.subject}</span>
                       {msg.attachments.length > 0 && (
-                        <span className="icon-inline" title={`${msg.attachments.length} attachment(s)`}>
+                        <span className="icon-inline" role="img" aria-label={`${msg.attachments.length} attachment(s)`}>
                           <Icon name="clip" size={14} />
                         </span>
                       )}
                       {msg.colour && (
-                        <span className={`dot c-${msg.colour}`} title={`Category: ${colours.find((c) => c.id === msg.colour)?.label ?? ''}`} />
+                        <span className={`dot c-${msg.colour}`} role="img" aria-label={`Category: ${colours.find((c) => c.id === msg.colour)?.label ?? ''}`} />
                       )}
                     </div>
                     {density === 'comfortable' && <div className="preview">{msg.body.replace(/\s+/g, ' ')}</div>}

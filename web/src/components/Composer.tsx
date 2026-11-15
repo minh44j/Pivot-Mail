@@ -36,7 +36,6 @@ function FBtn(props: { label: string; active?: boolean; onClick: () => void; ico
     <button
       type="button"
       className={`fbtn${props.active ? ' on' : ''}`}
-      title={props.label}
       aria-label={props.label}
       aria-pressed={props.active}
       onMouseDown={(e) => e.preventDefault()}
@@ -331,18 +330,18 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       <header className="composer-head">
         <strong className="grow ellipsis">{d.subject || 'New message'}</strong>
         <span className="muted">{saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : ''}</span>
-        <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'} title={expanded ? 'Restore size' : 'Expand to reading pane size'}>
+        <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'}>
           <Icon name={expanded ? 'collapse' : 'expand'} />
         </button>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close and keep draft" title="Close (draft is kept)">
+        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close and keep draft">
           <Icon name="close" />
         </button>
       </header>
       <div className="composer-bar" role="toolbar" aria-label="Message actions">
-        <button type="button" className="primary" onClick={send} disabled={!canSend} title="Send (Ctrl+Enter)">
+        <button type="button" className="primary" onClick={send} disabled={!canSend}>
           <Icon name="send" size={16} /> Send
         </button>
-        <button type="button" onClick={() => fileInput.current?.click()} title="Attach files">
+        <button type="button" onClick={() => fileInput.current?.click()}>
           <Icon name="clip" size={16} tone="blue" /> Attach
         </button>
         <select
@@ -361,7 +360,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
           ))}
         </select>
         <span className="grow" />
-        <button type="button" onClick={discard} title="Discard draft" aria-label="Discard draft">
+        <button type="button" onClick={discard} aria-label="Discard draft">
           <Icon name="trash" size={16} tone="red" />
         </button>
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />

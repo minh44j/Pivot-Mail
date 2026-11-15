@@ -115,10 +115,11 @@ function TemplateEditor(props: { initial: Template; categories: string[]; isAdmi
             <button type="button" role="radio" aria-checked={t.scope !== 'shared'} className={`opt${t.scope !== 'shared' ? ' on' : ''}`} onClick={() => setT({ ...t, scope: 'personal' })}>
               Only me
             </button>
-            <button type="button" role="radio" aria-checked={t.scope === 'shared'} disabled={!props.isAdmin} title={props.isAdmin ? '' : 'Only administrators can manage shared templates'} className={`opt${t.scope === 'shared' ? ' on' : ''}`} onClick={() => setT({ ...t, scope: 'shared' })}>
+            <button type="button" role="radio" aria-checked={t.scope === 'shared'} disabled={!props.isAdmin} className={`opt${t.scope === 'shared' ? ' on' : ''}`} onClick={() => setT({ ...t, scope: 'shared' })}>
               Whole team
             </button>
           </div>
+          {!props.isAdmin && <small>Only administrators can share templates.</small>}
         </div>
       </div>
       <label className="fld">
@@ -159,7 +160,7 @@ export function SettingsPage(p: Props) {
   return (
     <main className="perf settings">
       <header className="perf-head">
-        <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={p.onBack} aria-label="Back to mail" title="Back to mail">
+        <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={p.onBack} aria-label="Back to mail">
           <Icon name="back" />
         </button>
         <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />

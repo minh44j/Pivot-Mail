@@ -29,16 +29,16 @@ interface Props {
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
-function Item(props: { icon: IconName; tone?: Tone; label: string; title?: string; onClick?: () => void; disabled?: boolean }) {
+function Item(props: { icon: IconName; tone?: Tone; label: string; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button type="button" className="tb" onClick={props.onClick} disabled={props.disabled} title={props.title ?? props.label}>
+    <button type="button" className="tb" onClick={props.onClick} disabled={props.disabled}>
       <Icon name={props.icon} size={18} tone={props.tone} />
       <span className="tb-label">{props.label}</span>
     </button>
   )
 }
 
-function Menu(props: { icon: IconName; tone?: Tone; label: string; title?: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
+function Menu(props: { icon: IconName; tone?: Tone; label: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const pop = useRef<HTMLDivElement>(null)
@@ -77,7 +77,7 @@ function Menu(props: { icon: IconName; tone?: Tone; label: string; title?: strin
 
   return (
     <>
-      <button ref={btn} type="button" className="tb tb-menu" onClick={toggle} disabled={props.disabled} title={props.title ?? props.label} aria-haspopup="menu" aria-expanded={open}>
+      <button ref={btn} type="button" className="tb tb-menu" onClick={toggle} disabled={props.disabled} aria-haspopup="menu" aria-expanded={open}>
         <span className="tb-icons">
           <Icon name={props.icon} size={18} tone={props.tone} />
           <Icon name="chevron" size={10} />
@@ -120,7 +120,7 @@ export function Toolbar(p: Props) {
 
       <div className="tb-scroll">
         <div className="tb-group tb-extra" role="group" aria-label="More">
-          <Item icon="hash" tone="teal" label="Ref no." title="Generate a reference number" onClick={p.onRef} />
+          <Item icon="hash" tone="teal" label="Ref no." onClick={p.onRef} />
           <Menu icon="template" tone="purple" label="Templates">
             {(close) => (
               <>
@@ -148,7 +148,7 @@ export function Toolbar(p: Props) {
               </>
             )}
           </Menu>
-          <Menu icon="menu" tone="gray" label="View" title="View options">
+          <Menu icon="menu" tone="gray" label="View">
             {(close) => (
               <>
                 <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />
@@ -252,7 +252,7 @@ export function Toolbar(p: Props) {
         </div>
       </div>
 
-      <button type="button" className="tb-new" onClick={p.onNew} title="New mail (Ctrl+N)" aria-label="New mail">
+      <button type="button" className="tb-new" onClick={p.onNew} aria-label="New mail">
         <Icon name="compose" size={16} />
         <span>New mail</span>
       </button>

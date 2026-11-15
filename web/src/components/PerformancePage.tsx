@@ -252,7 +252,7 @@ export function PerformancePage({ role, onBack, onToast }: Props) {
   return (
     <main className="perf">
       <header className="perf-head">
-        <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onBack} aria-label="Back to mail" title="Back to mail">
+        <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onBack} aria-label="Back to mail">
           <Icon name="back" />
         </button>
         <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />

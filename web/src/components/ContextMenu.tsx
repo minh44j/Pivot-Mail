@@ -72,7 +72,6 @@ export function ContextMenu({ x, y, entries, onClose }: Props) {
                   key={c.id}
                   type="button"
                   className={`swatch c-${c.id}${en.current === c.id ? ' on' : ''}`}
-                  title={c.label}
                   aria-label={c.label}
                   aria-pressed={en.current === c.id}
                   onClick={() => {
@@ -84,7 +83,6 @@ export function ContextMenu({ x, y, entries, onClose }: Props) {
               <button
                 type="button"
                 className="swatch none"
-                title="Clear category"
                 aria-label="Clear category"
                 onClick={() => {
                   en.onPick(undefined)

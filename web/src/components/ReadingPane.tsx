@@ -54,13 +54,13 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
           <Icon name="forward" size={16} /> Forward
         </button>
         <span className="reader-touch">
-          <button type="button" onClick={onDelete} aria-label="Delete" title="Delete">
+          <button type="button" onClick={onDelete} aria-label="Delete">
             <Icon name="trash" size={18} tone="red" />
           </button>
-          <button type="button" onClick={onFlag} aria-label={flagged ? 'Remove flag' : 'Flag'} aria-pressed={flagged} title={flagged ? 'Remove flag' : 'Flag'}>
+          <button type="button" onClick={onFlag} aria-label={flagged ? 'Remove flag' : 'Flag'} aria-pressed={flagged}>
             <Icon name="flag" size={18} tone="orange" />
           </button>
-          <button type="button" onClick={onUnread} aria-label={unread ? 'Mark as read' : 'Mark as unread'} title={unread ? 'Mark as read' : 'Mark as unread'}>
+          <button type="button" onClick={onUnread} aria-label={unread ? 'Mark as read' : 'Mark as unread'}>
             <Icon name="eye" size={18} tone="blue" />
           </button>
         </span>

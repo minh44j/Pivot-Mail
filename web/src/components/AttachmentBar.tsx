@@ -204,7 +204,7 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
           <button type="button" role="menuitem" onClick={() => { onForwardWith(files); setMenu(null) }}>
             Attach to new mail
           </button>
-          <button type="button" role="menuitem" disabled title="Arrives in Phase 2 with Drive">
+          <button type="button" role="menuitem" disabled>
             Save to Drive (Phase 2)
           </button>
         </div>

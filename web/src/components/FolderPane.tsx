@@ -95,7 +95,7 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
                   )
                 })}
                 <li>
-                  <button type="button" className="folder disabled" disabled title="Case folders arrive in Phase 2 with the Reference Generator">
+                  <button type="button" className="folder disabled" disabled>
                     <Icon name="lock" size={15} tone="gray" />
                     <span className="grow">Cases</span>
                     <small>Phase 2</small>
