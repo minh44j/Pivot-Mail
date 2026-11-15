@@ -16,6 +16,8 @@ const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
 
 interface Props {
   accounts: Account[]
+  onAddAccount: () => void
+  onRemoveAccount: (id: string) => void
   messages: Message[]
   selection: FolderSel
   folders: Record<string, string[]>
@@ -27,7 +29,8 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+  const [accMenu, setAccMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
   const [slot, setSlot] = useState<string | null>(null)
@@ -64,6 +67,7 @@ export function FolderPane({ accounts, messages, selection, folders, cases, onFo
         const open = !collapsed[a.id]
         return (
           <section key={a.id} className="mailbox" aria-label={a.name}>
+            <div className="mailbox-row">
             <button type="button" className="mailbox-head" aria-expanded={open} onClick={() => setCollapsed((c) => ({ ...c, [a.id]: open }))}>
               <span className={`chev${open ? ' open' : ''}`}>
                 <Icon name="chevron" size={12} />
@@ -73,6 +77,13 @@ export function FolderPane({ accounts, messages, selection, folders, cases, onFo
                 <small>{a.email}</small>
               </span>
             </button>
+            <button type="button" className="folder-more acc-more" aria-label={`Account options: ${a.name}`} aria-haspopup="menu" onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              setAccMenu({ x: r.left, y: r.bottom + 2, id: a.id })
+            }}>
+              <Icon name="more" size={14} />
+            </button>
+            </div>
             {open && (
               <ul className="folder-list">
                 {FOLDERS.map((f) => {
@@ -189,6 +200,18 @@ export function FolderPane({ accounts, messages, selection, folders, cases, onFo
           </section>
         )
       })}
+      <button type="button" className="folder add add-account" onClick={onAddAccount}>
+        <Icon name="plus" size={15} tone="green" />
+        <span className="grow">Add account</span>
+      </button>
+      {accMenu && (
+        <ContextMenu
+          x={accMenu.x}
+          y={accMenu.y}
+          onClose={() => setAccMenu(null)}
+          entries={[{ type: 'item', label: 'Remove account…', icon: 'trash', tone: 'red', danger: true, onSelect: () => onRemoveAccount(accMenu.id) }]}
+        />
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}

@@ -3530,3 +3530,45 @@ li.slot-end.slot {
   border-radius: 2px;
   text-decoration: none;
 }
+
+/* Accounts */
+.mailbox-row {
+  position: relative;
+}
+.acc-more {
+  right: 6px;
+}
+.mailbox-row:hover .acc-more,
+.acc-more:focus-visible {
+  display: inline-flex;
+}
+.add-account {
+  width: calc(100% - 12px);
+  margin: 6px 6px 0;
+}
+.co-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.co-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--separator);
+  border-radius: var(--r-md);
+  background: var(--content);
+  text-align: left;
+  cursor: pointer;
+}
+.co-card:hover {
+  background: var(--fill);
+}
+.co-card strong,
+.co-card small {
+  display: block;
+}
+.co-card small {
+  color: var(--label-2);
+}

@@ -5,6 +5,9 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
+import { AccountDialog } from './components/AccountDialog'
+import type { AccountDialogState, NewAccount } from './components/AccountDialog'
+import { COMPANIES } from './data/companies'
 import { FolderDialog } from './components/FolderDialog'
 import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
@@ -72,6 +75,7 @@ function useStored<T>(key: string, initial: T, valid: (v: unknown) => v is T): [
 
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 const isFolderMap = (v: unknown): v is Record<string, string[]> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every(isStrings)
+const isAccounts = (v: unknown): v is Account[] => Array.isArray(v) && v.every((x) => typeof x === 'object' && x !== null && typeof (x as Account).id === 'string' && typeof (x as Account).email === 'string')
 const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
@@ -176,7 +180,39 @@ export default function App() {
     showToast('Undone')
   }
 
-  const accounts = useMemo<Account[]>(() => ACCOUNTS.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [signatures])
+  const [addedAccounts, setAddedAccounts] = useStored<Account[]>('pm.accounts.added', [], isAccounts)
+  const [removedIds, setRemovedIds] = useStored<string[]>('pm.accounts.removed', [], isStrings)
+  const accountList = useMemo<Account[]>(() => [...ACCOUNTS.filter((a) => !removedIds.includes(a.id)), ...addedAccounts], [addedAccounts, removedIds])
+  const accounts = useMemo<Account[]>(() => accountList.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [accountList, signatures])
+  const [accDlg, setAccDlg] = useState<AccountDialogState | null>(null)
+  const addAccount = (n: NewAccount) => {
+    const local = n.email.split('@')[0] ?? n.email
+    const name = local.replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+    const co = COMPANIES.find((c) => c.id === n.company)
+    const acc: Account = { id: `acc-${Date.now()}`, name, email: n.email, shared: n.shared, signature: `${name}\n${co?.name ?? ''}` }
+    setAddedAccounts([...addedAccounts, acc])
+    setAccDlg(null)
+    setSel({ accountId: acc.id, kind: 'folder', id: 'inbox' })
+    setSelectedId(null)
+    showToast(`${n.email} added (preview, empty mailbox)`)
+  }
+  const removeAccount = (id: string) => {
+    if (accountList.length <= 1) {
+      setAccDlg(null)
+      showToast('Keep at least one account')
+      return
+    }
+    if (addedAccounts.some((x) => x.id === id)) setAddedAccounts(addedAccounts.filter((x) => x.id !== id))
+    else setRemovedIds([...removedIds, id])
+    setMessages((prev) => prev.filter((m) => m.accountId !== id))
+    if (sel.accountId === id) {
+      const first = accountList.find((x) => x.id !== id)
+      if (first) setSel({ accountId: first.id, kind: 'folder', id: 'inbox' })
+      setSelectedId(null)
+    }
+    setAccDlg(null)
+    showToast('Account removed from this device')
+  }
   const settingsValue = useMemo(
     () => ({
       templates: [...TEMPLATES.map((t): Template => ({ ...t, scope: 'builtin' })), ...customTemplates],
@@ -338,7 +374,7 @@ export default function App() {
   const last = thread[thread.length - 1]
   const reply = (all: boolean) => {
     if (!last) return
-    const acc = ACCOUNTS.find((a) => a.id === accountId)
+    const acc = accountList.find((a) => a.id === accountId)
     const cc = all ? [...last.to, ...(last.cc ?? [])].map((t) => t.email).filter((e) => e !== acc?.email && e !== last.from.email).join(', ') : ''
     openCompose({ to: last.from.email, cc, subject: /^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`, body: quote(last) })
   }
@@ -748,7 +784,7 @@ export default function App() {
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
 
   if (sim === 'expired' || sim === 'denied') {
-    return <StatusScreen kind={sim} account={ACCOUNTS[0]?.email ?? ''} onAction={() => setSim(null)} />
+    return <StatusScreen kind={sim} account={accountList[0]?.email ?? ''} onAction={() => setSim(null)} />
   }
 
   if (screen === 'settings') {
@@ -849,7 +885,12 @@ export default function App() {
       )}
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
-          accounts={ACCOUNTS}
+          accounts={accountList}
+          onAddAccount={() => setAccDlg({ mode: 'add' })}
+          onRemoveAccount={(id) => {
+            const x = accountList.find((y) => y.id === id)
+            if (x) setAccDlg({ mode: 'remove', id, name: x.name, email: x.email })
+          }}
           messages={messages}
           selection={sel}
           folders={folders}
@@ -875,7 +916,7 @@ export default function App() {
           showSmart={showSmart}
           onToggleSmart={toggleSmart}
           title={title}
-          subtitle={ACCOUNTS.find((a) => a.id === accountId)?.email ?? ''}
+          subtitle={accountList.find((a) => a.id === accountId)?.email ?? ''}
           picked={pickedRows}
           onRowClick={rowClick}
           onToggle={toggleRow}
@@ -943,10 +984,11 @@ export default function App() {
       {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
       {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {accDlg && <AccountDialog state={accDlg} existing={accountList.map((x) => x.email.toLowerCase())} onAdd={addAccount} onRemove={removeAccount} onClose={() => setAccDlg(null)} />}
       {folderDlg && (
         <FolderDialog
           state={folderDlg}
-          accountName={ACCOUNTS.find((x) => x.id === folderDlg.accountId)?.name ?? ''}
+          accountName={accountList.find((x) => x.id === folderDlg.accountId)?.name ?? ''}
           existing={folders[folderDlg.accountId] ?? []}
           count={folderDlg.mode === 'delete' ? messages.filter((m) => m.accountId === folderDlg.accountId && m.labels.includes(folderDlg.name)).length : 0}
           onSubmit={submitFolder}
@@ -957,7 +999,7 @@ export default function App() {
       {jump && (
         <FolderJump
           mode={jump}
-          accounts={ACCOUNTS}
+          accounts={accountList}
           folders={folders}
           cases={cases}
           accountId={accountId}

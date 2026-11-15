@@ -195,3 +195,8 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - Preview counters are per browser and start at 90000 (not the company counter; real numbering stays in Pivot OS). ⚠️ Verify: the digit count and year rule with Pivot OS before go-live.
 - Cases appear under each mailbox automatically from the reference in the subject (PS or PT). A case shows every message of that mailbox carrying the reference, in any folder except Deleted Items. Ctrl+Y also finds cases.
 - Row styling: plain full-width hover (no rounded corners), tick box centred and smaller.
+
+## Add and remove accounts (status: built in preview, mock sign-in)
+- Sidebar "Add account": choose the company (pivottmc.com or pivotscl.com), enter the Google address, choose Personal or Shared mailbox. Other domains, wrong-company domains and duplicates are refused with a clear message.
+- Remove account (hover the mailbox header, ⋯): deletes the local copy only; Google is untouched. At least one account must remain.
+- Preview stores the account list in the browser (`pm.accounts.added`, `pm.accounts.removed`). Real sign-in and encrypted server-side tokens arrive in roadmap phase 1.
