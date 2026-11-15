@@ -55,3 +55,8 @@ Requirements, scope and open questions live in `REQUIREMENTS.md`.
 - Optimistic mutations queue (archive, label, colour, read) with retry and conflict resolution against `historyId`.
 - Templates and colour rules are Pivot Mail data (DB); colours mirrored to Gmail labels.
 - Context menus, drag/drop and clipboard live behind `src/platform/` so desktop can swap in native implementations.
+
+## Brand assets
+- Source logo: `brand/logo-original.png` (supplied). Web cuts with transparent background live in `web/src/assets/brand/` (`logo-lockup.png`, `logo-mark.png`) and favicons in `web/public/`.
+- Brand colours sampled from the logo: navy `#162328`, green `#02b789` (tokens `--brand-navy`, `--brand-green`). Green on white is ~2.6:1, so it is for fills and graphics, not text. UI accent is still system blue.
+- Raster logo is 1309 px wide: fine for the toolbar and sign-in. A vector (SVG) version is needed for large print or very large displays.

@@ -22,6 +22,10 @@
   --accent-fill: #0071e3; /* prominent button with white label (4.7:1) */
   --selection: #dcebff;
 
+  /* brand (from the Pivot Mail logo). Not used for text: green on white is below 4.5:1 */
+  --brand-navy: #162328;
+  --brand-green: #02b789;
+
   /* categories */
   --c-red: #ff3b30;
   --c-orange: #ff9500;
@@ -107,19 +111,6 @@ small {
   padding-top: calc(8px + env(safe-area-inset-top));
   background: var(--toolbar);
   border-bottom: 1px solid var(--separator);
-}
-.mark {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--r-sm);
-  background: var(--label);
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  order: 1;
 }
 .tb-scroll {
   display: flex;
@@ -1196,11 +1187,19 @@ small {
   padding-top: calc(20px + env(safe-area-inset-top));
   max-width: 460px;
 }
-.art-copy .mark {
-  order: 0;
+.art-tile {
+  display: grid;
+  place-items: center;
   align-self: flex-start;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(8px);
+  width: 52px;
+  height: 52px;
+  border-radius: var(--r-md);
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(3, 20, 70, 0.28);
+}
+.art-tile img {
+  height: 26px;
+  width: auto;
 }
 .art-copy h2 {
   display: none;
@@ -1235,9 +1234,6 @@ small {
   align-items: stretch;
   gap: 12px;
   width: min(380px, 100%);
-}
-.signin-card .mark.big {
-  display: none;
 }
 .signin-card h1 {
   margin: 0;
@@ -1283,15 +1279,6 @@ small {
   font-size: 12px;
   color: var(--label-2);
 }
-.mark.big {
-  width: 56px;
-  height: 56px;
-  border-radius: var(--r-md);
-  font-size: 26px;
-}
-.signin-card .mark {
-  order: 0;
-}
 @media (min-width: 900px) {
   .signin {
     grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
@@ -1320,10 +1307,6 @@ small {
   }
   .signin-panel {
     padding: 48px;
-  }
-  .signin-card .mark.big {
-    display: grid;
-    margin-bottom: 8px;
   }
   .signin-card h1 {
     font-size: 30px;
@@ -1684,11 +1667,23 @@ small {
 .ctx .swatches button.swatch.c-purple {
   background: var(--c-purple);
 }
-.signin-card .mark {
-  order: 0;
-}
 @media (min-width: 900px) and (max-width: 1199px) {
   .art-copy p {
     display: none;
   }
+}
+
+.logo-mark {
+  display: block;
+  flex: none;
+  order: 1;
+  height: 26px;
+  width: auto;
+}
+.logo-lockup {
+  display: block;
+  align-self: flex-start;
+  width: 190px;
+  height: auto;
+  margin-bottom: 12px;
 }

@@ -1,3 +1,6 @@
+import logoMark from '../assets/brand/logo-mark.png'
+import logoLockup from '../assets/brand/logo-lockup.png'
+
 interface Props {
   onPreview: () => void
 }
@@ -126,8 +129,8 @@ export function SignIn({ onPreview }: Props) {
       <section className="signin-art">
         <Artwork />
         <div className="art-copy">
-          <span className="mark" role="img" aria-label="Pivot Mail">
-            P
+          <span className="art-tile">
+            <img src={logoMark} alt="Pivot Mail" />
           </span>
           <h2>
             Your mail, at the
@@ -141,9 +144,7 @@ export function SignIn({ onPreview }: Props) {
 
       <section className="signin-panel">
         <div className="signin-card">
-          <span className="mark big" role="img" aria-label="Pivot Mail">
-            P
-          </span>
+          <img className="logo-lockup" src={logoLockup} alt="Pivot Mail" />
           <h1>Sign in</h1>
           <p className="muted lead">Use your Pivot Workspace account to open your mailboxes.</p>
 

@@ -4,6 +4,7 @@ import type { Colour, Density, PaneLayout } from '../types'
 import { TEMPLATES } from '../data/templates'
 import type { Template } from '../data/templates'
 import { COLOURS } from '../data/colours'
+import logoMark from '../assets/brand/logo-mark.png'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 
@@ -121,9 +122,7 @@ export function Toolbar(p: Props) {
 
   return (
     <header className="toolbar" role="toolbar" aria-label="Mail toolbar">
-      <span className="mark" role="img" aria-label="Pivot Mail">
-        P
-      </span>
+      <img className="logo-mark" src={logoMark} alt="Pivot Mail" />
 
       <div className="tb-scroll">
         <div className="tb-group" role="group" aria-label="Mailbox actions">
