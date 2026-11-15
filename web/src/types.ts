@@ -53,6 +53,7 @@ export interface ComposeInit {
   accountId: string
   to: string
   cc: string
+  bcc: string
   subject: string
   body: string
   attachments: Attachment[]

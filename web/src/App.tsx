@@ -4,6 +4,7 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
+import { escapeHtml, textToHtml } from './richtext'
 import { Toolbar } from './components/Toolbar'
 import { FolderPane } from './components/FolderPane'
 import type { FolderSel } from './components/FolderPane'
@@ -129,12 +130,12 @@ export default function App() {
   const openCompose = useCallback(
     (init?: Partial<ComposeInit>) => {
       setComposeKey((k) => k + 1)
-      setCompose({ accountId, to: '', cc: '', subject: '', body: '', attachments: [], ...init })
+      setCompose({ accountId, to: '', cc: '', bcc: '', subject: '', body: '', attachments: [], ...init })
     },
     [accountId],
   )
 
-  const quote = (m: Message): string => `\n\nOn ${new Date(m.date).toLocaleString()}, ${m.from.name} wrote:\n${m.body.split('\n').map((l) => `> ${l}`).join('\n')}`
+  const quote = (m: Message): string => `<br><br><blockquote>On ${escapeHtml(new Date(m.date).toLocaleString())}, ${escapeHtml(m.from.name)} wrote:<br>${textToHtml(m.body)}</blockquote>`
   const last = thread[thread.length - 1]
   const reply = (all: boolean) => {
     if (!last) return

@@ -998,16 +998,125 @@ small {
 .composer-chips {
   padding: 8px 0;
 }
-.compose-text {
+.editor {
   flex: 1;
   min-height: 200px;
   padding: 12px 0;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.editor a {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.editor blockquote {
+  margin: 8px 0;
+  padding-left: 12px;
+  border-left: 3px solid var(--separator);
+  color: var(--label-2);
+}
+.editor ul,
+.editor ol {
+  margin: 4px 0;
+  padding-left: 24px;
+}
+.editor [data-sig] {
+  color: var(--label-2);
+}
+.format-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--separator);
+}
+.fbtn {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  font-size: 14px;
+}
+.fbtn:hover {
+  background: var(--fill);
+}
+.fbtn.on {
+  background: var(--selection);
+  color: var(--accent-text);
+}
+.fsep {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--separator);
+}
+.fchip {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--fill);
+  font-size: 12px;
+}
+.fchip.on {
+  background: var(--selection);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator);
+}
+.link-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: var(--fill);
+  outline: none;
+}
+.link-row input:focus {
+  background: var(--content);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.field-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+}
+.field-inner span {
+  width: 56px;
+  flex: none;
+  color: var(--label-2);
+}
+.field-inner input {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
   border: 0;
   background: none;
   outline: none;
-  resize: none;
-  font-size: 14px;
-  line-height: 1.55;
+}
+@media (min-width: 900px) {
+  .fbtn {
+    min-width: 32px;
+    height: 32px;
+  }
+  .link-row input {
+    min-height: 34px;
+  }
 }
 .composer-bar {
   display: flex;
