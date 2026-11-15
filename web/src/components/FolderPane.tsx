@@ -1,16 +1,16 @@
 import { useState } from 'react'
 import type { Account, FolderId, Message } from '../types'
 import { Icon } from './Icon'
-import type { IconName } from './Icon'
+import type { IconName, Tone } from './Icon'
 
 export type FolderSel = { accountId: string; kind: 'folder'; id: FolderId } | { accountId: string; kind: 'label'; id: string }
 
-const FOLDERS: { id: FolderId; label: string; icon: IconName }[] = [
-  { id: 'inbox', label: 'Inbox', icon: 'inbox' },
-  { id: 'archive', label: 'Archive', icon: 'archive' },
-  { id: 'drafts', label: 'Drafts', icon: 'draft' },
-  { id: 'sent', label: 'Sent', icon: 'send' },
-  { id: 'deleted', label: 'Deleted Items', icon: 'trash' },
+const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
+  { id: 'inbox', label: 'Inbox', icon: 'inbox', tone: 'blue' },
+  { id: 'archive', label: 'Archive', icon: 'archive', tone: 'purple' },
+  { id: 'drafts', label: 'Drafts', icon: 'draft', tone: 'gray' },
+  { id: 'sent', label: 'Sent', icon: 'send', tone: 'green' },
+  { id: 'deleted', label: 'Deleted Items', icon: 'trash', tone: 'red' },
 ]
 
 interface Props {
@@ -74,7 +74,7 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
                   return (
                     <li key={f.id}>
                       <button type="button" className={`folder${on ? ' active' : ''}${over === `${a.id}/${f.id}` ? ' drop' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'folder', id: f.id })} {...dropProps(`${a.id}/${f.id}`, { accountId: a.id, kind: 'folder', id: f.id })}>
-                        <Icon name={f.icon} size={15} />
+                        <Icon name={f.icon} size={15} tone={f.tone} />
                         <span className="grow">{f.label}</span>
                         {count > 0 && <span className="count">{count}</span>}
                       </button>
@@ -87,7 +87,7 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
                   return (
                     <li key={l}>
                       <button type="button" className={`folder${on ? ' active' : ''}${over === `${a.id}/label:${l}` ? ' drop' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'label', id: l })} {...dropProps(`${a.id}/label:${l}`, { accountId: a.id, kind: 'label', id: l })}>
-                        <Icon name="folder" size={15} />
+                        <Icon name="folder" size={15} tone="gray" />
                         <span className="grow">{l}</span>
                         {count > 0 && <span className="count">{count}</span>}
                       </button>
@@ -96,7 +96,7 @@ export function FolderPane({ accounts, messages, selection, labels, onSelect, on
                 })}
                 <li>
                   <button type="button" className="folder disabled" disabled title="Case folders arrive in Phase 2 with the Reference Generator">
-                    <Icon name="lock" size={15} />
+                    <Icon name="lock" size={15} tone="gray" />
                     <span className="grow">Cases</span>
                     <small>Phase 2</small>
                   </button>

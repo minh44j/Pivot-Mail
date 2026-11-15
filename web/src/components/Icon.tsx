@@ -38,7 +38,9 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS
 
-export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
+export type Tone = 'red' | 'orange' | 'blue' | 'purple' | 'green' | 'teal' | 'gray'
+
+export function Icon({ name, size = 18, tone }: { name: IconName; size?: number; tone?: Tone }) {
   return (
     <svg
       width={size}
@@ -51,6 +53,7 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
+      className={tone ? `ic ic-${tone}` : undefined}
     >
       {PATHS[name].split('|').map((d) => (
         <path key={d} d={d} />

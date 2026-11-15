@@ -5,7 +5,7 @@ import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
 import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
-import type { IconName } from './Icon'
+import type { IconName, Tone } from './Icon'
 
 interface Props {
   threaded: boolean
@@ -29,16 +29,16 @@ interface Props {
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
-function Item(props: { icon: IconName; label: string; title?: string; onClick?: () => void; disabled?: boolean }) {
+function Item(props: { icon: IconName; tone?: Tone; label: string; title?: string; onClick?: () => void; disabled?: boolean }) {
   return (
     <button type="button" className="tb" onClick={props.onClick} disabled={props.disabled} title={props.title ?? props.label}>
-      <Icon name={props.icon} size={18} />
+      <Icon name={props.icon} size={18} tone={props.tone} />
       <span className="tb-label">{props.label}</span>
     </button>
   )
 }
 
-function Menu(props: { icon: IconName; label: string; title?: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
+function Menu(props: { icon: IconName; tone?: Tone; label: string; title?: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const pop = useRef<HTMLDivElement>(null)
@@ -79,7 +79,7 @@ function Menu(props: { icon: IconName; label: string; title?: string; disabled?:
     <>
       <button ref={btn} type="button" className="tb tb-menu" onClick={toggle} disabled={props.disabled} title={props.title ?? props.label} aria-haspopup="menu" aria-expanded={open}>
         <span className="tb-icons">
-          <Icon name={props.icon} size={18} />
+          <Icon name={props.icon} size={18} tone={props.tone} />
           <Icon name="chevron" size={10} />
         </span>
         <span className="tb-label">{props.label}</span>
@@ -120,8 +120,8 @@ export function Toolbar(p: Props) {
 
       <div className="tb-scroll">
         <div className="tb-group tb-extra" role="group" aria-label="More">
-          <Item icon="hash" label="Ref no." title="Generate a reference number" onClick={p.onRef} />
-          <Menu icon="template" label="Templates">
+          <Item icon="hash" tone="teal" label="Ref no." title="Generate a reference number" onClick={p.onRef} />
+          <Menu icon="template" tone="purple" label="Templates">
             {(close) => (
               <>
                 {categories.map((cat, i) => (
@@ -148,7 +148,7 @@ export function Toolbar(p: Props) {
               </>
             )}
           </Menu>
-          <Menu icon="menu" label="View" title="View options">
+          <Menu icon="menu" tone="gray" label="View" title="View options">
             {(close) => (
               <>
                 <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />

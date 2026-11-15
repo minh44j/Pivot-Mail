@@ -270,17 +270,17 @@ export default function App() {
     }
     const targets = (['inbox', 'archive', 'deleted'] as const).filter((f) => f !== m.folder)
     return [
-      { type: 'item', label: 'Reply', icon: 'reply', onSelect: () => reply(false) },
-      { type: 'item', label: 'Reply all', icon: 'replyAll', onSelect: () => reply(true) },
-      { type: 'item', label: 'Forward', icon: 'forward', onSelect: forward },
+      { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false) },
+      { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true) },
+      { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: forward },
       { type: 'sep' },
-      { type: 'item', label: m.unread ? 'Mark as read' : 'Mark as unread', icon: 'eye', onSelect: () => patch(ids, { unread: !m.unread }) },
-      { type: 'item', label: m.flagged ? 'Remove flag' : 'Flag', icon: 'flag', onSelect: () => patch(ids, { flagged: !m.flagged }) },
+      { type: 'item', label: m.unread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => patch(ids, { unread: !m.unread }) },
+      { type: 'item', label: m.flagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => patch(ids, { flagged: !m.flagged }) },
       { type: 'head', label: 'Colour category' },
       { type: 'swatches', current: m.colour, onPick: (c) => patch(ids, { colour: c }) },
       { type: 'sep' },
       { type: 'head', label: 'Move to' },
-      ...targets.map((f): MenuEntry => ({ type: 'item', label: FOLDER_TITLES[f] ?? f, icon: f === 'inbox' ? 'inbox' : f === 'archive' ? 'archive' : 'trash', onSelect: moveTo(f), danger: f === 'deleted' })),
+      ...targets.map((f): MenuEntry => ({ type: 'item', label: FOLDER_TITLES[f] ?? f, icon: f === 'inbox' ? 'inbox' : f === 'archive' ? 'archive' : 'trash', tone: f === 'inbox' ? 'blue' : f === 'archive' ? 'purple' : 'red', onSelect: moveTo(f), danger: f === 'deleted' })),
     ]
   }
 

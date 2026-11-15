@@ -156,16 +156,16 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                     </div>
                     <div className="row-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
                       <button type="button" title="Delete" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
-                        <Icon name="trash" size={15} />
+                        <Icon name="trash" size={15} tone="red" />
                       </button>
                       <button type="button" className="ra-extra" title="Archive" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
-                        <Icon name="archive" size={15} />
+                        <Icon name="archive" size={15} tone="purple" />
                       </button>
                       <button type="button" title={msg.flagged ? 'Remove flag' : 'Flag'} aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
-                        <Icon name="flag" size={15} />
+                        <Icon name="flag" size={15} tone="orange" />
                       </button>
                       <button type="button" className="ra-extra" title={unread ? 'Mark as read' : 'Mark as unread'} aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
-                        <Icon name="eye" size={15} />
+                        <Icon name="eye" size={15} tone="blue" />
                       </button>
                       <button
                         type="button"
@@ -177,7 +177,7 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                           onContext(msg.id, r.left - 180, r.bottom + 4)
                         }}
                       >
-                        <Icon name="more" size={15} />
+                        <Icon name="more" size={15} tone="gray" />
                       </button>
                     </div>
                     <div className="row-sub">

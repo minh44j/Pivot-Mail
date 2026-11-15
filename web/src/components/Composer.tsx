@@ -343,7 +343,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
           <Icon name="send" size={16} /> Send
         </button>
         <button type="button" onClick={() => fileInput.current?.click()} title="Attach files">
-          <Icon name="clip" size={16} /> Attach
+          <Icon name="clip" size={16} tone="blue" /> Attach
         </button>
         <select
           aria-label="Insert template"
@@ -362,7 +362,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
         </select>
         <span className="grow" />
         <button type="button" onClick={discard} title="Discard draft" aria-label="Discard draft">
-          <Icon name="trash" size={16} />
+          <Icon name="trash" size={16} tone="red" />
         </button>
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
       </div>

@@ -2,10 +2,10 @@ import { useEffect, useRef } from 'react'
 import type { Colour } from '../types'
 import { useSettings } from '../settings'
 import { Icon } from './Icon'
-import type { IconName } from './Icon'
+import type { IconName, Tone } from './Icon'
 
 export type MenuEntry =
-  | { type: 'item'; label: string; icon?: IconName; onSelect: () => void; disabled?: boolean; danger?: boolean }
+  | { type: 'item'; label: string; icon?: IconName; tone?: Tone; onSelect: () => void; disabled?: boolean; danger?: boolean }
   | { type: 'sep' }
   | { type: 'head'; label: string }
   | { type: 'swatches'; current?: Colour; onPick: (c: Colour | undefined) => void }
@@ -108,7 +108,7 @@ export function ContextMenu({ x, y, entries, onClose }: Props) {
               onClose()
             }}
           >
-            <span className="ph">{en.icon && <Icon name={en.icon} size={15} />}</span>
+            <span className="ph">{en.icon && <Icon name={en.icon} size={15} tone={en.tone} />}</span>
             {en.label}
           </button>
         )

@@ -31,6 +31,15 @@
   --series-2: #eb6834;
   --series-3: #1baf7a;
 
+  /* icon tones (all >= 3:1 on white, sidebar and selected rows) */
+  --ic-red: #d92d20;
+  --ic-orange: #c45f00;
+  --ic-blue: #007aff;
+  --ic-purple: #8e4ec6;
+  --ic-green: #1c8f4a;
+  --ic-teal: #00876a;
+  --ic-gray: #606066;
+
   /* categories */
   --c-red: #ff3b30;
   --c-orange: #ff9500;
@@ -348,7 +357,7 @@ small {
     padding-top: 8px;
   }
   .tb-scroll {
-    order: 2;
+    order: 3;
     flex: 1;
     width: auto;
     min-width: 0;
@@ -367,7 +376,7 @@ small {
     height: 34px;
   }
   .tb-new {
-    order: 3;
+    order: 4;
     padding: 0 14px 0 12px;
   }
   .tb-new span {
@@ -375,14 +384,14 @@ small {
   }
   .tb-search {
     flex: none;
-    order: 4;
-    width: 220px;
+    order: 2;
+    width: 260px;
     transition:
       width 0.18s ease,
       background 0.15s;
   }
   .tb-search:focus-within {
-    width: 300px;
+    width: 340px;
   }
   .workspace > * {
     display: flex;
@@ -482,7 +491,6 @@ small {
 }
 .folder svg {
   flex: none;
-  color: var(--label-2);
 }
 .folder:hover:not(:disabled) {
   background: var(--fill);
@@ -490,9 +498,6 @@ small {
 .folder.active {
   background: var(--fill-2);
   font-weight: 600;
-}
-.folder.active svg {
-  color: var(--accent);
 }
 .folder.disabled {
   color: var(--label-2);
@@ -2356,8 +2361,8 @@ code {
   opacity: 1;
 }
 .row-actions button:hover {
-  background: var(--fill-2);
-  color: var(--label);
+  background: none;
+  transform: scale(1.18);
 }
 .row-actions button[aria-pressed='true'] {
   color: var(--c-orange);
@@ -2393,5 +2398,38 @@ code {
 @media (min-width: 900px) {
   .reader-touch {
     display: none;
+  }
+}
+
+/* icon tones */
+.ic-red {
+  color: var(--ic-red);
+}
+.ic-orange {
+  color: var(--ic-orange);
+}
+.ic-blue {
+  color: var(--ic-blue);
+}
+.ic-purple {
+  color: var(--ic-purple);
+}
+.ic-green {
+  color: var(--ic-green);
+}
+.ic-teal {
+  color: var(--ic-teal);
+}
+.ic-gray {
+  color: var(--ic-gray);
+}
+.menu-item:hover .ic,
+.ctx button:hover .ic,
+.folder.drop .ic {
+  color: #fff;
+}
+@media (prefers-reduced-motion: reduce) {
+  .row-actions button:hover {
+    transform: none;
   }
 }
