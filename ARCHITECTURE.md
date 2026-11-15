@@ -36,3 +36,9 @@ Requirements, scope and open questions live in `REQUIREMENTS.md`.
 - ⚠️ Data residency: confirm whether mail content may be cached server-side or must stay on-device only. Default until confirmed: **on-device only**; relay forwards change notifications (historyId), never message bodies.
 - Google Cloud project + Internal OAuth consent screen (Workspace admin required).
 - Hosting target for static app + relay.
+
+## Phase 1 hosting and security (confirmed: Vercel)
+- Static SPA on Vercel; serverless functions only for OAuth code exchange, token refresh, and Pub/Sub push relay.
+- No message bodies pass through or persist on the server. No body logging.
+- Refresh tokens encrypted at rest, per user.
+- Shared mailboxes: see `REQUIREMENTS.md` Risks (⚠️ shared password is not recommended).

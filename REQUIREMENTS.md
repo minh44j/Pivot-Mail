@@ -73,9 +73,22 @@ Today: staff leave the mailbox, open **Pivot OS → Reference Generator**, enter
 - Mobile-first responsive: panes collapse to single-column navigation on small screens.
 - Keyboard shortcuts, density options, accessible contrast.
 
+## Phase 1 decisions (confirmed)
+- Shared mailboxes today use a **shared password/login**. Workspace admin = Minh (can create Internal OAuth app, grant scopes).
+- Hosting: **Vercel** (static SPA + small serverless functions for OAuth token exchange / push relay).
+- Outlook parity in v1: **conversation threading toggle**, **drafts autosave + per-account signatures**, **desktop notifications + unread badges**. Not in v1: focused/priority sorting (pin/flag/sort by sender may follow).
+
+## Risks (Phase 1)
+| Risk | Detail | Mitigation |
+|---|---|---|
+| Shared password login | No per-user audit trail; password sharing; 2FA/verification codes tied to one person; Google may flag concurrent sign-ins | ⚠️ Recommend migrating shared mailboxes to **delegated access** or a **Google Group collaborative inbox**; treat each shared mailbox as an account in Pivot Mail |
+| Gmail API and delegation | Delegates cannot use their own OAuth token to read another user's mailbox via the API; a service account with domain-wide delegation can, but it is highly privileged | ⚠️ Verify with Google docs/specialist. If used: keep key server-side only, restrict scopes, log every access |
+| Vercel and mail data | Serverless functions must not log or persist message bodies | Bodies stay in browser cache; functions handle tokens/notifications only |
+| Token storage | Refresh tokens are long-lived secrets | Encrypt at rest, server-side only, per-user, revocable |
+
 ## Open questions
 1. ⚠️ Pivot Travel Management reference form: prefix, fields, format. Also confirm yearly reset, timezone, and how to read the current Pivot OS counter and history for migration.
 2. ⚠️ Data residency: DB now stores case metadata. Do message bodies stay on-device only? (Default: yes.)
-3. Shared mailbox method: Workspace delegation, Google Group collaborative inbox, or separate accounts?
+3. Shared mailbox method: confirm migration from shared password to delegation or Google Group (see Risks).
 4. Case lifecycle: statuses (open/pending/closed), ownership, and who may create/merge/split.
 5. Drive: one root folder per company, with a subfolder per reference?
