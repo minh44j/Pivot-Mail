@@ -2,28 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Density, Row } from '../types'
 import { formatListTime, groupLabel } from '../util'
 import { useSettings } from '../settings'
+import { SMART } from '../smart'
+import type { SmartKey } from '../smart'
 import { Icon } from './Icon'
-
-/** Phones and narrow windows get taller rows so the touch-sized buttons fit. */
-function useNarrow(): boolean {
-  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 899px)').matches)
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 899px)')
-    const on = () => setNarrow(mq.matches)
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [])
-  return narrow
-}
 
 interface Props {
   rows: Row[]
   selectedId: string | null
   density: Density
-  unreadOnly: boolean
+  smart: SmartKey[]
+  smartCounts: Record<SmartKey, number>
+  showSmart: boolean
+  onToggleSmart: (k: SmartKey) => void
   title: string
   subtitle: string
-  onUnreadOnly: (v: boolean) => void
   onSelect: (id: string) => void
   onBack: () => void
   onContext: (id: string, x: number, y: number) => void
@@ -36,13 +28,12 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
+export function MessageList({ rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, onSelect, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
-  const narrow = useNarrow()
-  const rowH = density === 'compact' ? (narrow ? 64 : 52) : narrow ? 88 : 72
+  const rowH = density === 'compact' ? 52 : 72
   const headH = 28
 
   const items = useMemo<Item[]>(() => {
@@ -103,15 +94,21 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
           {title}
           <small>{subtitle}</small>
         </h2>
-        <div className="seg" role="group" aria-label="Filter">
-          <button type="button" className={!unreadOnly ? 'on' : ''} onClick={() => onUnreadOnly(false)}>
-            All
-          </button>
-          <button type="button" className={unreadOnly ? 'on' : ''} onClick={() => onUnreadOnly(true)}>
-            Unread
-          </button>
-        </div>
       </header>
+      {showSmart && (
+        <div className="smart-row" role="group" aria-label="Smart categories">
+          {SMART.map((d) => {
+            const on = smart.includes(d.id)
+            const n = smartCounts[d.id]
+            return (
+              <button key={d.id} type="button" className={`smart-chip${on ? ' on' : ''}`} aria-pressed={on} aria-label={`${d.label}, ${n} message${n === 1 ? '' : 's'}`} onClick={() => onToggleSmart(d.id)} style={{ ['--dot' as string]: `var(${d.dot})` }}>
+                <i aria-hidden="true" />
+                {d.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
       <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="list" aria-label="Messages" tabIndex={0}>
         {rows.length === 0 ? (
           <div className="empty">{emptyText}</div>
@@ -158,13 +155,13 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       <button data-tone="red" type="button" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
                         <Icon name="trash" size={15} />
                       </button>
-                      <button data-tone="purple" type="button" className="ra-extra" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
+                      <button data-tone="purple" type="button" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
                         <Icon name="archive" size={15} />
                       </button>
                       <button data-tone="orange" type="button" aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
                         <Icon name="flag" size={15} />
                       </button>
-                      <button data-tone="blue" type="button" className="ra-extra" aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
+                      <button data-tone="blue" type="button" aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
                         <Icon name="eye" size={15} />
                       </button>
                       <button data-tone="gray"
@@ -185,6 +182,16 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       {msg.attachments.length > 0 && (
                         <span className="icon-inline" role="img" aria-label={`${msg.attachments.length} attachment(s)`}>
                           <Icon name="clip" size={14} />
+                        </span>
+                      )}
+                      {msg.important && (
+                        <span className="icon-inline" role="img" aria-label="Important">
+                          <Icon name="important" size={14} tone="red" />
+                        </span>
+                      )}
+                      {msg.flagged && (
+                        <span className="icon-inline" role="img" aria-label="Flagged">
+                          <Icon name="flag" size={14} tone="orange" />
                         </span>
                       )}
                       {msg.colour && (

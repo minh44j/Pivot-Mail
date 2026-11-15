@@ -53,7 +53,8 @@ export const SHORTCUTS: ShortcutGroup[] = [
     items: [
       { keys: ['Ctrl+Q'], desc: 'Mark as read' },
       { keys: ['Ctrl+U'], desc: 'Mark as unread' },
-      { keys: ['Insert'], desc: 'Flag or remove flag' },
+      { keys: ['Insert'], desc: 'Flag for follow up, or remove' },
+      { keys: ['Ctrl+Shift+1'], desc: 'Mark as important, or remove' },
       { keys: ['Ctrl+Alt+1…6'], desc: 'Apply colour category 1 to 6' },
       { keys: ['Ctrl+Alt+0'], desc: 'Clear colour category' },
     ],

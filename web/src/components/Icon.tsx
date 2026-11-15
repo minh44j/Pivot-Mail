@@ -31,6 +31,7 @@ const PATHS = {
   link: 'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1|M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1',
   clearFormat: 'M7 4h12|M13 4l-3 7|M4 20L20 4|M10 14l-1 6',
   more: 'M4.5 12h1.4|M11.3 12h1.4|M18.1 12h1.4',
+  important: 'M12 4v10|M12 19h.01',
   hash: 'M5 9h14|M5 15h14|M10 4L8 20|M16 4l-2 16',
   expand: 'M15 3h6v6|M9 21H3v-6|M21 3l-7 7|M3 21l7-7',
   collapse: 'M4 14h6v6|M20 10h-6V4|M14 10l7-7|M3 21l7-7',

@@ -20,6 +20,8 @@ import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
 import { SettingsContext, mergeColours } from './settings'
 import { MOD } from './shortcuts'
+import { SMART, smartMatches } from './smart'
+import type { SmartKey } from './smart'
 import { FolderJump } from './components/FolderJump'
 import { ShortcutHelp } from './components/ShortcutHelp'
 
@@ -74,7 +76,8 @@ export default function App() {
   const accountId = sel.accountId
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [unreadOnly, setUnreadOnly] = useState(false)
+  const [smart, setSmart] = useState<SmartKey[]>([])
+  const [showSmart, setShowSmart] = usePersisted<boolean>('pm.smart', true, (v) => v === 'true' || v === 'false')
   const [threaded, setThreaded] = usePersisted<boolean>('pm.threaded', true, (v) => v === 'true' || v === 'false')
   const [pane, setPane] = usePersisted<PaneLayout>('pm.pane', 'right', (v) => ['right', 'bottom', 'off'].includes(v))
   const [density, setDensity] = usePersisted<Density>('pm.density', 'comfortable', (v) => v === 'comfortable' || v === 'compact')
@@ -160,13 +163,19 @@ export default function App() {
     [customTemplates, colourNames],
   )
 
+  const [now] = useState(() => new Date())
+  /** Messages of the open folder or label, before search and smart filters. */
+  const scope = useMemo(
+    () => messages.filter((m) => m.accountId === accountId && (sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id))),
+    [messages, accountId, sel],
+  )
+  const smartCounts = useMemo(() => Object.fromEntries(SMART.map((d) => [d.id, scope.filter((m) => d.test(m, now)).length])) as Record<SmartKey, number>, [scope, now])
+  const toggleSmart = (k: SmartKey) => setSmart((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
+
   const rows = useMemo<Row[]>(() => {
     const parsed = parseQuery(query)
-    const inScope = messages.filter((m) => {
-      if (m.accountId !== accountId) return false
-      if (sel.kind === 'folder' ? m.folder !== sel.id : m.folder !== 'inbox' || !m.labels.includes(sel.id)) return false
-      return matchesQuery(m, parsed) && (!unreadOnly || m.unread)
-    })
+    const active = new Set(smart)
+    const inScope = scope.filter((m) => matchesQuery(m, parsed) && smartMatches(m, active, now))
     inScope.sort((a, b) => b.date.localeCompare(a.date))
     if (!threaded) return inScope.map((msg) => ({ msg, count: 1, unread: msg.unread }))
     const byThread = new Map<string, Row>()
@@ -179,7 +188,7 @@ export default function App() {
       }
     }
     return Array.from(byThread.values())
-  }, [messages, accountId, sel, query, unreadOnly, threaded])
+  }, [scope, query, smart, now, threaded])
 
   const selectedRow = rows.find((r) => r.msg.id === selectedId)
   const thread = useMemo<Message[]>(() => {
@@ -317,6 +326,7 @@ export default function App() {
       { type: 'sep' },
       { type: 'item', label: m.unread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => patch(ids, { unread: !m.unread }) },
       { type: 'item', label: m.flagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => patch(ids, { flagged: !m.flagged }) },
+      { type: 'item', label: m.important ? 'Remove importance' : 'Mark as important', icon: 'important', tone: 'red', onSelect: () => patch(ids, { important: !m.important }) },
       { type: 'head', label: 'Colour category' },
       { type: 'swatches', current: m.colour, onPick: (c) => patch(ids, { colour: c }) },
       { type: 'sep' },
@@ -334,7 +344,10 @@ export default function App() {
     setSel(s)
     setSelectedId(null)
     setView('list')
-    window.setTimeout(() => document.querySelector<HTMLElement>('.scroller')?.focus(), 0)
+    // Focus the list, unless a dialog opened in the meantime (fast typists).
+    window.setTimeout(() => {
+      if (!document.querySelector('[role="dialog"]')) document.querySelector<HTMLElement>('.scroller')?.focus()
+    }, 0)
   }
 
   // Keyboard shortcuts (Outlook style). The full list is in src/shortcuts.ts.
@@ -400,7 +413,11 @@ export default function App() {
       }
       const colourKey = /^Digit[0-6]$/.test(e.code) ? Number(e.code.slice(5)) : -1
 
-      if (mod && e.altKey && colourKey >= 0) {
+      if (mod && e.shiftKey && !e.altKey && e.code === 'Digit1') {
+        if (!selectedRow) return
+        e.preventDefault()
+        patch(thread.map((m) => m.id), { important: !selectedRow.msg.important })
+      } else if (mod && e.altKey && colourKey >= 0) {
         if (!selectedRow) return
         e.preventDefault()
         const c = colourKey === 0 ? undefined : settingsValue.colours[colourKey - 1]
@@ -461,7 +478,9 @@ export default function App() {
       } else if (k === 'Enter' && selectedRow) {
         e.preventDefault()
         setView('read')
-        window.setTimeout(() => document.querySelector<HTMLElement>('.reader-scroll')?.focus(), 0)
+        window.setTimeout(() => {
+          if (!document.querySelector('[role="dialog"]')) document.querySelector<HTMLElement>('.reader-scroll')?.focus()
+        }, 0)
       } else if (k === 'Delete' && selectedRow) {
         e.preventDefault()
         moveSelected('deleted', 'Moved to Deleted Items')
@@ -501,6 +520,11 @@ export default function App() {
           onPane={setPane}
           density={density}
           onDensity={setDensity}
+          showSmart={showSmart}
+          onShowSmart={(v) => {
+            setShowSmart(v)
+            if (!v) setSmart([])
+          }}
           notifications={notif}
           onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
           onBack={() => setScreen('mail')}
@@ -528,7 +552,7 @@ export default function App() {
     )
   }
 
-  const emptyText = query.trim() ? `No results for “${query.trim()}”` : unreadOnly ? 'No unread messages' : 'Nothing in this folder'
+  const emptyText = query.trim() ? `No results for “${query.trim()}”` : smart.length > 0 ? 'No messages match these filters' : 'Nothing in this folder'
 
   return (
     <SettingsContext.Provider value={settingsValue}>
@@ -575,10 +599,12 @@ export default function App() {
           rows={rows}
           selectedId={selectedId}
           density={density}
-          unreadOnly={unreadOnly}
+          smart={showSmart ? smart : []}
+          smartCounts={smartCounts}
+          showSmart={showSmart}
+          onToggleSmart={toggleSmart}
           title={title}
           subtitle={ACCOUNTS.find((a) => a.id === accountId)?.email ?? ''}
-          onUnreadOnly={setUnreadOnly}
           onSelect={select}
           onBack={() => setView('folders')}
           onContext={(id, x, y) => {

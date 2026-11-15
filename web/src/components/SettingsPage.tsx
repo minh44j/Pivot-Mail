@@ -25,6 +25,8 @@ interface Props {
   onPane: (p: PaneLayout) => void
   density: Density
   onDensity: (d: Density) => void
+  showSmart: boolean
+  onShowSmart: (v: boolean) => void
   notifications: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
   onBack: () => void
@@ -198,6 +200,9 @@ export function SettingsPage(p: Props) {
               </h2>
               <Row title="Group messages by conversation" hint="Show a thread as one line in the message list.">
                 <Switch checked={p.threaded} onChange={p.onThreaded} label="Group messages by conversation" />
+              </Row>
+              <Row title="Smart categories" hint="Show one-click filters above the message list: Unread, Important, Follow up, Attachments, Today.">
+                <Switch checked={p.showSmart} onChange={p.onShowSmart} label="Show smart categories" />
               </Row>
               <Row title="Reading pane">
                 <Segmented

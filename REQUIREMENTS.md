@@ -154,3 +154,9 @@ Not built: Google sign-in and Gmail sync, safe HTML message viewer, search sugge
 
 ## Keyboard shortcuts (built)
 Outlook-style shortcuts for search, list navigation, delete/archive/undo, read/flag/category, reply/forward, go-to and move-to folder, composer, and a help dialog (Ctrl+/ or ?). List in `web/src/shortcuts.ts`. Browser-reserved keys (Ctrl+N/T/W) need the desktop wrapper; N and Ctrl+Shift+M are the web alternatives. Forward is Ctrl+J because Ctrl+F is search. ⚠️ Confirm any Outlook shortcuts that differ for your team before the desktop version.
+
+## Smart categories (built, optional)
+Filter chips above the message list: Unread, Important, Follow up, Attachments, Today. They are views over the open folder (not folders), combine with AND, and can be switched off in Settings. Important is a per-conversation mark (Ctrl+Shift+1 or right-click); Follow up = flagged. ⚠️ Confirm whether Important should later be suggested automatically.
+
+## Message row design (current)
+Sender bold when unread; subject medium weight; preview muted grey; time right aligned; small green dot for unread; flag, important mark, attachment and colour dot shown only when they apply; Delete, Archive, Flag, Read/Unread and More appear only on hover or keyboard focus (hidden on touch screens; the reading pane has Delete, Flag and Read/Unread there).

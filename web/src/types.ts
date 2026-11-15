@@ -36,6 +36,7 @@ export interface Message {
   date: string
   unread: boolean
   flagged: boolean
+  important?: boolean
   colour?: Colour
   attachments: Attachment[]
 }

@@ -44,19 +44,20 @@ interface Seed {
   ago: number
   unread?: boolean
   flagged?: boolean
+  important?: boolean
   colour?: Message['colour']
   files?: Attachment[]
 }
 
 const seeds: Seed[] = [
-  { id: 'm1', thread: 't1', account: 'ops', labels: ['Clients'], cc: ['accounts@pivot.example', 'sales@pivot.example'], from: P.acme, subject: 'Booking request – 2×40HQ machinery', body: 'Hello,\n\nWe would like to book 2×40HQ of machinery from the origin port to the destination port. Cargo is ready.\n\nPlease share your best rate and transit time.\n\nThanks,\nHana', ago: 8, unread: true, colour: 'orange', files: [att('a1', 'packing-list.pdf', 184_000), att('a2', 'commercial-invoice.pdf', 226_000)] },
+  { id: 'm1', thread: 't1', account: 'ops', labels: ['Clients'], cc: ['accounts@pivot.example', 'sales@pivot.example'], important: true, from: P.acme, subject: 'Booking request – 2×40HQ machinery', body: 'Hello,\n\nWe would like to book 2×40HQ of machinery from the origin port to the destination port. Cargo is ready.\n\nPlease share your best rate and transit time.\n\nThanks,\nHana', ago: 8, unread: true, colour: 'orange', files: [att('a1', 'packing-list.pdf', 184_000), att('a2', 'commercial-invoice.pdf', 226_000)] },
   { id: 'm2', thread: 't2', account: 'ops', labels: ['Vendors'], from: P.blue, subject: 'Vessel schedule update', body: 'Dear team,\n\nPlease note the vessel schedule has changed. Updated cut-off and ETA are in the attached sheet.\n\nRegards,\nLiam', ago: 35, unread: true, flagged: true, files: [att('a3', 'schedule-update.xlsx', 48_000)] },
-  { id: 'm3', thread: 't3', account: 'ops', labels: ['Clients'], from: P.cust, subject: 'Customs clearance – documents pending', body: 'Hi,\n\nWe are waiting for the original documents to complete clearance. Please confirm when they are couriered.\n\nDiego', ago: 95, unread: true, colour: 'red' },
+  { id: 'm3', thread: 't3', account: 'ops', labels: ['Clients'], important: true, from: P.cust, subject: 'Customs clearance – documents pending', body: 'Hi,\n\nWe are waiting for the original documents to complete clearance. Please confirm when they are couriered.\n\nDiego', ago: 95, unread: true, colour: 'red' },
   { id: 'm4', thread: 't4', account: 'ops', labels: ['Finance'], from: P.fin, subject: 'Statement of account – October', body: 'Dear customer,\n\nPlease find the October statement attached. Kindly arrange settlement per the agreed terms.\n\nAccounts', ago: 180, files: [att('a4', 'statement-oct.pdf', 92_000)] },
   { id: 'm5', thread: 't5', account: 'ops', labels: ['Clients'], cc: ['accounts@pivot.example'], from: P.gulf, subject: 'Re: Delivery order request', body: 'Thanks. Please issue the delivery order as discussed.\n\nSara', ago: 300, colour: 'green' },
   { id: 'm5b', thread: 't5', account: 'ops', labels: ['Clients'], from: P.gulf, subject: 'Delivery order request', body: 'Hello,\n\nCould you please issue the delivery order for the shipment arriving tomorrow?\n\nSara', ago: 1500, colour: 'green' },
   { id: 'm5c', thread: 't5', account: 'ops', folder: 'sent', labels: ['Clients'], from: { name: 'Operations', email: 'ops@pivot.example' }, to: 'sara@gulfcargo.example', subject: 'Re: Delivery order request', body: 'Hi Sara,\n\nWe will issue it once the release is confirmed.\n\nOperations Desk', ago: 1400 },
-  { id: 'm6', thread: 't6', account: 'ticketing', from: P.trip, subject: 'Group travel – 12 passengers', body: 'Hello,\n\nWe need a quotation for 12 passengers travelling next month. Passport copies are attached.\n\nPriya', ago: 12, unread: true, colour: 'blue', files: [att('a5', 'passports.pdf', 1_240_000), att('a6', 'travel-request.xlsx', 36_000)] },
+  { id: 'm6', thread: 't6', account: 'ticketing', important: true, from: P.trip, subject: 'Group travel – 12 passengers', body: 'Hello,\n\nWe need a quotation for 12 passengers travelling next month. Passport copies are attached.\n\nPriya', ago: 12, unread: true, colour: 'blue', files: [att('a5', 'passports.pdf', 1_240_000), att('a6', 'travel-request.xlsx', 36_000)] },
   { id: 'm7', thread: 't7', account: 'ticketing', from: P.sky, subject: 'Fare rules clarification', body: 'Dear team,\n\nPlease confirm the change and refund rules on the booking in question.\n\nNoor', ago: 140, unread: true },
   { id: 'm8', thread: 't8', account: 'ticketing', from: P.trip, subject: 'Re: Itinerary approval', body: 'Approved. Please proceed with ticketing.\n\nPriya', ago: 420, colour: 'purple' },
   { id: 'm9', thread: 't9', account: 'me', labels: ['Clients'], from: P.acme, subject: 'Quarterly review meeting', body: 'Hello,\n\nCan we schedule the quarterly review next week? Please share your availability.\n\nHana', ago: 60, unread: true },
@@ -82,6 +83,7 @@ const mapped: Message[] = seeds.map((s) => ({
   date: minutesAgo(s.ago),
   unread: s.unread ?? false,
   flagged: s.flagged ?? false,
+  important: s.important ?? false,
   colour: s.colour,
   attachments: s.files ?? [],
 }))

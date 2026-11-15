@@ -64,6 +64,7 @@ export function FolderJump({ mode, accounts, labels, accountId, onPick, onClose 
       <div className="modal jump" role="dialog" aria-modal="true" aria-label={mode === 'go' ? 'Go to folder' : 'Move to folder'}>
         <input
           ref={input}
+          autoFocus
           className="jump-input"
           value={text}
           placeholder={mode === 'go' ? 'Go to folder…' : 'Move to folder…'}
