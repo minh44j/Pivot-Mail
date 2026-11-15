@@ -7,7 +7,7 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 
 | # | Step | Where | Notes |
 |---|------|-------|-------|
-| 0 | Decide the Workspace layout | Decision | Are Pivot Travel Management and Pivot Shipping **one** Workspace organisation or **two**? An Internal app works only inside one organisation. Two organisations means two Cloud projects (one each) or an External app with a test-user list. |
+| 0 ✅ | Workspace layout (decided) | Decision | pivottmc.com and pivotscl.com are **two** Workspaces. Decision: **two Internal Cloud projects**, one per Workspace, two OAuth Client IDs. The app picks the Client ID from the email domain. Steps 1 to 7 are done once in each Workspace. |
 | 1 | Create Cloud project "Pivot Mail" under the company organisation | console.cloud.google.com | Use a company admin account, not a personal Gmail. Enable billing only if Pub/Sub is used later (⚠️ verify free tier). |
 | 2 | Enable APIs: Gmail API, People API, Cloud Pub/Sub API (later: Drive API) | APIs & Services → Library | Drive is for the later Google Drive integration. |
 | 3 | OAuth consent screen: user type **Internal** | APIs & Services → OAuth consent screen | App name Pivot Mail, support email, logo from `brand/`. Internal skips Google's public verification (⚠️ verify). |
@@ -33,13 +33,19 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 | 6 | Hardening | Security review (HTML sanitiser, OAuth, storage), accessibility and keyboard audit, backups, pilot with 3 staff for 2 weeks | Pilot users | No blocking issues from the pilot |
 | 7 | Rollout and desktop | Roll out to all staff on the web; then Tauri or Electron wrapper, code-signing, auto-update | Apple and Windows developer accounts (⚠️ verify current costs) | Installers for Windows and Mac |
 
+### Multiple accounts (design)
+- An **account** is one Google sign-in (a person or a shared mailbox) on one of the two domains. A **mailbox** is what shows in the sidebar.
+- "Add account" opens Google sign-in for the matching company; the token is stored per account, server-side and encrypted, and the sidebar gains that mailbox.
+- Only `@pivottmc.com` and `@pivotscl.com` addresses are accepted. Remove account signs out and deletes that account's local copy.
+- Shared mailboxes are added the same way (delegation, or signing in to the shared account).
+
 ### Rules that run through every phase
 - Message bodies stay on the device; the server holds only account, role, case and analytics metadata.
 - Each phase ships to the live site behind a preview flag, so the sample-data preview stays available until phase 3 is trusted.
 - Deleting mail uses Gmail Trash (recoverable) and is never permanent by default.
 
 ### Open decisions
-1. One or two Workspace organisations (step 0).
+1. ~~One or two Workspace organisations~~ Decided: two (pivottmc.com, pivotscl.com), two Internal projects.
 2. Shared-mailbox method (step 8).
 3. First-sync window (step 10).
 4. Reference number rules: digit count and year for PS and PT, confirmed with Pivot OS.
