@@ -2534,3 +2534,37 @@ code {
     min-height: 40px;
   }
 }
+
+/* desktop toolbar shares the column grid of the workspace: logo over the sidebar, search over the message list */
+@media (min-width: 900px) {
+  .toolbar {
+    display: grid;
+    grid-template-columns: 240px minmax(320px, 400px) minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  .toolbar .logo-bar {
+    grid-column: 1;
+    justify-self: start;
+    margin-left: var(--gutter);
+  }
+  .toolbar .tb-search {
+    grid-column: 2;
+    width: auto;
+    margin: 0 var(--gutter);
+  }
+  .toolbar .tb-search:focus-within {
+    width: auto;
+  }
+  .toolbar .tb-scroll {
+    grid-column: 3;
+    margin-left: 0;
+    padding: 0 8px;
+  }
+  .toolbar .tb-new {
+    grid-column: 4;
+    margin-right: var(--gutter);
+  }
+}
