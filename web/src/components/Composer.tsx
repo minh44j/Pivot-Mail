@@ -19,6 +19,7 @@ interface Props {
   accounts: Account[]
   pendingTemplate: Template | null
   onTemplateUsed: () => void
+  offline?: boolean
   onSend: (d: ComposeInit) => void
   onClose: () => void
   onToast: (m: string) => void
@@ -72,7 +73,7 @@ function FBtn(props: { label: string; active?: boolean; onClick: () => void; ico
   )
 }
 
-export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
+export function Composer({ init, accounts, offline, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
@@ -312,6 +313,10 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
     const bad = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => t.trim()).filter(Boolean).filter((t) => !EMAIL_RE.test(bareAddress(t)))
     if (bad.length > 0) {
       onToast(`Fix the highlighted address: ${bad[0]}`)
+      return
+    }
+    if (offline) {
+      onToast('You are offline. Your message is kept as a draft. Press Send again once you are back online.')
       return
     }
     finished.current = true

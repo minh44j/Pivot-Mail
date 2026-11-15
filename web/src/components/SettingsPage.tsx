@@ -7,7 +7,10 @@ import { mergeColours } from '../settings'
 import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
-type Section = 'general' | 'signatures' | 'templates' | 'colours'
+import { PROBLEMS } from '../problems'
+import type { Problem } from '../problems'
+
+type Section = 'general' | 'signatures' | 'templates' | 'colours' | 'problems'
 
 interface Props {
   role: 'admin' | 'staff'
@@ -30,6 +33,8 @@ interface Props {
   notifications: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
   onBack: () => void
+  sim: Problem | null
+  onSim: (p: Problem | null) => void
   onToast: (m: string) => void
 }
 
@@ -38,6 +43,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'signatures', label: 'Signatures' },
   { id: 'templates', label: 'Templates' },
   { id: 'colours', label: 'Colour categories' },
+  { id: 'problems', label: 'Problem states' },
 ]
 
 function Switch(props: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
@@ -233,6 +239,27 @@ export function SettingsPage(p: Props) {
               >
                 <button type="button" className="btn" disabled={p.notifications !== 'default'} onClick={p.onEnableNotifications}>
                   Turn on
+                </button>
+              </Row>
+            </section>
+          )}
+
+          {section === 'problems' && (
+            <section className="card" aria-labelledby="h-prob">
+              <h2 id="h-prob" className="card-title">
+                Preview problem states
+              </h2>
+              <p className="muted">See how Pivot Mail behaves when something goes wrong. Nothing is changed on your account. Full-screen states offer their own way back.</p>
+              {PROBLEMS.map((pr) => (
+                <Row key={pr.id} title={pr.label} hint={pr.hint}>
+                  <button type="button" className="btn" aria-pressed={p.sim === pr.id} onClick={() => p.onSim(pr.id)}>
+                    Show
+                  </button>
+                </Row>
+              ))}
+              <Row title="Back to normal" hint={p.sim ? `Currently showing: ${PROBLEMS.find((x) => x.id === p.sim)?.label}` : 'No problem is being simulated'}>
+                <button type="button" className="btn" disabled={!p.sim} onClick={() => p.onSim(null)}>
+                  Clear
                 </button>
               </Row>
             </section>

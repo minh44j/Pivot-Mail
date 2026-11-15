@@ -26,6 +26,7 @@ interface Props {
   onContext: (id: string, x: number, y: number) => void
   onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
   emptyText: string
+  error?: { onRetry: () => void; busy: boolean }
   sync: { state: 'synced' | 'syncing' | 'offline'; last: Date }
   onSync: () => void
 }
@@ -33,7 +34,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -128,7 +129,15 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
         </div>
       )}
       <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="list" aria-label="Messages" tabIndex={0}>
-        {rows.length === 0 ? (
+        {error ? (
+          <div className="empty list-error" role="alert">
+            <strong>Couldn't load this folder</strong>
+            <span>Your mail is safe. Check your connection and try again.</span>
+            <button type="button" className="btn" onClick={error.onRetry} disabled={error.busy}>
+              {error.busy ? 'Retrying…' : 'Retry'}
+            </button>
+          </div>
+        ) : rows.length === 0 ? (
           <div className="empty">{emptyText}</div>
         ) : (
           <div style={{ height: offsets.total, position: 'relative' }}>

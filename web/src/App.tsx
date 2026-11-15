@@ -3,6 +3,8 @@ import type { Account, Attachment, Colour, ComposeInit, Density, MobileView, Mes
 import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
+import { StatusBanner, StatusScreen } from './components/StatusBanner'
+import type { Problem } from './problems'
 import { FolderDialog } from './components/FolderDialog'
 import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
@@ -116,7 +118,11 @@ export default function App() {
   const [customTemplates, setCustomTemplates] = useStored<Template[]>('pm.templates', [], isTemplates)
   const [colourNames, setColourNames] = useStored<Record<string, string>>('pm.colours', {}, isRecord)
   const [role, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
-  const [online, setOnline] = useState(() => navigator.onLine)
+  const [netOnline, setOnline] = useState(() => navigator.onLine)
+  const [sim, setSim] = useState<Problem | null>(null)
+  const [retrying, setRetrying] = useState(false)
+  const [wait, setWait] = useState(30)
+  const online = netOnline && sim !== 'offline'
   const [syncing, setSyncing] = useState(false)
   const [lastSync, setLastSync] = useState(() => new Date())
 
@@ -327,6 +333,30 @@ export default function App() {
     if (!last) return
     openCompose({ subject: /^fwd?:/i.test(last.subject) ? last.subject : `Fwd: ${last.subject}`, body: quote(last), attachments: last.attachments })
   }
+
+  const retry = () => {
+    if (retrying) return
+    setRetrying(true)
+    window.setTimeout(() => {
+      setRetrying(false)
+      setSim((s) => (s === 'syncfail' || s === 'ratelimit' || s === 'listerror' ? null : s))
+      setLastSync(new Date())
+      showToast('Back in sync')
+    }, 1000)
+  }
+  useEffect(() => {
+    if (sim !== 'ratelimit') return
+    let left = 30
+    const t = window.setInterval(() => {
+      left -= 1
+      setWait(left)
+      if (left <= 0) setSim(null)
+    }, 1000)
+    return () => {
+      window.clearInterval(t)
+      setWait(30)
+    }
+  }, [sim])
 
   const syncNow = () => {
     if (!online || syncing) return
@@ -700,6 +730,10 @@ export default function App() {
 
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
 
+  if (sim === 'expired' || sim === 'denied') {
+    return <StatusScreen kind={sim} account={ACCOUNTS[0]?.email ?? ''} onAction={() => setSim(null)} />
+  }
+
   if (screen === 'settings') {
     return (
       <SettingsContext.Provider value={settingsValue}>
@@ -727,6 +761,11 @@ export default function App() {
           notifications={notif}
           onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
           onBack={() => setScreen('mail')}
+          sim={sim}
+          onSim={(p) => {
+            setSim(p)
+            if (p) setScreen('mail')
+          }}
           onToast={showToast}
         />
         {toast && (
@@ -755,7 +794,7 @@ export default function App() {
 
   return (
     <SettingsContext.Provider value={settingsValue}>
-    <div className="app" data-density={density}>
+    <div className={`app${sim === 'offline' || !netOnline || sim === 'syncfail' || sim === 'ratelimit' ? ' has-banner' : ''}`} data-density={density}>
       <Toolbar
         query={query}
         onQuery={setQuery}
@@ -788,6 +827,9 @@ export default function App() {
         onHelp={() => setHelp(true)}
         registerSearch={setSearchEl}
       />
+      {(!online || sim === 'syncfail' || sim === 'ratelimit') && (
+        <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
+      )}
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
           accounts={ACCOUNTS}
@@ -826,6 +868,7 @@ export default function App() {
           }}
           onRowAction={rowAction}
           emptyText={emptyText}
+          error={sim === 'listerror' ? { onRetry: retry, busy: retrying } : undefined}
           sync={{ state: !online ? 'offline' : syncing ? 'syncing' : 'synced', last: lastSync }}
           onSync={syncNow}
         />
@@ -868,6 +911,7 @@ export default function App() {
           key={composeKey}
           init={compose}
           accounts={accounts}
+          offline={!online}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
           onSend={() => {

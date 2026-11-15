@@ -183,3 +183,9 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - Custom folders are per mailbox: New folder, Rename, Delete (confirmation), drag to reorder, or Move up/down from the folder menu (right-click or ⋯).
 - Rename updates the label on all messages; delete removes only the label, never mail. Names: 1–40 characters, unique per mailbox, no `, / \`, system names reserved.
 - Stored per browser (`pm.folders`) for now; Gmail labels will back this when sync is connected. ⚠️ Verify: Gmail uses "/" for nested labels, so nesting is a later decision.
+
+## Problem states (status: built in preview)
+- Slim banner under the toolbar: Offline (sending waits, reading and organising continue), Sync failed (Retry), Rate limited (30 s countdown, Retry now).
+- List load error with Retry. Full-screen Session expired (Sign in again) and Access denied (Use a different account).
+- Settings → Problem states simulates each one for review. Real triggers (network, Gmail API 401/403/429) arrive with the sync layer.
+- ⚠️ Verify: Gmail API quota and error codes against Google's current documentation when the sync layer is built.
