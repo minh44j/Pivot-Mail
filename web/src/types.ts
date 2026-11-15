@@ -33,6 +33,8 @@ export interface Message {
   cc?: Person[]
   subject: string
   body: string
+  /** Original HTML body, shown only after sanitising (see mailhtml.ts) */
+  html?: string
   date: string
   unread: boolean
   flagged: boolean

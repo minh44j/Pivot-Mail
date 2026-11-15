@@ -166,3 +166,9 @@ Each attachment shows a type icon (PDF, spreadsheet, Word, presentation, HTML, i
 
 ## Copy email
 Right-click a conversation, then Copy email (or Ctrl+C with a message selected and nothing highlighted). Pasting into the composer inserts the From/Sent/To/Cc/Subject block and text, with no side bar; other apps get text/html and text/plain.
+
+## Safe HTML viewer and trimmed history (status: built in preview)
+- HTML mail is rebuilt from an allow-list (`web/src/mailhtml.ts`), shown in a sandboxed iframe with a CSP (no scripts, forms or network except https images).
+- Remote images are blocked until "Load images" is pressed (tracking protection). Links open in a new tab; non-http(s)/mailto/tel links are removed; links whose text shows a different host are outlined.
+- Quoted history (blockquote, Gmail quote, Outlook From/Sent block, "On … wrote:", ">" lines) is folded behind "Show trimmed content".
+- ⚠️ Verify with specialist: a security review of the sanitiser is advised before real mail is connected.

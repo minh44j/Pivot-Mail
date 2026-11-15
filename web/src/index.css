@@ -3077,3 +3077,43 @@ kbd {
   display: grid;
   gap: 4px;
 }
+
+/* Message content: sandboxed HTML, trimmed history */
+.msg-content {
+  padding: 0 0 16px 52px;
+}
+.msg-content .msg-body {
+  padding: 4px 0 8px;
+}
+.html-frame {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+.img-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--fill, #f2f2f4);
+  color: var(--label-2, #515154);
+  font-size: 12px;
+}
+.trim-toggle {
+  margin-top: 6px;
+  padding: 2px 8px;
+  border: 1px solid var(--separator, #d2d2d7);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--label-2, #515154);
+  font-size: 12px;
+  cursor: pointer;
+}
+@media (max-width: 760px) {
+  .msg-content {
+    padding-left: 0;
+  }
+}

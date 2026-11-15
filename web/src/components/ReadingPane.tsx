@@ -3,6 +3,7 @@ import type { Attachment, Message } from '../types'
 import { formatFullDate, initials } from '../util'
 import { AttachmentBar } from './AttachmentBar'
 import { Icon } from './Icon'
+import { MessageBody } from './MessageBody'
 
 interface Props {
   messages: Message[]
@@ -99,8 +100,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
               {expanded && (
                 <>
                   <AttachmentBar attachments={m.attachments} zipName={`${m.subject} attachments`} onToast={onToast} onForwardWith={onForwardWith} />
-                  {/* Plain text for now. Real HTML mail will render in a sandboxed iframe after sanitising. */}
-                  <div className="msg-body">{m.body}</div>
+                  <MessageBody msg={m} />
                 </>
               )}
             </article>
