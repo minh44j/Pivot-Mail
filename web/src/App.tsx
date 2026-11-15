@@ -66,6 +66,7 @@ function useStored<T>(key: string, initial: T, valid: (v: unknown) => v is T): [
   return [value, set]
 }
 
+const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
@@ -81,6 +82,9 @@ export default function App() {
   const [picked, setPicked] = useState<string[]>([])
   const anchorId = useRef<string | null>(null)
   const [query, setQuery] = useState('')
+  const [searchAll, setSearchAll] = usePersisted<boolean>('pm.searchall', false, (v) => v === 'true' || v === 'false')
+  const [recent, setRecent] = useStored<string[]>('pm.recent', [], isStrings)
+  const [saved, setSaved] = useStored<string[]>('pm.saved', [], isStrings)
   const [smart, setSmart] = useState<SmartKey[]>([])
   const [showSmart, setShowSmart] = usePersisted<boolean>('pm.smart', true, (v) => v === 'true' || v === 'false')
   const [threaded, setThreaded] = usePersisted<boolean>('pm.threaded', true, (v) => v === 'true' || v === 'false')
@@ -172,11 +176,23 @@ export default function App() {
     [customTemplates, colourNames],
   )
 
+  const commitSearch = useCallback(
+    (q: string) => setRecent([q, ...recent.filter((x) => x !== q)].slice(0, 8)),
+    [setRecent, recent],
+  )
+  const queryChips = useMemo(() => query.split(/\s+/).filter((t) => /^(from|to|subject|label|has|is):\S+/i.test(t)), [query])
+  const removeChip = (tok: string) => setQuery(query.split(/\s+/).filter((t) => t && t !== tok).join(' '))
+
   const [now] = useState(() => new Date())
   /** Messages of the open folder or label, before search and smart filters. */
   const scope = useMemo(
-    () => messages.filter((m) => m.accountId === accountId && (sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id))),
-    [messages, accountId, sel],
+    () =>
+      messages.filter((m) => {
+        if (m.accountId !== accountId) return false
+        if (searchAll && query.trim() !== '') return m.folder !== 'deleted'
+        return sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id)
+      }),
+    [messages, accountId, sel, searchAll, query],
   )
   const smartCounts = useMemo(() => Object.fromEntries(SMART.map((d) => [d.id, scope.filter((m) => d.test(m, now)).length])) as Record<SmartKey, number>, [scope, now])
   const toggleSmart = (k: SmartKey) => setSmart((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
@@ -704,6 +720,13 @@ export default function App() {
       <Toolbar
         query={query}
         onQuery={setQuery}
+        recent={recent}
+        saved={saved}
+        searchAll={searchAll}
+        onSearchAll={setSearchAll}
+        onCommit={commitSearch}
+        onSave={(q) => setSaved([q, ...saved.filter((x) => x !== q)].slice(0, 12))}
+        onRemoveSaved={(q) => setSaved(saved.filter((x) => x !== q))}
         threaded={threaded}
         pane={pane}
         density={density}
@@ -740,6 +763,9 @@ export default function App() {
           onDropMessage={dropMessages}
         />
         <MessageList
+          chips={queryChips}
+          onRemoveChip={removeChip}
+          allFolders={searchAll && query.trim() !== ''}
           rows={rows}
           selectedId={selectedId}
           density={density}

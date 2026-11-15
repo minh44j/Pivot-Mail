@@ -26,7 +26,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
     items: [
       { keys: ['Ctrl+F', 'Ctrl+E', 'F3', '/'], desc: 'Search mail' },
       { keys: ['Esc'], desc: 'Clear search, then return to the list' },
-      { keys: ['↓'], desc: 'From the search box, jump to the results' },
+      { keys: ['↓', '↑', 'Enter'], desc: 'In the search box: pick a suggestion (↓ goes to the results when there are none)' },
       { keys: ['Ctrl+Y', 'Ctrl+G'], desc: 'Go to folder' },
       { keys: ['Ctrl+Shift+I'], desc: 'Go to Inbox' },
       { keys: ['F9'], desc: 'Send / receive (sync now)' },

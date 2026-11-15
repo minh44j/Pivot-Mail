@@ -172,3 +172,9 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - Remote images are blocked until "Load images" is pressed (tracking protection). Links open in a new tab; non-http(s)/mailto/tel links are removed; links whose text shows a different host are outlined.
 - Quoted history (blockquote, Gmail quote, Outlook From/Sent block, "On … wrote:", ">" lines) is folded behind "Show trimmed content".
 - ⚠️ Verify with specialist: a security review of the sanitiser is advised before real mail is connected.
+
+## Search suggestions and filters (status: built in preview)
+- Dropdown under the search box: recent searches (last 8), saved searches (removable), operator suggestions (from:, to:, subject:, label:, has:attachment, is:unread, is:flagged) and contact suggestions after from:/to:.
+- Operators in the query show as removable filter chips above the list.
+- Scope toggle: This folder / All folders (all folders excludes Deleted Items, current mailbox only).
+- Recent and saved searches are stored per browser (`pm.recent`, `pm.saved`); they will move to the user profile with the real backend.

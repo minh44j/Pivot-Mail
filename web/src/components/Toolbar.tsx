@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { MOD } from '../shortcuts'
 import type { Density, PaneLayout } from '../types'
 import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
 import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
+import { SearchBox } from './SearchBox'
 import type { IconName, Tone } from './Icon'
 
 interface Props {
@@ -29,6 +29,13 @@ interface Props {
   onSettings: () => void
   onHelp: () => void
   registerSearch: (el: HTMLInputElement | null) => void
+  recent: string[]
+  saved: string[]
+  searchAll: boolean
+  onSearchAll: (v: boolean) => void
+  onCommit: (q: string) => void
+  onSave: (q: string) => void
+  onRemoveSaved: (q: string) => void
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
@@ -272,28 +279,18 @@ export function Toolbar(p: Props) {
         <span>New mail</span>
       </button>
 
-      <label className="tb-search">
-        <Icon name="search" size={15} />
-        <input
-          ref={(el) => p.registerSearch(el)}
-          type="search"
-          value={p.query}
-          onChange={(e) => p.onQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              e.preventDefault()
-              if (p.query) p.onQuery('')
-              else {
-                e.currentTarget.blur()
-                document.querySelector<HTMLElement>('.scroller')?.focus()
-              }
-            } else if (e.key === 'ArrowDown') {
-              e.preventDefault()
-              document.querySelector<HTMLElement>('.scroller')?.focus()
-            }
-          }}
-          placeholder={`Search  (${MOD}+F)`} aria-label="Search mail. Try from:, to:, subject:, has:attachment, is:unread" />
-      </label>
+      <SearchBox
+        query={p.query}
+        onQuery={p.onQuery}
+        recent={p.recent}
+        saved={p.saved}
+        searchAll={p.searchAll}
+        onSearchAll={p.onSearchAll}
+        onCommit={p.onCommit}
+        onSave={p.onSave}
+        onRemoveSaved={p.onRemoveSaved}
+        registerSearch={p.registerSearch}
+      />
     </header>
   )
 }

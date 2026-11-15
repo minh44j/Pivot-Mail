@@ -7,6 +7,9 @@ import type { SmartKey } from '../smart'
 import { Icon } from './Icon'
 
 interface Props {
+  chips: string[]
+  onRemoveChip: (tok: string) => void
+  allFolders: boolean
   rows: Row[]
   selectedId: string | null
   density: Density
@@ -30,7 +33,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -97,6 +100,19 @@ export function MessageList({ rows, selectedId, density, smart, smartCounts, sho
           <small>{subtitle}</small>
         </h2>
       </header>
+      {(chips.length > 0 || allFolders) && (
+        <div className="smart-row filter-row" role="group" aria-label="Search filters">
+          {allFolders && <span className="filter-chip static">All folders</span>}
+          {chips.map((c) => (
+            <span key={c} className="filter-chip">
+              {c}
+              <button type="button" aria-label={`Remove filter ${c}`} onClick={() => onRemoveChip(c)}>
+                <Icon name="close" size={10} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       {showSmart && (
         <div className="smart-row" role="group" aria-label="Smart categories">
           {SMART.map((d) => {
