@@ -42,3 +42,9 @@ Requirements, scope and open questions live in `REQUIREMENTS.md`.
 - No message bodies pass through or persist on the server. No body logging.
 - Refresh tokens encrypted at rest, per user.
 - Shared mailboxes: see `REQUIREMENTS.md` Risks (⚠️ shared password is not recommended).
+
+## Analytics / admin (requirements in `REQUIREMENTS.md`)
+- Client sends lightweight events (session start, heartbeat every ~30 s while active, session end) with signed-in user ID; stored in the Postgres DB (metadata only).
+- Sent/received counts come from Gmail API metadata aggregation (server job, daily), not message bodies.
+- `/admin/performance` route + API protected by server-side role check; roles table (`admin`, `staff`).
+- Cases-opened metric activates when Phase 2 case DB exists.
