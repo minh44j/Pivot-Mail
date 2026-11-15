@@ -2466,3 +2466,71 @@ code {
   border: 0;
   border-top: 1px solid var(--label-2);
 }
+
+/* composer: compact rows (desktop) */
+@media (min-width: 900px) {
+  .composer-head {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .composer-head .icon-btn {
+    width: 30px;
+    height: 30px;
+  }
+  .composer-bar {
+    padding: 4px var(--gutter);
+  }
+  .composer-bar button,
+  .composer-bar select {
+    min-height: 28px;
+    padding: 0 10px;
+  }
+  .composer-body {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .field,
+  .field-inner {
+    min-height: 30px;
+    gap: 8px;
+  }
+  .field span,
+  .field-inner span {
+    width: 48px;
+    font-size: 12px;
+  }
+  .field input,
+  .field select,
+  .field-inner input {
+    min-height: 28px;
+  }
+  .field .link {
+    min-height: 24px;
+  }
+  .format-bar {
+    padding: 2px 0;
+  }
+  .fbtn {
+    min-width: 28px;
+    height: 28px;
+  }
+  .fchip {
+    min-height: 26px;
+  }
+  .link-row {
+    padding: 4px 0;
+  }
+  .link-row input {
+    min-height: 28px;
+  }
+  .editor {
+    padding: 8px 0;
+  }
+}
+/* composer: slightly tighter on phones too */
+@media (max-width: 899px) {
+  .field,
+  .field-inner {
+    min-height: 40px;
+  }
+}
