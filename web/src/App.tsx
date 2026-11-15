@@ -20,6 +20,7 @@ import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
 import { SettingsContext, mergeColours } from './settings'
 import { MOD } from './shortcuts'
+import { rememberCopiedEmail } from './emailClipboard'
 import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
 import { FolderJump } from './components/FolderJump'
@@ -223,13 +224,30 @@ export default function App() {
     [accountId],
   )
 
+  const sentLabel = (m: Message): string => {
+    const d = new Date(m.date)
+    return `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+  }
   /** Outlook-style quoted message: a rule, a From/Sent/To/Cc/Subject block, then the original text. No side bar. */
   const quote = (m: Message): string => {
-    const d = new Date(m.date)
-    const sent = `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
     const who = (p: Person): string => `${escapeHtml(p.name)} &lt;${escapeHtml(p.email)}&gt;`
     const cc = m.cc && m.cc.length > 0 ? `<br><b>Cc:</b> ${m.cc.map(who).join('; ')}` : ''
-    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sent)}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${textToHtml(m.body)}</div></div>`
+    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sentLabel(m))}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${textToHtml(m.body)}</div></div>`
+  }
+  const plainEmail = (m: Message): string => {
+    const who = (p: Person): string => `${p.name} <${p.email}>`
+    return [`From: ${who(m.from)}`, `Sent: ${sentLabel(m)}`, `To: ${m.to.map(who).join('; ')}`, ...(m.cc && m.cc.length > 0 ? [`Cc: ${m.cc.map(who).join('; ')}`] : []), `Subject: ${m.subject}`, '', m.body].join('\n')
+  }
+  /** Copy the conversation (or the single message when not grouped) with its header blocks. */
+  const copyEmail = async (target?: Message) => {
+    const m = target ?? selectedRow?.msg
+    if (!m) return
+    const msgs = (threaded ? messages.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId) : [m]).sort((p, q) => p.date.localeCompare(q.date))
+    const html = `<div data-pm-email="1">${msgs.map(quote).join('')}</div>`
+    const text = msgs.map(plainEmail).join('\n________________________________\n')
+    rememberCopiedEmail(text, html)
+    const ok = await platform.copyRich(html, text)
+    showToast(ok ? 'Email copied. Paste it into a message with Ctrl+V.' : 'Copy was blocked by the browser')
   }
   const last = thread[thread.length - 1]
   const reply = (all: boolean) => {
@@ -323,6 +341,7 @@ export default function App() {
       { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false) },
       { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true) },
       { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: forward },
+      { type: 'item', label: 'Copy email', icon: 'copy', tone: 'purple', onSelect: () => void copyEmail(m) },
       { type: 'sep' },
       { type: 'item', label: m.unread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => patch(ids, { unread: !m.unread }) },
       { type: 'item', label: m.flagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => patch(ids, { flagged: !m.flagged }) },
@@ -446,6 +465,11 @@ export default function App() {
         if (!selectedRow) return
         e.preventDefault()
         moveSelected('deleted', 'Moved to Deleted Items')
+      } else if (mod && !e.altKey && !e.shiftKey && lk === 'c') {
+        // Leave normal text copying alone: only copy the email when nothing is highlighted and focus is not on the attachments.
+        if (!selectedRow || window.getSelection()?.toString() || t.closest('.attbar')) return
+        e.preventDefault()
+        void copyEmail()
       } else if (mod || e.altKey) {
         return
       } else if (k === 'n') {

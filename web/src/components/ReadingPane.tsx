@@ -98,7 +98,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
               </button>
               {expanded && (
                 <>
-                  <AttachmentBar attachments={m.attachments} onToast={onToast} onForwardWith={onForwardWith} />
+                  <AttachmentBar attachments={m.attachments} zipName={`${m.subject} attachments`} onToast={onToast} onForwardWith={onForwardWith} />
                   {/* Plain text for now. Real HTML mail will render in a sandboxed iframe after sanitising. */}
                   <div className="msg-body">{m.body}</div>
                 </>

@@ -44,6 +44,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Enter'], desc: 'Move to the reading pane (arrow keys then scroll it)' },
       { keys: ['Delete', 'Ctrl+D'], desc: 'Delete' },
       { keys: ['Backspace', 'E'], desc: 'Archive' },
+      { keys: ['Ctrl+C'], desc: 'Copy the selected email (paste it into a message with Ctrl+V)' },
       { keys: ['Ctrl+Z'], desc: 'Undo the last action' },
       { keys: ['Ctrl+Shift+V'], desc: 'Move to folder' },
     ],

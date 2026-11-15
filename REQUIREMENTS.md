@@ -160,3 +160,9 @@ Filter chips above the message list: Unread, Important, Follow up, Attachments, 
 
 ## Message row design (current)
 Sender bold when unread; subject medium weight; preview muted grey; time right aligned; small green dot for unread; flag, important mark, attachment and colour dot shown only when they apply; Delete, Archive, Flag, Read/Unread and More appear only on hover or keyboard focus (hidden on touch screens; the reading pane has Delete, Flag and Read/Unread there).
+
+## Attachments (built, sample files)
+Each attachment shows a type icon (PDF, spreadsheet, Word, presentation, HTML, image, archive, text, email) and Preview, Copy and Download buttons; the bar has Download all (one zip) and Download selected. Preview opens PDFs, images and text; other types offer Download. Copy puts PNG images on the clipboard; other types copy the file name only because browsers block file copying (desktop wrapper removes this limit). Icons are original, not vendor logos. Real file bytes come from Gmail later; files here are generated samples.
+
+## Copy email
+Right-click a conversation, then Copy email (or Ctrl+C with a message selected and nothing highlighted). Pasting into the composer inserts the From/Sent/To/Cc/Subject block and text, with no side bar; other apps get text/html and text/plain.

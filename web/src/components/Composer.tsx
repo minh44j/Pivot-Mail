@@ -7,6 +7,8 @@ import type { Template } from '../data/templates'
 import { platform } from '../platform'
 import { bodyText, escapeHtml, safeUrl, sanitizeHtml, signatureHtml, textToHtml } from '../richtext'
 import { formatSize } from '../util'
+import { matchCopiedEmail } from '../emailClipboard'
+import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
 
@@ -431,7 +433,7 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
           <div className="chips composer-chips">
             {d.attachments.map((a) => (
               <span key={a.id} className="chip">
-                <span className="chip-ext">{(a.name.split('.').pop() ?? 'file').slice(0, 4).toUpperCase()}</span>
+                <FileIcon name={a.name} mime={a.mime} size={22} />
                 <span className="chip-name">{a.name}</span>
                 <span className="chip-size">{formatSize(a.size)}</span>
                 <button type="button" className="chip-x" aria-label={`Remove ${a.name}`} onClick={() => setD({ ...d, attachments: d.attachments.filter((x) => x.id !== a.id) })}>
@@ -519,7 +521,11 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
           onPaste={(e) => {
             // Paste as plain text: keeps messages clean and blocks pasted markup.
             e.preventDefault()
-            document.execCommand('insertText', false, e.clipboardData.getData('text/plain'))
+            const pasted = e.clipboardData.getData('text/plain')
+            const mine = matchCopiedEmail(pasted)
+            // An email copied with "Copy email" keeps its header block; anything else pastes as plain text.
+            if (mine) document.execCommand('insertHTML', false, sanitizeHtml(mine))
+            else document.execCommand('insertText', false, pasted)
           }}
           onKeyDown={(e) => {
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {

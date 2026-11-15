@@ -74,10 +74,48 @@ function notify(title: string, body: string): void {
   }
 }
 
-/** Create a downloadable blob URL for a mock/real attachment. */
-function fileUrl(name: string, content: string, mime: string): string {
-  void name
-  return URL.createObjectURL(new Blob([content], { type: mime }))
+/** Copy HTML and plain text together, so rich apps get formatting and plain fields get text. */
+async function copyRich(html: string, text: string): Promise<boolean> {
+  try {
+    const CI = (window as unknown as { ClipboardItem?: new (items: Record<string, Blob>) => ClipboardItem }).ClipboardItem
+    if (CI) {
+      await navigator.clipboard.write([new CI({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
+      return true
+    }
+    await navigator.clipboard.writeText(text)
+    return true
+  } catch {
+    return copyText(text)
+  }
 }
 
-export const platform = { storage, copyText, setBadge, notificationState, requestNotifications, notify, fileUrl }
+/** Save a file to the user's downloads. */
+function saveBlob(blob: Blob, name: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000)
+}
+
+/**
+ * Put a file on the clipboard. Browsers only allow a few types (PNG images), so most files
+ * return 'unsupported' and the caller falls back to copying the name. The desktop wrapper can do real file copy.
+ */
+async function copyBlob(blob: Blob): Promise<'copied' | 'unsupported' | 'blocked'> {
+  const CI = (window as unknown as { ClipboardItem?: { new (items: Record<string, Blob>): ClipboardItem; supports?: (type: string) => boolean } }).ClipboardItem
+  if (!CI) return 'unsupported'
+  const supported = CI.supports ? CI.supports(blob.type) : blob.type === 'image/png'
+  if (!supported) return 'unsupported'
+  try {
+    await navigator.clipboard.write([new CI({ [blob.type]: blob })])
+    return 'copied'
+  } catch {
+    return 'blocked'
+  }
+}
+
+export const platform = { storage, copyText, setBadge, notificationState, requestNotifications, notify, saveBlob, copyBlob, copyRich }

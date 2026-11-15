@@ -3,10 +3,16 @@ import type { PointerEvent as RPointerEvent } from 'react'
 import type { Attachment } from '../types'
 import { formatSize } from '../util'
 import { platform } from '../platform'
+import { mockBlob, mockBytes } from '../data/mockfile'
+import { makeZip } from '../zip'
+import { AttachmentPreview } from './AttachmentPreview'
+import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
 
 interface Props {
   attachments: Attachment[]
+  /** Used to name the "Download all" archive */
+  zipName?: string
   onToast: (msg: string) => void
   onForwardWith: (files: Attachment[]) => void
 }
@@ -16,15 +22,26 @@ interface Menu {
   y: number
 }
 
+/** Archive names stay plain ASCII: some browsers drop the whole name when it contains characters like × or –. */
+const safeName = (s: string): string =>
+  [...s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/×/g, 'x').replace(/[–—]/g, '-').replace(/[\\/:*?"<>|]/g, '')]
+    .filter((ch) => ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) <= 126)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60) || 'attachments'
+
 /**
  * Attachments shown above the message body (Outlook style).
+ * Each file has Preview, Copy and Download buttons; the header has Download all.
  * - Click, Ctrl/Cmd+click, Shift+click and drag-marquee selection
- * - Ctrl/Cmd+C copies selected file names (browser cannot put arbitrary files on the clipboard)
- * - Drag a chip out (Chromium: saves the file), right-click for actions
+ * - Space or double-click previews, Ctrl/Cmd+C copies
+ * - Drag a file out (Chromium: saves the file), right-click for the same actions
  */
-export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
+export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<Menu | null>(null)
+  const [preview, setPreview] = useState<number | null>(null)
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
   const wrap = useRef<HTMLDivElement>(null)
   const anchor = useRef<number>(-1)
@@ -34,6 +51,7 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
     setSeen(attachments)
     setSelected(new Set())
     setMenu(null)
+    setPreview(null)
   }
 
   useEffect(() => {
@@ -52,19 +70,36 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
 
   const chosen = (): Attachment[] => attachments.filter((a) => selected.has(a.id))
 
-  const copyNames = async (files: Attachment[]) => {
-    const ok = await platform.copyText(files.map((f) => f.name).join('\n'))
-    onToast(ok ? `Copied ${files.length} file name${files.length === 1 ? '' : 's'}` : 'Copy was blocked by the browser')
+  /** One file downloads as is; several download as a single zip. */
+  const download = (files: Attachment[], name?: string) => {
+    const first = files[0]
+    if (!first) return
+    if (files.length === 1) {
+      platform.saveBlob(mockBlob(first), first.name)
+      onToast(`Downloaded ${first.name}`)
+      return
+    }
+    const zip = makeZip(files.map((f) => ({ name: f.name, data: mockBytes(f) })))
+    platform.saveBlob(zip, `${safeName(name ?? zipName ?? 'attachments')}.zip`)
+    onToast(`Downloaded ${files.length} files as a zip`)
   }
 
-  const save = (files: Attachment[]) => {
-    for (const f of files) {
-      const a = document.createElement('a')
-      a.href = platform.fileUrl(f.name, `Mock content of ${f.name}`, f.mime)
-      a.download = f.name
-      a.click()
+  /** Copy the file itself when the browser allows it, otherwise the file name, and say which. */
+  const copyFiles = async (files: Attachment[]) => {
+    const first = files[0]
+    if (!first) return
+    if (files.length === 1) {
+      const r = await platform.copyBlob(mockBlob(first))
+      if (r === 'copied') {
+        onToast(`Copied ${first.name}`)
+        return
+      }
+      const ok = await platform.copyText(first.name)
+      onToast(ok ? 'Copied the file name. Browsers cannot copy this file type, so use Download or drag it out.' : 'Copy was blocked by the browser')
+      return
     }
-    onToast(`Saving ${files.length} file${files.length === 1 ? '' : 's'}`)
+    const ok = await platform.copyText(files.map((f) => f.name).join('\n'))
+    onToast(ok ? `Copied ${files.length} file names. Browsers cannot copy several files at once.` : 'Copy was blocked by the browser')
   }
 
   const clickChip = (e: React.MouseEvent, i: number, a: Attachment) => {
@@ -96,15 +131,17 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
       setSelected(new Set(attachments.map((a) => a.id)))
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selected.size > 0) {
       e.preventDefault()
-      void copyNames(chosen())
+      void copyFiles(chosen())
     }
   }
 
   const onDragStart = (e: React.DragEvent, a: Attachment) => {
     const files = selected.has(a.id) ? chosen() : [a]
     const first = files[0] ?? a
-    // Chromium-only: lets the user drop the file onto the desktop/folder.
-    e.dataTransfer.setData('DownloadURL', `${first.mime}:${first.name}:${platform.fileUrl(first.name, `Mock content of ${first.name}`, first.mime)}`)
+    // Chromium-only: lets the user drop the file onto the desktop or a folder.
+    const url = URL.createObjectURL(mockBlob(first))
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    e.dataTransfer.setData('DownloadURL', `${first.mime}:${first.name}:${url}`)
     e.dataTransfer.setData('text/plain', files.map((f) => f.name).join('\n'))
     e.dataTransfer.effectAllowed = 'copy'
   }
@@ -138,31 +175,39 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
 
   const files = chosen()
   return (
-    <div
-      className="attbar"
-      tabIndex={0}
-      onKeyDown={onKeyDown}
-      aria-label={`${attachments.length} attachments`}
-    >
+    <div className="attbar" tabIndex={0} onKeyDown={onKeyDown} aria-label={`${attachments.length} attachments`}>
       <div className="attbar-head">
         <Icon name="clip" size={14} /> {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
         {files.length > 0 && <span className="muted"> · {files.length} selected</span>}
         <span className="grow" />
-        <button type="button" className="link" onClick={() => save(attachments)}>
-          Save all
+        {files.length > 0 && files.length < attachments.length && (
+          <button type="button" className="att-btn" onClick={() => download(files)}>
+            <Icon name="download" size={14} /> Download selected
+          </button>
+        )}
+        <button type="button" className="att-btn" onClick={() => download(attachments)}>
+          <Icon name="download" size={14} /> Download all
         </button>
       </div>
       <div className="chips" ref={wrap} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
         {attachments.map((a, i) => (
-          <button
+          <div
             key={a.id}
-            type="button"
             data-att={a.id}
-            className={`chip${selected.has(a.id) ? ' sel' : ''}`}
+            className={`att${selected.has(a.id) ? ' sel' : ''}`}
+            role="group"
+            aria-label={`${a.name}, ${formatSize(a.size)}`}
+            tabIndex={0}
             draggable
             onDragStart={(e) => onDragStart(e, a)}
             onClick={(e) => clickChip(e, i, a)}
-            onDoubleClick={() => save([a])}
+            onDoubleClick={() => setPreview(i)}
+            onKeyDown={(e) => {
+              if (e.target === e.currentTarget && (e.key === ' ' || e.key === 'Enter')) {
+                e.preventDefault()
+                setPreview(i)
+              }
+            }}
             onPointerDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => {
               e.preventDefault()
@@ -171,10 +216,23 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
               setMenu({ x: e.clientX, y: e.clientY })
             }}
           >
-            <span className="chip-ext">{(a.name.split('.').pop() ?? 'file').slice(0, 4).toUpperCase()}</span>
-            <span className="chip-name">{a.name}</span>
-            <span className="chip-size">{formatSize(a.size)}</span>
-          </button>
+            <FileIcon name={a.name} mime={a.mime} size={26} />
+            <span className="att-meta">
+              <span className="chip-name">{a.name}</span>
+              <small>{formatSize(a.size)}</small>
+            </span>
+            <span className="att-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+              <button type="button" data-tone="blue" aria-label={`Preview ${a.name}`} onClick={() => setPreview(i)}>
+                <Icon name="eye" size={16} />
+              </button>
+              <button type="button" data-tone="purple" aria-label={`Copy ${a.name}`} onClick={() => void copyFiles([a])}>
+                <Icon name="copy" size={16} />
+              </button>
+              <button type="button" data-tone="green" aria-label={`Download ${a.name}`} onClick={() => download([a])}>
+                <Icon name="download" size={16} />
+              </button>
+            </span>
+          </div>
         ))}
         {marquee && (
           <div
@@ -192,14 +250,25 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
         <div
           className="ctx"
           role="menu"
-          style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 220) }}
+          style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 240) }}
           onPointerDown={(e) => e.stopPropagation()}
         >
-          <button type="button" role="menuitem" onClick={() => { save(files); setMenu(null) }}>
-            Save {files.length > 1 ? `${files.length} files` : ''}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              const i = attachments.findIndex((a) => a.id === files[0]?.id)
+              if (i >= 0) setPreview(i)
+              setMenu(null)
+            }}
+          >
+            Preview
           </button>
-          <button type="button" role="menuitem" onClick={() => { void copyNames(files); setMenu(null) }}>
-            Copy file name{files.length > 1 ? 's' : ''}
+          <button type="button" role="menuitem" onClick={() => { download(files); setMenu(null) }}>
+            Download{files.length > 1 ? ` ${files.length} files` : ''}
+          </button>
+          <button type="button" role="menuitem" onClick={() => { void copyFiles(files); setMenu(null) }}>
+            Copy{files.length > 1 ? ' file names' : ''}
           </button>
           <button type="button" role="menuitem" onClick={() => { onForwardWith(files); setMenu(null) }}>
             Attach to new mail
@@ -208,6 +277,16 @@ export function AttachmentBar({ attachments, onToast, onForwardWith }: Props) {
             Save to Drive (Phase 2)
           </button>
         </div>
+      )}
+      {preview !== null && (
+        <AttachmentPreview
+          files={attachments}
+          index={Math.min(preview, attachments.length - 1)}
+          onIndex={(i) => setPreview(Math.max(0, Math.min(attachments.length - 1, i)))}
+          onClose={() => setPreview(null)}
+          onDownload={(a) => download([a])}
+          onCopy={(a) => void copyFiles([a])}
+        />
       )}
     </div>
   )
