@@ -4,7 +4,7 @@ import { ContextMenu } from './ContextMenu'
 import { Icon } from './Icon'
 import type { IconName, Tone } from './Icon'
 
-export type FolderSel = { accountId: string; kind: 'folder'; id: FolderId } | { accountId: string; kind: 'label'; id: string }
+export type FolderSel = { accountId: string; kind: 'folder'; id: FolderId } | { accountId: string; kind: 'label'; id: string } | { accountId: string; kind: 'case'; id: string }
 
 const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
   { id: 'inbox', label: 'Inbox', icon: 'inbox', tone: 'blue' },
@@ -19,6 +19,7 @@ interface Props {
   messages: Message[]
   selection: FolderSel
   folders: Record<string, string[]>
+  cases: Record<string, string[]>
   onFolderAction: (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) => void
   onReorder: (accountId: string, name: string, before: string | null) => void
   onSelect: (s: FolderSel) => void
@@ -26,7 +27,7 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, messages, selection, folders, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
   const [slot, setSlot] = useState<string | null>(null)
@@ -55,7 +56,7 @@ export function FolderPane({ accounts, messages, selection, folders, onFolderAct
     messages.filter((m) => m.accountId === accountId && m.folder === 'inbox' && m.unread && m.labels.includes(label)).length
   const drafts = (accountId: string): number => messages.filter((m) => m.accountId === accountId && m.folder === 'drafts').length
 
-  const isActive = (accountId: string, kind: 'folder' | 'label', id: string): boolean => selection.accountId === accountId && selection.kind === kind && selection.id === id
+  const isActive = (accountId: string, kind: 'folder' | 'label' | 'case', id: string): boolean => selection.accountId === accountId && selection.kind === kind && selection.id === id
 
   return (
     <nav className="folders" aria-label="Mail folders">
@@ -161,13 +162,28 @@ export function FolderPane({ accounts, messages, selection, folders, onFolderAct
                     <span className="grow">New folder</span>
                   </button>
                 </li>
-                <li>
-                  <button type="button" className="folder disabled" disabled>
-                    <Icon name="lock" size={15} tone="gray" />
-                    <span className="grow">Cases</span>
-                    <small>Phase 2</small>
-                  </button>
-                </li>
+                <li className="case-head">Cases</li>
+                {(cases[a.id] ?? []).length === 0 && (
+                  <li>
+                    <span className="folder disabled">
+                      <Icon name="hash" size={15} tone="gray" />
+                      <span className="grow">No cases yet</span>
+                    </span>
+                  </li>
+                )}
+                {(cases[a.id] ?? []).slice(0, 12).map((c) => {
+                  const on = isActive(a.id, 'case', c)
+                  const n = messages.filter((m) => m.accountId === a.id && m.unread && m.folder !== 'deleted' && m.subject.includes(c)).length
+                  return (
+                    <li key={c}>
+                      <button type="button" className={`folder${on ? ' active' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'case', id: c })}>
+                        <Icon name="hash" size={15} tone={c.startsWith('PT') ? 'teal' : 'purple'} />
+                        <span className="grow case-ref">{c}</span>
+                        {n > 0 && <span className="count">{n}</span>}
+                      </button>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </section>

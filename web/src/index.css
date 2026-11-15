@@ -617,10 +617,10 @@ small {
   display: flex;
   align-items: center;
   gap: 8px;
-  left: 6px;
-  right: 6px;
-  padding: 0 12px 0 6px;
-  border-radius: var(--r-md);
+  left: 0;
+  right: 0;
+  padding: 0 12px 0 8px;
+  border-radius: 0;
   cursor: pointer;
   contain: layout paint;
 }
@@ -3031,15 +3031,16 @@ kbd {
 }
 .rcheck {
   position: absolute;
-  left: 4px;
-  top: 9px;
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
   display: none;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   padding: 0;
   border: 1.5px solid var(--label-2);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--content);
   color: #fff;
 }
@@ -3400,4 +3401,54 @@ li.slot-end.slot {
 .status-icon.denied {
   background: #fdeceb;
   color: var(--ic-red);
+}
+
+/* Reference dialog: company tabs, wrapping options */
+.co-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--fill);
+}
+.co-tabs button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--label-2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.co-tabs button.on {
+  background: var(--content);
+  color: var(--label);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14);
+}
+.opts.wrap {
+  flex-wrap: wrap;
+}
+.opts.wrap .opt {
+  flex: 1 1 30%;
+}
+
+/* Cases in the sidebar */
+.folder-list .case-head {
+  padding: 8px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--label-2);
+  list-style: none;
+}
+.case-ref {
+  font-variant-numeric: tabular-nums;
 }

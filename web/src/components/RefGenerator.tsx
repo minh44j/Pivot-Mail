@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { CLIENTS, MODES, PLACES, SALESPEOPLE, SCOPES } from '../data/refdata'
-import type { Mode, Scope } from '../data/refdata'
+import { CLIENTS, MODES, PLACES, SALESPEOPLE, SCOPES, TRAVEL_CATEGORIES, TRAVEL_CLIENTS } from '../data/refdata'
+import type { Mode, Scope, TravelCategory } from '../data/refdata'
 import { platform } from '../platform'
 import { initials } from '../util'
 import { Icon } from './Icon'
@@ -27,11 +27,15 @@ const SEQ_KEY = 'pm.ref.seq'
 const LAST_KEY = 'pm.ref.last'
 const SEQ_START = 90000
 
-function nextRef(): string {
-  const seq = Number(platform.storage.get(SEQ_KEY) ?? SEQ_START) + 1
-  platform.storage.set(SEQ_KEY, String(seq))
+type Company = 'shipping' | 'travel'
+
+/** Shipping numbers are PSyyNNNNN, Travel numbers are PTyyNNNNN. Each has its own preview counter. */
+function nextRef(company: Company): string {
+  const key = company === 'travel' ? `${SEQ_KEY}.pt` : SEQ_KEY
+  const seq = Number(platform.storage.get(key) ?? SEQ_START) + 1
+  platform.storage.set(key, String(seq))
   const yy = String(new Date().getFullYear()).slice(-2)
-  return `PS${yy}${String(seq).padStart(5, '0')}`
+  return `${company === 'travel' ? 'PT' : 'PS'}${yy}${String(seq).padStart(5, '0')}`
 }
 
 function readLast(): { ref: string; by: string } | null {
@@ -44,6 +48,8 @@ function readLast(): { ref: string; by: string } | null {
 }
 
 export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
+  const [company, setCompany] = useState<Company>('shipping')
+  const [category, setCategory] = useState<TravelCategory>('flight')
   const [client, setClient] = useState('')
   const [scope, setScope] = useState<Scope>('freight-clearance')
   const [mode, setMode] = useState<Mode>('sea')
@@ -72,19 +78,24 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
 
   const generate = () => {
     const e: Record<string, string> = {}
+    const travel = company === 'travel'
+    const clientList = travel ? TRAVEL_CLIENTS : CLIENTS
     if (!client.trim()) e.client = 'Enter the client'
-    else if (!CLIENTS.some((c) => c.toLowerCase() === client.trim().toLowerCase())) e.client = 'Choose a client from the list'
-    if (!valid(from)) e.from = 'Choose a standard name from the list'
-    if (!valid(to)) e.to = 'Choose a standard name from the list'
-    if (!e.from && !e.to && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
-    if (!sales) e.sales = 'Choose the salesperson'
+    else if (!clientList.some((c) => c.toLowerCase() === client.trim().toLowerCase())) e.client = 'Choose a client from the list'
+    if (!travel) {
+      if (!valid(from)) e.from = 'Choose a standard name from the list'
+      if (!valid(to)) e.to = 'Choose a standard name from the list'
+      if (!e.from && !e.to && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
+      if (!sales) e.sales = 'Choose the salesperson'
+    }
     setErrors(e)
     if (Object.keys(e).length > 0) return
 
-    const ref = nextRef()
-    const clientName = CLIENTS.find((c) => c.toLowerCase() === client.trim().toLowerCase()) ?? client.trim()
-    const subject = `[${ref}] ${clientName} – ${canon(from)} → ${canon(to)}`
-    const by = SALESPEOPLE.find((s) => s.id === sales)?.name ?? ''
+    const ref = nextRef(company)
+    const clientName = clientList.find((c) => c.toLowerCase() === client.trim().toLowerCase()) ?? client.trim()
+    const catLabel = TRAVEL_CATEGORIES.find((c) => c.id === category)?.label ?? ''
+    const subject = travel ? `[${ref}] ${clientName} – ${catLabel}` : `[${ref}] ${clientName} – ${canon(from)} → ${canon(to)}`
+    const by = travel ? catLabel : (SALESPEOPLE.find((s) => s.id === sales)?.name ?? '')
     platform.storage.set(LAST_KEY, JSON.stringify({ ref, by }))
     setLast({ ref, by })
     setResult({ ref, subject })
@@ -120,6 +131,28 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
           <strong>Preview only.</strong> These numbers are generated in this browser and are not registered in Pivot OS. Do not use them on real jobs.
         </p>
 
+        {!result && (
+          <div className="co-tabs" role="tablist" aria-label="Company">
+            {(['shipping', 'travel'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                role="tab"
+                aria-selected={company === c}
+                className={company === c ? 'on' : ''}
+                onClick={() => {
+                  setCompany(c)
+                  setClient('')
+                  setErrors({})
+                }}
+              >
+                <Icon name={c === 'shipping' ? 'ship' : 'plane'} size={15} />
+                {c === 'shipping' ? 'Pivot Shipping' : 'Pivot Travel'}
+              </button>
+            ))}
+          </div>
+        )}
+
         {result ? (
           <div className="modal-body">
             <p className="muted">Reference for {client.trim()}</p>
@@ -149,6 +182,49 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
               Generate another
             </button>
           </div>
+        ) : company === 'travel' ? (
+          <form
+            className="modal-body"
+            onSubmit={(e) => {
+              e.preventDefault()
+              generate()
+            }}
+            noValidate
+          >
+            <label className="fld">
+              <span>Client</span>
+              <input ref={first} list="ref-clients-pt" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Start typing a company…" aria-invalid={Boolean(errors.client)} autoComplete="off" />
+              <datalist id="ref-clients-pt">
+                {TRAVEL_CLIENTS.map((c) => (
+                  <option key={c} value={c} />
+                ))}
+              </datalist>
+              {errors.client && <em className="err">{errors.client}</em>}
+            </label>
+            <div className="fld">
+              <span id="lbl-cat">Category</span>
+              <div className="opts wrap" role="radiogroup" aria-labelledby="lbl-cat">
+                {TRAVEL_CATEGORIES.map((c) => (
+                  <button key={c.id} type="button" role="radio" aria-checked={category === c.id} className={`opt${category === c.id ? ' on' : ''}`} data-tone={c.tone} onClick={() => setCategory(c.id)}>
+                    <Icon name={c.icon} size={16} />
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="fld">
+              <span>Notes</span>
+              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the team should know" />
+            </label>
+            <button type="submit" className="btn primary wide">
+              Generate number
+            </button>
+            {last && (
+              <p className="muted last">
+                Last issued (preview) <code>{last.ref}</code> · {last.by}
+              </p>
+            )}
+          </form>
         ) : (
           <form
             className="modal-body"

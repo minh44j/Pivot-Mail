@@ -8,6 +8,7 @@ interface Props {
   mode: 'go' | 'move'
   accounts: Account[]
   folders: Record<string, string[]>
+  cases: Record<string, string[]>
   /** Move mode only shows this mailbox. */
   accountId: string
   onPick: (s: FolderSel) => void
@@ -31,7 +32,7 @@ interface Item {
 }
 
 /** "Go to folder" (Ctrl+Y) and "Move to folder" (Ctrl+Shift+V): type to filter, arrows, Enter. */
-export function FolderJump({ mode, accounts, folders, accountId, onPick, onClose }: Props) {
+export function FolderJump({ mode, accounts, folders, cases, accountId, onPick, onClose }: Props) {
   const [text, setText] = useState('')
   const [active, setActive] = useState(0)
   const input = useRef<HTMLInputElement>(null)
@@ -42,9 +43,10 @@ export function FolderJump({ mode, accounts, folders, accountId, onPick, onClose
       if (mode === 'move' && a.id !== accountId) continue
       for (const f of FOLDERS) out.push({ sel: { accountId: a.id, kind: 'folder', id: f.id }, label: f.label, sub: a.email, icon: f.icon, tone: f.tone })
       for (const l of folders[a.id] ?? []) out.push({ sel: { accountId: a.id, kind: 'label', id: l }, label: l, sub: a.email, icon: 'folder', tone: 'gray' })
+      if (mode === 'go') for (const c of cases[a.id] ?? []) out.push({ sel: { accountId: a.id, kind: 'case', id: c }, label: c, sub: `Case · ${a.email}`, icon: 'hash', tone: c.startsWith('PT') ? 'teal' : 'purple' })
     }
     return out
-  }, [accounts, folders, mode, accountId])
+  }, [accounts, folders, cases, mode, accountId])
 
   const items = useMemo(() => {
     const q = text.trim().toLowerCase()

@@ -46,3 +46,16 @@ export const SALESPEOPLE = [
   { id: 'gita', name: 'Gita' },
   { id: 'hugo', name: 'Hugo' },
 ]
+
+/** Pivot Travel Management case form (mock client list; real master comes from Pivot OS). */
+export type TravelCategory = 'flight' | 'visa' | 'hotel' | 'chauffeur' | 'extra'
+
+export const TRAVEL_CATEGORIES: { id: TravelCategory; label: string; icon: 'plane' | 'passport' | 'hotel' | 'car' | 'plus'; tone: string }[] = [
+  { id: 'flight', label: 'Flight', icon: 'plane', tone: 'blue' },
+  { id: 'visa', label: 'Visa', icon: 'passport', tone: 'purple' },
+  { id: 'hotel', label: 'Hotel', icon: 'hotel', tone: 'orange' },
+  { id: 'chauffeur', label: 'Chauffeur', icon: 'car', tone: 'teal' },
+  { id: 'extra', label: 'Extra', icon: 'plus', tone: 'green' },
+]
+
+export const TRAVEL_CLIENTS = ['Horizon Corporate Travel', 'Meridian Holdings', 'Al Noor Family Office', 'Sunrise Events FZ-LLC', 'Pinnacle Consulting']

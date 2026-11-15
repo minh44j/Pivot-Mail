@@ -193,6 +193,18 @@ export default function App() {
   const removeChip = (tok: string) => setQuery(query.split(/\s+/).filter((t) => t && t !== tok).join(' '))
 
   const [folders, setFolders] = useStored<Record<string, string[]>>('pm.folders', Object.fromEntries(ACCOUNTS.map((x) => [x.id, [...LABELS]])), isFolderMap)
+  /** Cases are found by the reference number in the subject, newest activity first. */
+  const cases = useMemo(() => {
+    const out: Record<string, Map<string, string>> = {}
+    for (const m of messages) {
+      if (m.folder === 'deleted') continue
+      for (const ref of m.subject.match(/\bP[ST]\d{7}\b/g) ?? []) {
+        const map = (out[m.accountId] ??= new Map<string, string>())
+        if ((map.get(ref) ?? '') < m.date) map.set(ref, m.date)
+      }
+    }
+    return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v.entries()].sort((x, y) => y[1].localeCompare(x[1])).map(([r]) => r)])) as Record<string, string[]>
+  }, [messages])
   const [folderDlg, setFolderDlg] = useState<FolderDialogState | null>(null)
   const folderAction = (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) =>
     setFolderDlg(action === 'new' ? { mode: 'new', accountId } : { mode: action, accountId, name: name ?? '' })
@@ -235,6 +247,7 @@ export default function App() {
       messages.filter((m) => {
         if (m.accountId !== accountId) return false
         if (searchAll && query.trim() !== '') return m.folder !== 'deleted'
+        if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
         return sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id)
       }),
     [messages, accountId, sel, searchAll, query],
@@ -447,6 +460,10 @@ export default function App() {
         const t = op.target
         if (group.some((m) => m.accountId !== t.accountId)) {
           showToast("Mail can't be moved between mailboxes")
+          return
+        }
+        if (t.kind === 'case') {
+          showToast('Cases fill by themselves from the reference number in the subject')
           return
         }
         if (t.kind === 'folder') {
@@ -725,7 +742,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.id
+  const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.id
   const showReader = pane !== 'off'
 
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
@@ -836,6 +853,7 @@ export default function App() {
           messages={messages}
           selection={sel}
           folders={folders}
+          cases={cases}
           onFolderAction={folderAction}
           onReorder={reorderFolder}
           onSelect={(s) => {
@@ -941,6 +959,7 @@ export default function App() {
           mode={jump}
           accounts={ACCOUNTS}
           folders={folders}
+          cases={cases}
           accountId={accountId}
           onClose={() => setJump(null)}
           onPick={(s) => {

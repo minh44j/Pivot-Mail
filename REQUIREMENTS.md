@@ -189,3 +189,9 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - List load error with Retry. Full-screen Session expired (Sign in again) and Access denied (Use a different account).
 - Settings → Problem states simulates each one for review. Real triggers (network, Gmail API 401/403/429) arrive with the sync layer.
 - ⚠️ Verify: Gmail API quota and error codes against Google's current documentation when the sync layer is built.
+
+## Case form and case folders (status: built in preview)
+- Reference number dialog has Pivot Shipping and Pivot Travel tabs. Travel: client, category (Flight, Visa, Hotel, Chauffeur, Extra), notes. Format `PT` + year + 5 digits (e.g. PT2600000 pattern); subject `[PT26xxxxx] Client – Category`.
+- Preview counters are per browser and start at 90000 (not the company counter; real numbering stays in Pivot OS). ⚠️ Verify: the digit count and year rule with Pivot OS before go-live.
+- Cases appear under each mailbox automatically from the reference in the subject (PS or PT). A case shows every message of that mailbox carrying the reference, in any folder except Deleted Items. Ctrl+Y also finds cases.
+- Row styling: plain full-width hover (no rounded corners), tick box centred and smaller.
