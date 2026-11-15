@@ -15,7 +15,7 @@ interface Props {
   onSelect: (id: string) => void
   onBack: () => void
   onContext: (id: string, x: number, y: number) => void
-  onRowAction: (id: string, action: 'delete' | 'flag' | 'unread') => void
+  onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
   emptyText: string
   sync: { state: 'synced' | 'syncing' | 'offline'; last: Date }
   onSync: () => void
@@ -145,11 +145,26 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, subt
                       <button type="button" title="Delete" aria-label={`Delete: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'delete')}>
                         <Icon name="trash" size={15} />
                       </button>
+                      <button type="button" title="Archive" aria-label={`Archive: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'archive')}>
+                        <Icon name="archive" size={15} />
+                      </button>
                       <button type="button" title={msg.flagged ? 'Remove flag' : 'Flag'} aria-label={`${msg.flagged ? 'Remove flag' : 'Flag'}: ${msg.subject}`} aria-pressed={msg.flagged} onClick={() => onRowAction(msg.id, 'flag')}>
                         <Icon name="flag" size={15} />
                       </button>
                       <button type="button" title={unread ? 'Mark as read' : 'Mark as unread'} aria-label={`${unread ? 'Mark as read' : 'Mark as unread'}: ${msg.subject}`} onClick={() => onRowAction(msg.id, 'unread')}>
                         <Icon name="eye" size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        title="More: colour, move"
+                        aria-label={`More actions: ${msg.subject}`}
+                        aria-haspopup="menu"
+                        onClick={(e) => {
+                          const r = e.currentTarget.getBoundingClientRect()
+                          onContext(msg.id, r.left - 180, r.bottom + 4)
+                        }}
+                      >
+                        <Icon name="more" size={15} />
                       </button>
                     </div>
                     <div className="row-sub">

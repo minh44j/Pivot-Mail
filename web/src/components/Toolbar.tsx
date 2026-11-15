@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Colour, Density, PaneLayout } from '../types'
+import type { Density, PaneLayout } from '../types'
 import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
 import logoLockup from '../assets/brand/logo-lockup.png'
@@ -8,7 +8,6 @@ import { Icon } from './Icon'
 import type { IconName } from './Icon'
 
 interface Props {
-  hasSelection: boolean
   threaded: boolean
   pane: PaneLayout
   density: Density
@@ -16,11 +15,6 @@ interface Props {
   query: string
   onQuery: (q: string) => void
   onNew: () => void
-  onReply: () => void
-  onReplyAll: () => void
-  onForward: () => void
-  onArchive: () => void
-  onColour: (c: Colour | undefined) => void
   onTemplate: (t: Template) => void
   onThreaded: (v: boolean) => void
   onPane: (p: PaneLayout) => void
@@ -109,9 +103,8 @@ function Check(props: { checked: boolean; label: string; role: 'menuitemcheckbox
 }
 
 export function Toolbar(p: Props) {
-  const { templates, colours } = useSettings()
+  const { templates } = useSettings()
   const categories = Array.from(new Set(templates.map((t) => t.category)))
-  const none = !p.hasSelection
   const notifLabel =
     p.notifications === 'granted'
       ? 'Notifications on'
@@ -126,53 +119,6 @@ export function Toolbar(p: Props) {
       <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
 
       <div className="tb-scroll">
-        <div className="tb-group" role="group" aria-label="Archive">
-          <Item icon="archive" label="Archive" disabled={none} onClick={p.onArchive} />
-        </div>
-        <div className="tb-group" role="group" aria-label="Respond">
-          <Item icon="reply" label="Reply" disabled={none} onClick={p.onReply} />
-          <Item icon="replyAll" label="Reply all" disabled={none} onClick={p.onReplyAll} />
-          <Item icon="forward" label="Forward" disabled={none} onClick={p.onForward} />
-        </div>
-        <div className="tb-group" role="group" aria-label="Tag">
-          <Menu icon="tag" label="Colour" title="Colour category" disabled={none}>
-            {(close) => (
-              <>
-                {colours.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="menuitem"
-                    className="menu-item"
-                    onClick={() => {
-                      p.onColour(c.id)
-                      close()
-                    }}
-                  >
-                    <span className="ph">
-                      <span className={`dot c-${c.id}`} />
-                    </span>
-                    {c.label}
-                  </button>
-                ))}
-                <div className="menu-sep" role="separator" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onColour(undefined)
-                    close()
-                  }}
-                >
-                  <span className="ph" />
-                  Clear category
-                </button>
-              </>
-            )}
-          </Menu>
-        </div>
-
         <div className="tb-group tb-extra" role="group" aria-label="More">
           <Item icon="hash" label="Ref no." title="Generate a reference number" onClick={p.onRef} />
           <Menu icon="template" label="Templates">

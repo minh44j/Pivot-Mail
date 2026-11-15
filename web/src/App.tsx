@@ -237,7 +237,7 @@ export default function App() {
   }
 
   /** Hover buttons on a message row: act on that conversation without selecting it. */
-  const rowAction = (id: string, action: 'delete' | 'flag' | 'unread') => {
+  const rowAction = (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => {
     const m = messages.find((x) => x.id === id)
     if (!m) return
     const ids = idsOf(m)
@@ -245,6 +245,10 @@ export default function App() {
       patch(ids, { folder: 'deleted' })
       if (selectedId && ids.includes(selectedId)) setSelectedId(null)
       showToast('Moved to Deleted Items')
+    } else if (action === 'archive') {
+      patch(ids, { folder: 'archive' })
+      if (selectedId && ids.includes(selectedId)) setSelectedId(null)
+      showToast('Archived')
     } else if (action === 'flag') {
       patch(ids, { flagged: !m.flagged })
     } else {
@@ -278,10 +282,6 @@ export default function App() {
       { type: 'head', label: 'Move to' },
       ...targets.map((f): MenuEntry => ({ type: 'item', label: FOLDER_TITLES[f] ?? f, icon: f === 'inbox' ? 'inbox' : f === 'archive' ? 'archive' : 'trash', onSelect: moveTo(f), danger: f === 'deleted' })),
     ]
-  }
-
-  const colourSelected = (c: Colour | undefined) => {
-    if (selectedRow) patch(thread.map((m) => m.id), { colour: c })
   }
 
   // Keyboard: navigation and Outlook-style shortcuts. Ignored while typing.
@@ -326,7 +326,6 @@ export default function App() {
   })
 
   const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.id
-  const hasSel = Boolean(selectedRow)
   const showReader = pane !== 'off'
 
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
@@ -385,17 +384,11 @@ export default function App() {
       <Toolbar
         query={query}
         onQuery={setQuery}
-        hasSelection={hasSel}
         threaded={threaded}
         pane={pane}
         density={density}
         notifications={notif}
         onNew={() => openCompose()}
-        onReply={() => reply(false)}
-        onReplyAll={() => reply(true)}
-        onForward={forward}
-        onArchive={() => moveSelected('archive', 'Archived')}
-        onColour={colourSelected}
         onTemplate={(t) => {
           if (!compose) openCompose()
           setPendingTemplate(t)
