@@ -21,24 +21,7 @@
   --gutter: 16px;
   --radius: 2px;
   --font: 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif;
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #14171b;
-    --surface: #1c2025;
-    --surface-2: #242a31;
-    --border: #323941;
-    --text: #e7eaee;
-    --muted: #9aa5b3;
-    --accent: #4aa3ee;
-    --accent-ink: #0a1620;
-    --accent-soft: #1d3248;
-    --sel: #243d57;
-    --unread: #6cb6f5;
-    --shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
-  }
+  color-scheme: light;
 }
 
 * {
