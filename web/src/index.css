@@ -2573,3 +2573,117 @@ code {
     margin: 0;
   }
 }
+
+/* keyboard shortcut help and folder jump */
+.modal.wide {
+  width: min(860px, 100%);
+}
+.sc-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  padding: 8px 20px 20px;
+  overflow-y: auto;
+}
+@media (min-width: 760px) {
+  .sc-body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .sc-foot {
+    grid-column: 1 / -1;
+  }
+}
+.sc-group h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--label-2);
+}
+.sc-group dl {
+  margin: 0;
+}
+.sc-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--separator);
+}
+.sc-row dt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 0;
+}
+.sc-row dd {
+  margin: 0;
+}
+.sc-or {
+  font-size: 11px;
+  color: var(--label-2);
+}
+kbd {
+  display: inline-block;
+  min-width: 22px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--sidebar);
+  box-shadow: inset 0 -1px 0 var(--separator), 0 0 0 0.5px rgba(0, 0, 0, 0.15);
+  font: 500 12px/1.5 var(--font);
+  text-align: center;
+}
+.sc-foot {
+  margin: 0;
+  font-size: 12px;
+}
+.modal-backdrop.top {
+  place-items: start center;
+  padding-top: 14vh;
+}
+.modal.jump {
+  height: auto;
+  width: min(520px, calc(100vw - 32px));
+  max-height: 60dvh;
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+}
+.jump-input {
+  min-height: 48px;
+  padding: 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--separator);
+  background: none;
+  font-size: 15px;
+  outline: none;
+}
+.jump-list {
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  list-style: none;
+}
+.jump-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.jump-list li.on {
+  background: var(--accent-fill);
+  color: #fff;
+}
+.jump-list li.on small,
+.jump-list li.on .ic {
+  color: #fff;
+}
+.jump-list li small {
+  margin-left: auto;
+}
+.jump-empty {
+  color: var(--label-2);
+}
+.reader-scroll:focus {
+  outline: none;
+}

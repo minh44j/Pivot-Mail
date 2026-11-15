@@ -19,6 +19,9 @@ import { SignIn } from './components/SignIn'
 import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
 import { SettingsContext, mergeColours } from './settings'
+import { MOD } from './shortcuts'
+import { FolderJump } from './components/FolderJump'
+import { ShortcutHelp } from './components/ShortcutHelp'
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -85,6 +88,14 @@ export default function App() {
   const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
   const [refOpen, setRefOpen] = useState(false)
+  const [help, setHelp] = useState(false)
+  const [jump, setJump] = useState<null | 'go' | 'move'>(null)
+  const searchEl = useRef<HTMLInputElement | null>(null)
+  const setSearchEl = useCallback((el: HTMLInputElement | null) => {
+    searchEl.current = el
+  }, [])
+  const messagesRef = useRef<Message[]>(INITIAL_MESSAGES)
+  const undoStack = useRef<Message[][]>([])
   const [screen, setScreen] = useState<'mail' | 'performance' | 'settings'>('mail')
   const [signatures, setSignatures] = useStored<Record<string, string>>('pm.signatures', {}, isRecord)
   const [customTemplates, setCustomTemplates] = useStored<Template[]>('pm.templates', [], isTemplates)
@@ -111,11 +122,34 @@ export default function App() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2600)
   }, [])
 
+  useEffect(() => {
+    messagesRef.current = messages
+  }, [messages])
+
   // Optimistic update helper: UI changes instantly; the sync layer will reconcile later.
-  const patch = useCallback((ids: string[], change: Partial<Message>) => {
+  // Each tracked change keeps a snapshot so Ctrl+Z can undo it.
+  const patch = useCallback((ids: string[], change: Partial<Message>, track = true) => {
     const set = new Set(ids)
+    if (track) {
+      const before = messagesRef.current.filter((m) => set.has(m.id))
+      if (before.length > 0) {
+        undoStack.current.push(before)
+        if (undoStack.current.length > 30) undoStack.current.shift()
+      }
+    }
     setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, ...change } : m)))
   }, [])
+
+  const undo = () => {
+    const snap = undoStack.current.pop()
+    if (!snap) {
+      showToast('Nothing to undo')
+      return
+    }
+    const byId = new Map(snap.map((m) => [m.id, m]))
+    setMessages((prev) => prev.map((m) => byId.get(m.id) ?? m))
+    showToast('Undone')
+  }
 
   const accounts = useMemo<Account[]>(() => ACCOUNTS.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [signatures])
   const settingsValue = useMemo(
@@ -166,7 +200,7 @@ export default function App() {
       const row = rows.find((r) => r.msg.id === id)
       if (row) {
         const ids = messages.filter((m) => m.unread && (threaded ? m.threadId === row.msg.threadId : m.id === id) && m.accountId === accountId).map((m) => m.id)
-        if (ids.length > 0) patch(ids, { unread: false })
+        if (ids.length > 0) patch(ids, { unread: false }, false)
       }
     },
     [rows, messages, threaded, accountId, patch],
@@ -208,7 +242,7 @@ export default function App() {
     const next = rows[idx + 1] ?? rows[idx - 1]
     setSelectedId(next ? next.msg.id : null)
     if (!next) setView('list')
-    showToast(label)
+    showToast(`${label} · ${MOD}+Z to undo`)
   }
 
   const syncNow = () => {
@@ -235,7 +269,7 @@ export default function App() {
       if (m.folder === target.id) return
       patch(ids, { folder: target.id })
       if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast(`Moved to ${FOLDER_TITLES[target.id] ?? target.id}`)
+      showToast(`Moved to ${FOLDER_TITLES[target.id] ?? target.id} · ${MOD}+Z to undo`)
     } else {
       const set = new Set(ids)
       setMessages((prev) => prev.map((x) => (set.has(x.id) && !x.labels.includes(target.id) ? { ...x, labels: [...x.labels, target.id] } : x)))
@@ -251,11 +285,11 @@ export default function App() {
     if (action === 'delete') {
       patch(ids, { folder: 'deleted' })
       if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast('Moved to Deleted Items')
+      showToast(`Moved to Deleted Items · ${MOD}+Z to undo`)
     } else if (action === 'archive') {
       patch(ids, { folder: 'archive' })
       if (selectedId && ids.includes(selectedId)) setSelectedId(null)
-      showToast('Archived')
+      showToast(`Archived · ${MOD}+Z to undo`)
     } else if (action === 'flag') {
       patch(ids, { flagged: !m.flagged })
     } else {
@@ -291,40 +325,151 @@ export default function App() {
     ]
   }
 
-  // Keyboard: navigation and Outlook-style shortcuts. Ignored while typing.
+  const focusSearch = () => {
+    searchEl.current?.focus()
+    searchEl.current?.select()
+  }
+  const goTo = (s: FolderSel) => {
+    setScreen('mail')
+    setSel(s)
+    setSelectedId(null)
+    setView('list')
+    window.setTimeout(() => document.querySelector<HTMLElement>('.scroller')?.focus(), 0)
+  }
+
+  // Keyboard shortcuts (Outlook style). The full list is in src/shortcuts.ts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (!entered || screen !== 'mail') return
       const t = e.target as HTMLElement
-      const typing = t.matches('input, textarea, select, [contenteditable="true"]')
+      const typing = t.matches('input, textarea, select') || t.isContentEditable
       const mod = e.ctrlKey || e.metaKey
-      if (mod && e.key === ',') {
+      const k = e.key
+      const lk = k.length === 1 ? k.toLowerCase() : k
+      if (help || jump || refOpen || ctx) return // dialogs and menus own the keyboard
+
+      // ---- global: work even while typing ----
+      if (mod && !e.altKey && !e.shiftKey && (lk === 'f' || lk === 'e')) {
+        e.preventDefault()
+        focusSearch()
+        return
+      }
+      if (k === 'F3') {
+        e.preventDefault()
+        focusSearch()
+        return
+      }
+      if ((mod && k === '/') || k === 'F1') {
+        e.preventDefault()
+        setHelp(true)
+        return
+      }
+      if (mod && k === ',') {
         e.preventDefault()
         setScreen('settings')
         return
       }
-      if (mod && e.key.toLowerCase() === 'n' && !compose && !refOpen) {
+      if (mod && !e.altKey && !e.shiftKey && (lk === 'y' || lk === 'g') && !typing) {
         e.preventDefault()
-        openCompose()
+        setJump('go')
         return
       }
-      if (typing || compose || refOpen || ctx) return
+      if (mod && e.shiftKey && lk === 'i') {
+        e.preventDefault()
+        goTo({ accountId, kind: 'folder', id: 'inbox' })
+        return
+      }
+      if ((mod && e.shiftKey && lk === 'm') || (mod && !e.shiftKey && !e.altKey && lk === 'n')) {
+        e.preventDefault()
+        if (!compose) openCompose()
+        return
+      }
+      if (k === 'F9') {
+        e.preventDefault()
+        syncNow()
+        return
+      }
+      if (compose || typing) return // the composer and text fields keep their own keys
+
+      // ---- message list ----
+      const inReader = Boolean(t.closest('.reader-scroll'))
       const idx = rows.findIndex((r) => r.msg.id === selectedId)
-      if (e.key === 'ArrowDown' || e.key === 'j') {
+      const go = (n: number) => {
+        const row = rows[Math.max(0, Math.min(rows.length - 1, n))]
+        if (row) select(row.msg.id)
+      }
+      const colourKey = /^Digit[0-6]$/.test(e.code) ? Number(e.code.slice(5)) : -1
+
+      if (mod && e.altKey && colourKey >= 0) {
+        if (!selectedRow) return
         e.preventDefault()
-        const next = rows[idx + 1] ?? rows[0]
-        if (next) select(next.msg.id)
-      } else if (e.key === 'ArrowUp' || e.key === 'k') {
+        const c = colourKey === 0 ? undefined : settingsValue.colours[colourKey - 1]
+        patch(thread.map((m) => m.id), { colour: c?.id })
+        showToast(c ? `Category: ${c.label}` : 'Category cleared')
+      } else if (mod && !e.altKey && !e.shiftKey && lk === 'z') {
         e.preventDefault()
-        const prev = idx > 0 ? rows[idx - 1] : rows[0]
-        if (prev) select(prev.msg.id)
-      } else if (e.key === 'Delete' && selectedRow) {
-        moveSelected('deleted', 'Moved to Deleted')
-      } else if (e.key === 'e' && selectedRow) {
-        moveSelected('archive', 'Archived')
-      } else if (mod && e.key.toLowerCase() === 'r' && last) {
+        undo()
+      } else if (mod && e.shiftKey && lk === 'v') {
+        if (!selectedRow) return
+        e.preventDefault()
+        setJump('move')
+      } else if (mod && !e.altKey && lk === 'r') {
+        if (!last) return
         e.preventDefault()
         reply(e.shiftKey)
-      } else if (e.key === 'Insert' && selectedRow) {
+      } else if (mod && !e.altKey && !e.shiftKey && lk === 'j') {
+        if (!last) return
+        e.preventDefault()
+        forward()
+      } else if (mod && !e.altKey && !e.shiftKey && (lk === 'q' || lk === 'u')) {
+        if (!selectedRow) return
+        e.preventDefault()
+        patch(thread.map((m) => m.id), { unread: lk === 'u' })
+      } else if (mod && !e.altKey && !e.shiftKey && lk === 'd') {
+        if (!selectedRow) return
+        e.preventDefault()
+        moveSelected('deleted', 'Moved to Deleted Items')
+      } else if (mod || e.altKey) {
+        return
+      } else if (k === 'n') {
+        e.preventDefault()
+        openCompose()
+      } else if (k === '/') {
+        e.preventDefault()
+        focusSearch()
+      } else if (k === '?') {
+        e.preventDefault()
+        setHelp(true)
+      } else if (!inReader && (k === 'ArrowDown' || lk === 'j')) {
+        e.preventDefault()
+        go(idx + 1)
+      } else if (!inReader && (k === 'ArrowUp' || lk === 'k')) {
+        e.preventDefault()
+        go(idx < 0 ? 0 : idx - 1)
+      } else if (!inReader && k === 'Home') {
+        e.preventDefault()
+        go(0)
+      } else if (!inReader && k === 'End') {
+        e.preventDefault()
+        go(rows.length - 1)
+      } else if (!inReader && k === 'PageDown') {
+        e.preventDefault()
+        go(idx + 10)
+      } else if (!inReader && k === 'PageUp') {
+        e.preventDefault()
+        go(idx - 10)
+      } else if (k === 'Enter' && selectedRow) {
+        e.preventDefault()
+        setView('read')
+        window.setTimeout(() => document.querySelector<HTMLElement>('.reader-scroll')?.focus(), 0)
+      } else if (k === 'Delete' && selectedRow) {
+        e.preventDefault()
+        moveSelected('deleted', 'Moved to Deleted Items')
+      } else if ((k === 'Backspace' || lk === 'e') && selectedRow) {
+        e.preventDefault()
+        moveSelected('archive', 'Archived')
+      } else if (k === 'Insert' && selectedRow) {
+        e.preventDefault()
         patch(thread.map((m) => m.id), { flagged: !selectedRow.msg.flagged })
       }
     }
@@ -410,6 +555,8 @@ export default function App() {
         onRole={setRole}
         onPerformance={() => setScreen('performance')}
         onSettings={() => setScreen('settings')}
+        onHelp={() => setHelp(true)}
+        registerSearch={setSearchEl}
       />
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
@@ -476,6 +623,21 @@ export default function App() {
         />
       )}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {help && <ShortcutHelp onClose={() => setHelp(false)} />}
+      {jump && (
+        <FolderJump
+          mode={jump}
+          accounts={ACCOUNTS}
+          labels={LABELS}
+          accountId={accountId}
+          onClose={() => setJump(null)}
+          onPick={(s) => {
+            if (jump === 'move') {
+              if (selectedRow) dropMessage(selectedRow.msg.id, s)
+            } else goTo(s)
+          }}
+        />
+      )}
       {refOpen && <RefGenerator onClose={() => setRefOpen(false)} onToast={showToast} onNewMail={(subject) => openCompose({ subject })} />}
       {toast && (
         <div className="toast" role="status">

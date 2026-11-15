@@ -338,8 +338,19 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
         addFiles(e.dataTransfer.files)
       }}
       onKeyDown={(e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') send()
-        if (e.key === 'Escape') onClose()
+        const mod = e.ctrlKey || e.metaKey
+        if ((mod && e.key === 'Enter') || (e.altKey && !mod && e.key.toLowerCase() === 's')) {
+          e.preventDefault()
+          send()
+        } else if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
+          e.preventDefault()
+          platform.storage.set(DRAFT_KEY, JSON.stringify(latest.current))
+          setSaved('saved')
+          onToast('Draft saved')
+        } else if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
+          e.preventDefault()
+          exec('insertUnorderedList')
+        } else if (e.key === 'Escape') onClose()
       }}
     >
       <header className="composer-head">

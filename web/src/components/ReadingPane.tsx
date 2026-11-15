@@ -66,7 +66,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </span>
         </div>
       </header>
-      <div className="reader-scroll">
+      <div className="reader-scroll" tabIndex={-1}>
         {messages.map((m) => {
           const expanded = open.has(m.id)
           return (

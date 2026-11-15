@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { MOD } from '../shortcuts'
 import type { Density, PaneLayout } from '../types'
 import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
@@ -26,6 +27,8 @@ interface Props {
   onRole: (r: 'admin' | 'staff') => void
   onPerformance: () => void
   onSettings: () => void
+  onHelp: () => void
+  registerSearch: (el: HTMLInputElement | null) => void
 }
 
 /** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
@@ -224,6 +227,18 @@ export function Toolbar(p: Props) {
                   </span>
                   Settings…
                 </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onHelp()
+                    close()
+                  }}
+                >
+                  <span className="ph" />
+                  Keyboard shortcuts
+                </button>
                 <Check
                   role="menuitemcheckbox"
                   checked={p.role === 'staff'}
@@ -259,7 +274,25 @@ export function Toolbar(p: Props) {
 
       <label className="tb-search">
         <Icon name="search" size={15} />
-        <input type="search" value={p.query} onChange={(e) => p.onQuery(e.target.value)} placeholder="Search" aria-label="Search mail. Try from:, to:, subject:, has:attachment, is:unread" />
+        <input
+          ref={(el) => p.registerSearch(el)}
+          type="search"
+          value={p.query}
+          onChange={(e) => p.onQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.preventDefault()
+              if (p.query) p.onQuery('')
+              else {
+                e.currentTarget.blur()
+                document.querySelector<HTMLElement>('.scroller')?.focus()
+              }
+            } else if (e.key === 'ArrowDown') {
+              e.preventDefault()
+              document.querySelector<HTMLElement>('.scroller')?.focus()
+            }
+          }}
+          placeholder={`Search  (${MOD}+F)`} aria-label="Search mail. Try from:, to:, subject:, has:attachment, is:unread" />
       </label>
     </header>
   )

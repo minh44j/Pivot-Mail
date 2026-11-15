@@ -151,3 +151,6 @@ Not built: Google sign-in and Gmail sync, safe HTML message viewer, search sugge
 - **Reply / Reply all / Forward:** Reply goes to the sender; Reply all adds everyone on To and Cc except you; Forward starts a new message with the attachments. Subject gets `Re:` / `Fwd:` once.
 - **Quoted original (Outlook style, no side bar):** new text first, then signature, then a rule, then a header block (From, Sent, To, Cc, Subject), then the original text. Implemented in the composer (`data-quote` block).
 - Later: collapse long quoted history in the reading pane ("show trimmed content"), needs the safe HTML viewer.
+
+## Keyboard shortcuts (built)
+Outlook-style shortcuts for search, list navigation, delete/archive/undo, read/flag/category, reply/forward, go-to and move-to folder, composer, and a help dialog (Ctrl+/ or ?). List in `web/src/shortcuts.ts`. Browser-reserved keys (Ctrl+N/T/W) need the desktop wrapper; N and Ctrl+Shift+M are the web alternatives. Forward is Ctrl+J because Ctrl+F is search. ⚠️ Confirm any Outlook shortcuts that differ for your team before the desktop version.
