@@ -73,6 +73,30 @@ Today: staff leave the mailbox, open **Pivot OS → Reference Generator**, enter
 - Mobile-first responsive: panes collapse to single-column navigation on small screens.
 - Keyboard shortcuts, density options, accessible contrast.
 
+## Speed and productivity requirements (core UX principle)
+Speed is the main product differentiator. Every design choice is judged against it.
+
+| # | Requirement | How (proposed) | Phase |
+|---|---|---|---|
+| 1 | **Ultra-fast sync** | Initial sync newest-first (UI usable after first page); then incremental `history.list`; push via `watch` + Pub/Sub; batched `messages.get` (metadata first, bodies lazy); retries with backoff; respect Gmail quota (⚠️ verify per-user limits) | 1 |
+| 2 | **Attachments on top (Outlook-style)** | Attachment chips shown above the message body in the reading pane, plus paperclip/preview chips in list rows; metadata from message parts, so no download needed to display | 1 |
+| 3 | **Gmail-native search speed** | Local full-text index (IndexedDB now, SQLite FTS later) for cached mail; support Gmail operators (`from:`, `to:`, `has:attachment`, `before:`, `label:`); fall back to Gmail API search for older mail, merged into one result list | 1 |
+| 4 | **Case-wise classification** | Case tree shows all emails under a case reference | 2 |
+| 5 | **Drag/drop + multi-select attachments + clipboard + right-click actions** | Drag files into composer; marquee/Shift/Ctrl select of attachments; Copy; custom context menu (Open, Save, Copy, Save to Drive, Forward, Attach to new mail). ⚠️ Browser limits: dragging files *out* to the desktop works in Chromium only; copying files to the clipboard is limited (images yes, arbitrary files mostly no). Full support arrives with the desktop wrapper | 1 (web subset) / desktop later |
+| 6 | **Built-in templates** | Categories: quotes, client onboarding, marketing, follow-up, etc.; variables (`{{client}}`, `{{sender}}`); insert via ribbon button or `/` shortcut; personal + shared templates; admin manages shared set. Stored in DB (not in Gmail) | 1 |
+| 7 | **Colour highlighting** | Colour rules/flags on messages (Outlook "categories" style). Gmail has no per-message colour, so implement as coloured Gmail labels (syncs across devices) ⚠️ confirm vs. local-only colours; optional auto-rules (sender/subject → colour) | 1 |
+| 8 | **Maximum Outlook-like structure** | Ribbon (Home/View tabs), folder pane with Favourites, list with sort/group headers (Today/Yesterday), reading pane right/bottom toggle, compact density, Outlook keyboard shortcuts | 1 |
+
+### Performance budgets (proposed ⚠️ confirm; measure in CI)
+| Action | Target |
+|---|---|
+| Cold start to usable inbox (cached) | < 2 s |
+| Open message from cache | < 100 ms |
+| Local search results | < 150 ms for 100k messages |
+| New mail appears after arrival (push) | < 3 s |
+| Switch folder/label | < 100 ms |
+Techniques: list virtualisation, Web Workers for index/sync, optimistic UI (action shows instantly, reconciles after API), prefetch next message bodies, sanitised HTML rendering in sandboxed iframe.
+
 ## Performance Analysis page (admin only — Minh)
 Admin-only dashboard inside Pivot Mail. Per-staff metrics:
 | Metric | Definition (proposed) | Data source | Phase |

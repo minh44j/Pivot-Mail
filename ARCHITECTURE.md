@@ -48,3 +48,10 @@ Requirements, scope and open questions live in `REQUIREMENTS.md`.
 - Sent/received counts come from Gmail API metadata aggregation (server job, daily), not message bodies.
 - `/admin/performance` route + API protected by server-side role check; roles table (`admin`, `staff`).
 - Cases-opened metric activates when Phase 2 case DB exists.
+
+## Speed architecture (see `REQUIREMENTS.md`)
+- Sync engine runs in a Web Worker (later: Rust/Tauri side), writes to local store; UI reads only from local store (never waits on network).
+- Search: local FTS index + Gmail-operator parser; remote fallback merged by `Message-ID`.
+- Optimistic mutations queue (archive, label, colour, read) with retry and conflict resolution against `historyId`.
+- Templates and colour rules are Pivot Mail data (DB); colours mirrored to Gmail labels.
+- Context menus, drag/drop and clipboard live behind `src/platform/` so desktop can swap in native implementations.
