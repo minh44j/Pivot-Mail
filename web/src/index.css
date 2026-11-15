@@ -1308,7 +1308,7 @@ small {
 .signin-hero {
   display: none;
 }
-.art-card {
+.art-stack {
   display: none;
 }
 .signin-panel {
@@ -1412,20 +1412,28 @@ small {
   .signin-hero {
     display: block;
   }
-  .art-card {
+  .art-stack {
     position: absolute;
-    right: 6%;
-    bottom: 16%;
-    display: block;
+    right: 5%;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
     width: 270px;
-    padding: 12px;
+  }
+  .art-card {
+    display: block;
+    padding: 12px 14px;
     border-radius: var(--r-lg);
     background: rgba(255, 255, 255, 0.95);
     color: var(--label);
-    box-shadow: 0 18px 48px rgba(2, 20, 20, 0.4);
-    transform: rotate(3deg);
+    box-shadow: 0 18px 48px rgba(2, 20, 20, 0.35);
     animation: float 7s ease-in-out infinite;
   }
+  .art-card.k1 { margin-left: -28px; animation-delay: -1s; }
+  .art-card.k2 { margin-left: 12px; animation-delay: -3s; }
+  .art-card.k3 { margin-left: -12px; animation-delay: -5s; }
 }
 .art-card-head {
   display: flex;
@@ -3451,4 +3459,74 @@ li.slot-end.slot {
 }
 .case-ref {
   font-variant-numeric: tabular-nums;
+}
+
+/* Sign-in analysis cards */
+.art-card small {
+  display: block;
+  color: var(--label-2);
+  font-size: 11px;
+}
+.kpi-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 2px 0 6px;
+}
+.kpi-main b {
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+.kpi-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--label-2);
+  font-size: 11px;
+}
+.kpi-chip.good {
+  background: #e3f6ee;
+  color: #12724a;
+}
+.spark {
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 5px;
+  height: 34px;
+}
+.bars i {
+  flex: 1;
+  border-radius: 2px;
+  background: #b8d3f3;
+}
+.bars i.hi {
+  background: #2a78d6;
+}
+.split {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin: 8px 0 6px;
+}
+.split i {
+  border-radius: 4px;
+}
+.legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--label-2);
+}
+.legend u {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border-radius: 2px;
+  text-decoration: none;
 }

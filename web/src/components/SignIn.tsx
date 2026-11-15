@@ -32,24 +32,6 @@ function Ship() {
   )
 }
 
-/** Plane, nose pointing up at (0, 0). Rotate to the heading + 90 degrees. */
-function Plane() {
-  return (
-    <g className="art-fly">
-      <path d="M0 -16 L3 -5 L21 4 L21 9 L3 6 L2 15 L8 19 L8 21 L0 19.5 L-8 21 L-8 19 L-2 15 L-3 6 L-21 9 L-21 4 L-3 -5 Z" fill="#fff" />
-    </g>
-  )
-}
-
-function Pin({ x, y }: { x: number; y: number }) {
-  return (
-    <g>
-      <circle cx={x} cy={y} r="15" fill="#fff" opacity="0.2" />
-      <circle cx={x} cy={y} r="7" fill="#fff" />
-    </g>
-  )
-}
-
 function Globe({ cx, cy, r }: { cx: number; cy: number; r: number }) {
   return (
     <g fill="none" stroke="#fff" strokeOpacity="0.13" strokeWidth="1.3">
@@ -111,12 +93,6 @@ function ArtDesktop() {
           [220, 480, 2, 0.4],
         ]}
       />
-      <path d="M312 596 C 300 100, 500 -100, 1230 170" fill="none" stroke="#fff" strokeOpacity="0.75" strokeWidth="2.2" strokeDasharray="2 11" strokeLinecap="round" />
-      <Pin x={312} y={596} />
-      <Pin x={1230} y={170} />
-      <g transform="translate(935 82) rotate(103) scale(1.9)">
-        <Plane />
-      </g>
       <Sea y={690} w={1440} h={210} lines={[745, 800, 858]} />
       <g transform="translate(120 650) scale(1.45)">
         <Ship />
@@ -139,17 +115,57 @@ function ArtMobile() {
           [30, 190, 1.6, 0.35],
         ]}
       />
-      <path d="M150 222 C 190 130, 320 80, 405 56" fill="none" stroke="#fff" strokeOpacity="0.75" strokeWidth="2" strokeDasharray="2 10" strokeLinecap="round" />
-      <Pin x={150} y={222} />
-      <Pin x={405} y={56} />
-      <g transform="translate(322 90) rotate(66) scale(1.5)">
-        <Plane />
-      </g>
       <Sea y={282} w={480} h={48} lines={[300, 318]} />
       <g transform="translate(40 262)">
         <Ship />
       </g>
     </svg>
+  )
+}
+
+
+const SPARK = [18, 15, 17, 12, 13, 9, 10, 7]
+const BARS = [40, 62, 48, 80, 66, 92, 74]
+
+function KpiCards() {
+  const max = Math.max(...SPARK)
+  const pts = SPARK.map((v, i) => `${(i / (SPARK.length - 1)) * 100},${34 - (v / max) * 30}`).join(' ')
+  return (
+    <>
+      <div className="art-card kpi k1" aria-hidden="true">
+        <small>Average first reply</small>
+        <div className="kpi-main">
+          <b>14 min</b>
+          <span className="kpi-chip good">▼ 22%</span>
+        </div>
+        <svg viewBox="0 0 100 36" preserveAspectRatio="none" className="spark">
+          <polyline points={pts} fill="none" stroke="#2a78d6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        </svg>
+      </div>
+      <div className="art-card kpi k2" aria-hidden="true">
+        <small>Cases opened this week</small>
+        <div className="kpi-main">
+          <b>38</b>
+          <span className="kpi-chip">▲ 6</span>
+        </div>
+        <div className="bars">
+          {BARS.map((h, i) => (
+            <i key={i} style={{ height: `${h}%` }} className={i === BARS.length - 1 ? 'hi' : ''} />
+          ))}
+        </div>
+      </div>
+      <div className="art-card kpi k3" aria-hidden="true">
+        <small>Mail by company</small>
+        <div className="split">
+          <i style={{ width: '58%', background: '#2a78d6' }} />
+          <i style={{ width: '42%', background: '#1baf7a' }} />
+        </div>
+        <div className="legend">
+          <span><u style={{ background: '#2a78d6' }} />Shipping 58%</span>
+          <span><u style={{ background: '#1baf7a' }} />Travel 42%</span>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -190,7 +206,10 @@ export function SignIn({ onPreview }: Props) {
     <main className="signin">
       <ArtDesktop />
       <ArtMobile />
-      <MiniInbox />
+      <div className="art-stack">
+        <KpiCards />
+        <MiniInbox />
+      </div>
 
       <div className="signin-hero">
         <h2>Your mail, at the speed of your work.</h2>
