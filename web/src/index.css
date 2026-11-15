@@ -19,7 +19,8 @@
   /* accent: system blue. Text uses the darker value for contrast. */
   --accent: #007aff; /* icons, dots, focus */
   --accent-text: #0066cc; /* links, interactive text (5.6:1 on white) */
-  --accent-fill: #0071e3; /* prominent button with white label (4.7:1) */
+  --accent-fill: #162328; /* prominent button: brand navy with white label (15:1) */
+  --accent-fill-hover: #2b3b44;
   --selection: #dcebff;
 
   /* brand (from the Pivot Mail logo). Not used for text: green on white is below 4.5:1 */
@@ -206,10 +207,10 @@ small {
   display: none;
 }
 .tb-new:hover {
-  filter: brightness(1.08);
+  background: var(--accent-fill-hover);
 }
 .tb-new:active {
-  filter: brightness(0.94);
+  background: #0d1619;
 }
 .tb-search {
   display: flex;
@@ -567,7 +568,7 @@ small {
   border: 0;
   border-radius: var(--r-sm);
   background: none;
-  color: var(--accent-text);
+  color: var(--label);
 }
 .icon-btn:hover {
   background: var(--fill);
@@ -774,7 +775,7 @@ small {
   border: 0;
   border-radius: var(--r-sm);
   background: none;
-  color: var(--accent-text);
+  color: var(--label);
 }
 .reader-actions button:hover {
   background: var(--fill);
@@ -854,7 +855,7 @@ small {
   border: 0;
   border-radius: var(--r-sm);
   background: none;
-  color: var(--accent-text);
+  color: var(--label);
 }
 .link:hover {
   background: var(--fill);
@@ -1057,8 +1058,8 @@ small {
   background: var(--fill);
 }
 .fbtn.on {
-  background: var(--selection);
-  color: var(--accent-text);
+  background: var(--fill-2);
+  color: var(--label);
 }
 .fsep {
   width: 1px;
@@ -1075,8 +1076,8 @@ small {
   font-size: 12px;
 }
 .fchip.on {
-  background: var(--selection);
-  color: var(--accent-text);
+  background: var(--fill-2);
+  color: var(--label);
   font-weight: 600;
 }
 .link-row {
@@ -1162,8 +1163,7 @@ small {
   font-weight: 600;
 }
 .composer-bar .primary:hover:not(:disabled) {
-  background: var(--accent-fill);
-  filter: brightness(1.08);
+  background: var(--accent-fill-hover);
 }
 .composer-bar select {
   width: 118px;
@@ -1266,12 +1266,11 @@ small {
   font-weight: 600;
 }
 .btn.primary:hover:not(:disabled) {
-  background: var(--accent-fill);
-  filter: brightness(1.08);
+  background: var(--accent-fill-hover);
 }
 .btn.quiet {
   background: none;
-  color: var(--accent-text);
+  color: var(--label);
 }
 .btn.wide {
   width: 100%;
