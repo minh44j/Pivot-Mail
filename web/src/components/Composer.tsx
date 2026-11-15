@@ -105,6 +105,12 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
     onClose()
   }
 
+  const discard = () => {
+    platform.storage.remove(DRAFT_KEY)
+    onClose()
+    onToast('Draft discarded')
+  }
+
   return (
     <div
       className={`composer${dragging ? ' drag' : ''}`}
@@ -130,13 +136,44 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
       }}
     >
       <header className="composer-head">
-        <strong>New message</strong>
+        <strong className="grow ellipsis">{d.subject || 'New message'}</strong>
         <span className="muted">{saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : ''}</span>
-        <span className="grow" />
-        <button type="button" className="icon-btn" onClick={close} aria-label="Close composer">
+        <button type="button" className="icon-btn" onClick={close} aria-label="Close and keep draft" title="Close (draft is kept)">
           <Icon name="close" />
         </button>
       </header>
+      <div className="composer-bar" role="toolbar" aria-label="Message actions">
+        <button type="button" className="primary" onClick={send} disabled={!canSend} title="Send (Ctrl+Enter)">
+          <Icon name="send" size={16} /> Send
+        </button>
+        <button type="button" onClick={() => fileInput.current?.click()} title="Attach files">
+          <Icon name="clip" size={16} /> Attach
+        </button>
+        <select
+          aria-label="Insert template"
+          value=""
+          onChange={(e) => {
+            const t = TEMPLATES.find((x) => x.id === e.target.value)
+            if (!t) return
+            const acc = accounts.find((a) => a.id === d.accountId)
+            const filled = applyTemplate(t, { sender: acc?.signature.split('\n')[0] ?? '' })
+            setD((prev) => ({ ...prev, subject: prev.subject || filled.subject, body: withSignature(filled.body, acc?.signature ?? '') }))
+          }}
+        >
+          <option value="">Templates…</option>
+          {TEMPLATES.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.category} – {t.name}
+            </option>
+          ))}
+        </select>
+        <span className="grow" />
+        <small className="hint muted">Ctrl+Enter to send</small>
+        <button type="button" onClick={discard} title="Discard draft" aria-label="Discard draft">
+          <Icon name="trash" size={16} />
+        </button>
+        <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
+      </div>
       <div className="composer-body">
         <label className="field">
           <span>From</span>
@@ -177,35 +214,6 @@ export function Composer({ init, accounts, pendingTemplate, onTemplateUsed, onSe
         <textarea ref={bodyRef} className="compose-text" value={d.body} onChange={(e) => setD({ ...d, body: e.target.value })} aria-label="Message body" />
         {dragging && <div className="drop-hint">Drop files to attach</div>}
       </div>
-      <footer className="composer-foot">
-        <button type="button" className="primary" onClick={send} disabled={!canSend}>
-          <Icon name="send" size={16} /> Send
-        </button>
-        <button type="button" onClick={() => fileInput.current?.click()}>
-          <Icon name="clip" size={16} /> Attach
-        </button>
-        <select
-          aria-label="Insert template"
-          value=""
-          onChange={(e) => {
-            const t = TEMPLATES.find((x) => x.id === e.target.value)
-            if (!t) return
-            const acc = accounts.find((a) => a.id === d.accountId)
-            const filled = applyTemplate(t, { sender: acc?.signature.split('\n')[0] ?? '' })
-            setD((prev) => ({ ...prev, subject: prev.subject || filled.subject, body: withSignature(filled.body, acc?.signature ?? '') }))
-          }}
-        >
-          <option value="">Insert template…</option>
-          {TEMPLATES.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.category} – {t.name}
-            </option>
-          ))}
-        </select>
-        <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
-        <span className="grow" />
-        <small className="muted">Ctrl+Enter to send</small>
-      </footer>
     </div>
   )
 }

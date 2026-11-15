@@ -10,6 +10,7 @@ interface Props {
   density: Density
   unreadOnly: boolean
   title: string
+  subtitle: string
   onUnreadOnly: (v: boolean) => void
   onSelect: (id: string) => void
   onBack: () => void
@@ -18,7 +19,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ rows, selectedId, density, unreadOnly, title, onUnreadOnly, onSelect, onBack }: Props) {
+export function MessageList({ rows, selectedId, density, unreadOnly, title, subtitle, onUnreadOnly, onSelect, onBack }: Props) {
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
@@ -79,7 +80,10 @@ export function MessageList({ rows, selectedId, density, unreadOnly, title, onUn
         <button type="button" className="icon-btn only-mobile" onClick={onBack} aria-label="Back to folders">
           <Icon name="back" />
         </button>
-        <h2>{title}</h2>
+        <h2>
+          {title}
+          <small>{subtitle}</small>
+        </h2>
         <div className="seg" role="group" aria-label="Filter">
           <button type="button" className={!unreadOnly ? 'on' : ''} onClick={() => onUnreadOnly(false)}>
             All

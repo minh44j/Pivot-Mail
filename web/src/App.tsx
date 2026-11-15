@@ -27,12 +27,12 @@ function usePersisted<T extends string | boolean>(key: string, initial: T, valid
   return [value, set]
 }
 
-const FOLDER_TITLES: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', archive: 'Archive', deleted: 'Deleted' }
+const FOLDER_TITLES: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', archive: 'Archive', deleted: 'Deleted Items' }
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
-  const [accountId, setAccountId] = useState('me')
-  const [sel, setSel] = useState<FolderSel>({ kind: 'folder', id: 'inbox' })
+  const [sel, setSel] = useState<FolderSel>({ accountId: 'me', kind: 'folder', id: 'inbox' })
+  const accountId = sel.accountId
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [unreadOnly, setUnreadOnly] = useState(false)
@@ -213,14 +213,8 @@ export default function App() {
         <FolderPane
           accounts={ACCOUNTS}
           messages={messages}
-          activeAccountId={accountId}
           selection={sel}
           labels={LABELS}
-          onAccount={(id) => {
-            setAccountId(id)
-            setSel({ kind: 'folder', id: 'inbox' })
-            setSelectedId(null)
-          }}
           onSelect={(s) => {
             setSel(s)
             setSelectedId(null)
@@ -233,6 +227,7 @@ export default function App() {
           density={density}
           unreadOnly={unreadOnly}
           title={title}
+          subtitle={ACCOUNTS.find((a) => a.id === accountId)?.email ?? ''}
           onUnreadOnly={setUnreadOnly}
           onSelect={select}
           onBack={() => setView('folders')}
