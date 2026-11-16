@@ -29,3 +29,14 @@ export const insert = <T = Row>(table: string, rows: Row | Row[], onConflict?: s
   call<T>('POST', table, onConflict ? `on_conflict=${onConflict}` : '', rows, `return=representation${onConflict ? ',resolution=merge-duplicates' : ''}`)
 export const update = <T = Row>(table: string, qs: string, patch: Row) => call<T>('PATCH', table, qs, patch, 'return=representation')
 export const remove = <T = Row>(table: string, qs: string) => call<T>('DELETE', table, qs, undefined, 'return=representation')
+
+/** Calls a database function (used for the atomic case-number counter). */
+export async function rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
+  const c = cfg()
+  if (!c) throw new Error('database is not configured')
+  const headers: Record<string, string> = { apikey: c.key, 'content-type': 'application/json' }
+  if (c.key.startsWith('eyJ')) headers.authorization = `Bearer ${c.key}`
+  const res = await fetch(`${c.url}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args) })
+  if (!res.ok) throw new Error(`database function ${fn} failed (${res.status})`)
+  return (await res.json()) as T
+}

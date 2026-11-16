@@ -26,6 +26,8 @@ export interface Account {
   signature: string
   /** Real mailboxes only: 'needs_reconnect' when Google no longer accepts the saved permission */
   status?: 'active' | 'needs_reconnect' | 'disabled'
+  /** Real mailboxes: which company's Workspace it belongs to (cases are shared per company) */
+  company?: 'scl' | 'tmc'
 }
 
 export interface Message {

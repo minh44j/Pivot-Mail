@@ -3942,3 +3942,63 @@ a.btn.google.real:hover {
   text-align: center;
   line-height: 1.5;
 }
+
+/* Case page */
+.case-panel {
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 24px 20px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.case-head h2 {
+  margin: 0;
+  font-size: 22px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.case-client {
+  margin: 2px 0 0;
+  color: var(--label-2);
+}
+.case-status {
+  padding: 1px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #e3f6ee;
+  color: #12724a;
+}
+.case-status.closed {
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+.case-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px 16px;
+  margin: 0;
+}
+.case-facts dt {
+  color: var(--label-2);
+  font-size: 12px;
+}
+.case-facts dd {
+  margin: 0;
+  font-weight: 500;
+}
+.case-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.case-name {
+  margin-left: 6px;
+  color: var(--label-2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

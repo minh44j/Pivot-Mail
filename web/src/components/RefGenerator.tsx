@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { CLIENTS, MODES, PLACES, SALESPEOPLE, SCOPES, TRAVEL_CATEGORIES, TRAVEL_CLIENTS } from '../data/refdata'
 import type { Mode, Scope, TravelCategory } from '../data/refdata'
 import { platform } from '../platform'
+import type { NewCase } from '../cases'
 import { initials } from '../util'
 import { Icon } from './Icon'
 
@@ -11,6 +12,8 @@ interface Props {
   onClose: () => void
   onToast: (m: string) => void
   onNewMail: (subject: string) => void
+  /** Signed-in use: numbers are issued by the server and the case is saved for the whole team */
+  real?: { company: 'scl' | 'tmc'; onCreate: (c: NewCase) => Promise<{ ok: true; ref: string } | { ok: false; message: string }> }
 }
 
 interface Result {
@@ -47,8 +50,10 @@ function readLast(): { ref: string; by: string } | null {
   }
 }
 
-export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
-  const [company, setCompany] = useState<Company>('shipping')
+export function RefGenerator({ onClose, onToast, onNewMail, real }: Props) {
+  const [company, setCompany] = useState<Company>(real ? (real.company === 'tmc' ? 'travel' : 'shipping') : 'shipping')
+  const [existing, setExisting] = useState('')
+  const [busy, setBusy] = useState(false)
   const [category, setCategory] = useState<TravelCategory>('flight')
   const [client, setClient] = useState('')
   const [scope, setScope] = useState<Scope>('freight-clearance')
@@ -76,9 +81,32 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
   const valid = (v: string) => places.some((p) => p.toLowerCase() === v.trim().toLowerCase())
   const canon = (v: string) => places.find((p) => p.toLowerCase() === v.trim().toLowerCase()) ?? v.trim()
 
-  const generate = () => {
+  const generate = async () => {
     const e: Record<string, string> = {}
     const travel = company === 'travel'
+    if (real) {
+      if (client.trim().length < 2) e.client = 'Enter the client'
+      if (!travel) {
+        if (from.trim().length < 2) e.from = 'Enter where it starts'
+        if (to.trim().length < 2) e.to = 'Enter where it goes'
+        if (!e.from && !e.to && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
+      }
+      setErrors(e)
+      if (Object.keys(e).length > 0 || busy) return
+      setBusy(true)
+      const details: Record<string, string> = travel
+        ? { category }
+        : { scope, mode, origin: canon(from), destination: canon(to), cargo: cargo.trim(), salesperson: SALESPEOPLE.find((s) => s.id === sales)?.name ?? '' }
+      const res = await real.onCreate({ client: client.trim(), details, notes: notes.trim(), ref: existing.trim() || undefined })
+      setBusy(false)
+      if (!res.ok) {
+        setErrors({ form: res.message })
+        return
+      }
+      const catLabel = TRAVEL_CATEGORIES.find((c) => c.id === category)?.label ?? ''
+      setResult({ ref: res.ref, subject: travel ? `[${res.ref}] ${client.trim()} – ${catLabel}` : `[${res.ref}] ${client.trim()} – ${canon(from)} → ${canon(to)}` })
+      return
+    }
     const clientList = travel ? TRAVEL_CLIENTS : CLIENTS
     if (!client.trim()) e.client = 'Enter the client'
     else if (!clientList.some((c) => c.toLowerCase() === client.trim().toLowerCase())) e.client = 'Choose a client from the list'
@@ -114,6 +142,7 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
     setCargo('')
     setNotes('')
     setSales('')
+    setExisting('')
     setErrors({})
   }
 
@@ -127,11 +156,17 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
           </button>
         </div>
 
-        <p className="notice" role="note">
-          <strong>Preview only.</strong> These numbers are generated in this browser and are not registered in Pivot OS. Do not use them on real jobs.
-        </p>
+        {real ? (
+          <p className="notice" role="note">
+            <strong>Provisional numbers.</strong> Pivot Mail issues these and shares the case with your team. They are not Pivot OS numbers yet.
+          </p>
+        ) : (
+          <p className="notice" role="note">
+            <strong>Preview only.</strong> These numbers are generated in this browser and are not registered in Pivot OS. Do not use them on real jobs.
+          </p>
+        )}
 
-        {!result && (
+        {!result && !real && (
           <div className="co-tabs" role="tablist" aria-label="Company">
             {(['shipping', 'travel'] as const).map((c) => (
               <button
@@ -187,7 +222,7 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
             className="modal-body"
             onSubmit={(e) => {
               e.preventDefault()
-              generate()
+              void generate()
             }}
             noValidate
           >
@@ -216,10 +251,21 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
               <span>Notes</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the team should know" />
             </label>
-            <button type="submit" className="btn primary wide">
-              Generate number
+            {real && (
+              <label className="fld">
+                <span>Existing number (optional)</span>
+                <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like PT2600123`} autoComplete="off" />
+              </label>
+            )}
+            {errors.form && (
+              <p className="err" role="alert">
+                {errors.form}
+              </p>
+            )}
+            <button type="submit" className="btn primary wide" disabled={busy}>
+              {busy ? 'Saving…' : existing.trim() ? 'Register case' : 'Generate number'}
             </button>
-            {last && (
+            {!real && last && (
               <p className="muted last">
                 Last issued (preview) <code>{last.ref}</code> · {last.by}
               </p>
@@ -230,7 +276,7 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
             className="modal-body"
             onSubmit={(e) => {
               e.preventDefault()
-              generate()
+              void generate()
             }}
             noValidate
           >
@@ -270,8 +316,11 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
                     data-tone={m.tone}
                     onClick={() => {
                       setMode(m.id)
-                      setFrom('')
-                      setTo('')
+                      // Sample place lists differ per mode, so they restart; with free text nothing is lost.
+                      if (!real) {
+                        setFrom('')
+                        setTo('')
+                      }
                     }}
                   >
                     <Icon name={m.icon} size={16} />
@@ -322,10 +371,21 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
               {errors.sales && <em className="err">{errors.sales}</em>}
             </div>
 
-            <button type="submit" className="btn primary wide">
-              Generate number
+            {real && (
+              <label className="fld">
+                <span>Existing number (optional)</span>
+                <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like PS2600123`} autoComplete="off" />
+              </label>
+            )}
+            {errors.form && (
+              <p className="err" role="alert">
+                {errors.form}
+              </p>
+            )}
+            <button type="submit" className="btn primary wide" disabled={busy}>
+              {busy ? 'Saving…' : existing.trim() ? 'Register case' : 'Generate number'}
             </button>
-            {last && (
+            {!real && last && (
               <p className="muted last">
                 Last issued (preview) <code>{last.ref}</code> · {last.by}
               </p>

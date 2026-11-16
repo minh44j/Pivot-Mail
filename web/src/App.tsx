@@ -9,6 +9,9 @@ import type { Problem } from './problems'
 import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
+import { CasePanel } from './components/CasePanel'
+import { CASE_ERRORS, fetchCases, openCase, updateCase } from './cases'
+import type { CaseRecord, NewCase } from './cases'
 import { GmailError, getLabel, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
 import type { GLabel } from './gmail/client'
 import { toMessage } from './gmail/map'
@@ -235,7 +238,7 @@ export default function App() {
   const accountList = useMemo<Account[]>(
     () =>
       realMode
-        ? (realAccounts ?? []).map((a) => ({ id: a.id, name: a.name, email: a.email, shared: a.kind === 'shared', signature: a.name, status: a.status }))
+        ? (realAccounts ?? []).map((a) => ({ id: a.id, name: a.name, email: a.email, shared: a.kind === 'shared', signature: a.name, status: a.status, company: a.company }))
         : [...ACCOUNTS.filter((a) => !removedIds.includes(a.id)), ...addedAccounts],
     [realMode, realAccounts, addedAccounts, removedIds],
   )
@@ -252,6 +255,7 @@ export default function App() {
   const inboxUnreadStale = useRef(true)
   const [inboxUnread, setInboxUnread] = useState<Record<string, number>>({})
   const failStreak = useRef(0)
+  const pollCount = useRef(0)
   const polling = useRef(false)
   const selRef = useRef(sel)
   const selectedIdRef = useRef(selectedId)
@@ -265,6 +269,12 @@ export default function App() {
     void platform.cache.setMeta(`hist:${accountId}`, id)
   }, [])
 
+  /** Cases are stored on the server and shared by the company's staff. */
+  const [casesDb, setCasesDb] = useState<CaseRecord[] | null>(null)
+  const loadCases = useCallback(async () => {
+    const list = await fetchCases()
+    if (list) setCasesDb(list)
+  }, [])
   const [labelsByAccount, setLabelsByAccount] = useState<Record<string, GLabel[]>>({})
   const labelsRef = useRef<Record<string, GLabel[]>>({})
   const realAccountsRef = useRef<AuthAccount[]>([])
@@ -389,12 +399,13 @@ export default function App() {
       setAuthUser(u)
       if (!u) return
       setMessages([]) // a real person never sees the sample mail
+      void loadCases()
       void loadAccounts().then(() => {
         if (connected) showToast(`${connected} connected`)
         else if (connectError) showToast(CONNECT_ERRORS[connectError] ?? 'The mailbox could not be connected.')
       })
     })
-  }, [loadAccounts, showToast])
+  }, [loadAccounts, loadCases, showToast])
 
 
   const applyChanges = useCallback(
@@ -487,6 +498,8 @@ export default function App() {
       const list = realAccountsRef.current.filter((x) => x.status !== 'needs_reconnect')
       for (const a of list) await pollAccount(a)
       inboxUnreadStale.current = false
+      pollCount.current += 1
+      if (pollCount.current % 4 === 0) void loadCases()
       failStreak.current = 0
       setLastSync(new Date())
       setSim((v) => (v === 'syncfail' ? null : v))
@@ -498,7 +511,7 @@ export default function App() {
     } finally {
       polling.current = false
     }
-  }, [pollAccount])
+  }, [pollAccount, loadCases])
   const pollRef = useRef(pollAll)
   useEffect(() => {
     pollRef.current = pollAll
@@ -591,6 +604,10 @@ export default function App() {
   const [folders, setFolders] = useStored<Record<string, string[]>>('pm.folders', Object.fromEntries(ACCOUNTS.map((x) => [x.id, [...LABELS]])), isFolderMap)
   /** Cases are found by the reference number in the subject, newest activity first. */
   const cases = useMemo(() => {
+    if (realMode) {
+      // Real mailboxes: the company's shared case list from the server, newest first.
+      return Object.fromEntries(accountList.map((acc) => [acc.id, (casesDb ?? []).filter((c) => c.company === acc.company).map((c) => c.ref)])) as Record<string, string[]>
+    }
     const out: Record<string, Map<string, string>> = {}
     for (const m of messages) {
       if (m.folder === 'deleted') continue
@@ -600,7 +617,8 @@ export default function App() {
       }
     }
     return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v.entries()].sort((x, y) => y[1].localeCompare(x[1])).map(([r]) => r)])) as Record<string, string[]>
-  }, [messages])
+  }, [messages, realMode, accountList, casesDb])
+  const caseNames = useMemo(() => (realMode ? Object.fromEntries((casesDb ?? []).map((c) => [c.ref, c.client])) : undefined), [realMode, casesDb])
   /** Real mailboxes show their Gmail labels as folders; the preview keeps its own list. */
   const foldersView = useMemo<Record<string, string[]>>(
     () => (realMode ? Object.fromEntries(Object.entries(labelsByAccount).map(([id, ls]) => [id, ls.filter((l) => l.type === 'user').map((l) => l.name).sort((x, y) => x.localeCompare(y))])) : folders),
@@ -1104,6 +1122,20 @@ export default function App() {
         : sm.flagged && sm.dueAt
           ? { text: `Follow up ${fmtWhen(sm.dueAt)}`, actions: [{ label: 'Mark complete', onClick: () => patch([sm.id], { flagged: false, dueAt: undefined }) }] }
           : undefined
+
+  /** Open a case on the server (generated or registered number); the sidebar updates at once. */
+  const createCase = async (c: NewCase): Promise<{ ok: true; ref: string } | { ok: false; message: string }> => {
+    const r = await openCase(c)
+    if (!r.ok) return { ok: false, message: CASE_ERRORS[r.error] ?? CASE_ERRORS.unavailable ?? 'Could not open the case.' }
+    setCasesDb((list) => [r.data.case, ...(list ?? []).filter((x) => x.ref !== r.data.case.ref)])
+    return { ok: true, ref: r.data.case.ref }
+  }
+  const saveCase = async (ref: string, change: { notes?: string; status?: 'open' | 'closed' }): Promise<boolean> => {
+    const r = await updateCase(ref, change)
+    if (r.ok) setCasesDb((list) => (list ?? []).map((x) => (x.ref === ref ? r.data.case : x)))
+    return r.ok
+  }
+  const selCase = realMode && sel.kind === 'case' ? casesDb?.find((c) => c.ref === sel.id) : undefined
 
   const sentLabel = (m: Message): string => {
     const d = new Date(m.date)
@@ -1795,6 +1827,8 @@ export default function App() {
       ? 'No mailbox connected yet. Choose Add account in the sidebar.'
       : syncing
         ? 'Loading your mail…'
+        : sel.kind === 'case'
+          ? `No email carries ${sel.id} yet. Put it in the subject and the email joins this case.`
         : realAccounts?.find((x) => x.id === accountId)?.status === 'needs_reconnect'
           ? 'This mailbox needs to be reconnected. Use the ⋯ menu next to its name.'
           : `Nothing here from the last ${windowDays} days.${gi && gi !== 'error' ? ` Search to look further back: Gmail holds ${gi.total.toLocaleString()} messages in total.` : ''}`
@@ -1870,6 +1904,7 @@ export default function App() {
           selection={sel}
           folders={foldersView}
           cases={cases}
+          caseNames={caseNames}
           onFolderAction={folderAction}
           onReorder={reorderFolder}
           onSelect={(s) => {
@@ -1933,6 +1968,7 @@ export default function App() {
         {showReader && !multi && (
           <ReadingPane
             messages={thread}
+            placeholder={selCase ? <CasePanel key={selCase.ref} c={selCase} onSave={(ch) => saveCase(selCase.ref, ch)} onNewMail={(subject) => openCompose({ subject })} onToast={showToast} /> : undefined}
             onReply={() => reply(false)}
             onReplyAll={() => reply(true)}
             onForward={() => forward()}
@@ -2048,6 +2084,7 @@ export default function App() {
           accounts={accountList}
           folders={foldersView}
           cases={cases}
+          caseNames={caseNames}
           accountId={accountId}
           onClose={() => setJump(null)}
           onPick={(s) => {
@@ -2057,7 +2094,14 @@ export default function App() {
           }}
         />
       )}
-      {refOpen && <RefGenerator onClose={() => setRefOpen(false)} onToast={showToast} onNewMail={(subject) => openCompose({ subject })} />}
+      {refOpen && (
+        <RefGenerator
+          onClose={() => setRefOpen(false)}
+          onToast={showToast}
+          onNewMail={(subject) => openCompose({ subject })}
+          real={authUser ? { company: authUser.company === 'tmc' ? 'tmc' : 'scl', onCreate: createCase } : undefined}
+        />
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast}

@@ -29,6 +29,8 @@ interface Props {
   selection: FolderSel
   folders: Record<string, string[]>
   cases: Record<string, string[]>
+  /** Real mailboxes: client name per case reference */
+  caseNames?: Record<string, string>
   onFolderAction: (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) => void
   onReorder: (accountId: string, name: string, before: string | null) => void
   onSelect: (s: FolderSel) => void
@@ -36,7 +38,7 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, caseNames, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
   const [accMenu, setAccMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
@@ -205,7 +207,10 @@ export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccou
                     <li key={c}>
                       <button type="button" className={`folder${on ? ' active' : ''}`} aria-current={on} onClick={() => onSelect({ accountId: a.id, kind: 'case', id: c })}>
                         <Icon name="hash" size={15} tone={c.startsWith('PT') ? 'teal' : 'purple'} />
-                        <span className="grow case-ref">{c}</span>
+                        <span className="grow case-ref">
+                          {c}
+                          {caseNames?.[c] && <span className="case-name">{caseNames[c]}</span>}
+                        </span>
                         {n > 0 && <span className="count">{n}</span>}
                       </button>
                     </li>
