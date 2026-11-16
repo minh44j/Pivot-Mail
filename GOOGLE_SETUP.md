@@ -10,8 +10,8 @@ Do every step below twice, signed in as a super administrator of that Workspace.
 | Project name | Pivot Mail |
 | App name on the consent screen | Pivot Mail |
 | User type | **Internal** |
-| Authorised JavaScript origin | `https://pivot-mail-web.vercel.app` |
-| Authorised redirect URI | `https://pivot-mail-web.vercel.app/api/auth/google/callback` |
+| Authorised JavaScript origins | `https://mail.pivotscl.com` and `https://pivot-mail-web.vercel.app` |
+| Authorised redirect URIs | `https://mail.pivotscl.com/api/auth/google/callback` and `https://pivot-mail-web.vercel.app/api/auth/google/callback` |
 | Development only (add too) | `http://localhost:5173` and `http://localhost:5173/api/auth/google/callback` |
 | Scopes | `openid`, `email`, `profile`, `https://www.googleapis.com/auth/gmail.modify`, `https://www.googleapis.com/auth/contacts.readonly`, `https://www.googleapis.com/auth/directory.readonly` |
 | APIs to enable | Gmail API, People API (later: Cloud Pub/Sub API, Google Drive API) |
@@ -53,3 +53,11 @@ Do every step below twice, signed in as a super administrator of that Workspace.
 - After Google's callback, the server hands a one-time code back to the app through a loopback address (`http://127.0.0.1:<random port>`), and the app exchanges it for its own session. Tokens stay on the server.
 - An "Authorised origin" is only needed for the browser version. A desktop wrapper that serves the page from its own address (for example `tauri://localhost`) cannot be used as an origin, which is why sign-in does not happen inside it.
 - Only if we ever store Google tokens on the device itself would we add a separate **Desktop app** OAuth client (loopback redirect with PKCE). Not planned. ⚠️ Verify with specialist against Google's current OAuth guidance for installed apps.
+
+## Custom address: mail.pivotscl.com
+1. **Check DNS first.** If `mail.pivotscl.com` already exists (for example the old Gmail shortcut `CNAME ghs.googlehosted.com`), it must be removed or renamed before pointing it at Vercel. MX records for email are not affected by a subdomain.
+2. Vercel → `pivot-mail-web` → Settings → Domains → add `mail.pivotscl.com`. Create the DNS record Vercel shows (normally a `CNAME` for `mail` to Vercel's target). Wait until the domain shows as valid; the certificate is automatic.
+3. Add the two `mail.pivotscl.com` entries (origin and redirect URI) in **both** Cloud projects. Keep the `vercel.app` entries while testing, then remove them.
+4. Session cookies stay host-only on `mail.pivotscl.com` (never `.pivotscl.com`), so other subdomains cannot read them.
+5. The same address serves both companies. ⚠️ Decide whether pivottmc.com staff are comfortable using a pivotscl.com address, or whether to use a neutral one later (a new Vercel domain and two more redirect URIs).
+6. ⚠️ Verify with specialist: if the consent screen asks for an "authorised domain", add `pivotscl.com` in each project.
