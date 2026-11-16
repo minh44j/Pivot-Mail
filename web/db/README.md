@@ -1,5 +1,7 @@
 # Database (Supabase project "Pivot Mail")
 
+Project: `acqsbzpynpuqzhzikxoj` · `https://acqsbzpynpuqzhzikxoj.supabase.co` · region ap-south-1 (Mumbai). The first project in Sydney was deleted and replaced; both migrations were re-applied and the security advisor shows only the intended notices.
+
 Migrations are plain SQL in `migrations/`, applied in order. They are already applied to the live project; keep them here so the database can be rebuilt (for example in another region).
 
 | File | What it does |
