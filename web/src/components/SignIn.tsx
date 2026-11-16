@@ -1,7 +1,14 @@
 import logoLockup from '../assets/brand/logo-lockup.png'
 
+import { AUTH_ERRORS, startUrl } from '../auth'
+import type { AuthConfig } from '../auth'
+
 interface Props {
   onPreview: () => void
+  /** From the server; null in the preview, where there is no sign-in yet */
+  config: AuthConfig | null
+  /** Error code from the last attempt (?auth_error=…) */
+  error: string | null
 }
 
 /* ---- artwork pieces (original, drawn in code; brand palette from the logo) ---- */
@@ -201,7 +208,9 @@ function MiniInbox() {
  * Google login is not connected yet (needs the Workspace OAuth app), so the only working path
  * is the sample-data preview.
  */
-export function SignIn({ onPreview }: Props) {
+export function SignIn({ onPreview, config, error }: Props) {
+  const real = config?.configured === true
+  const err = error ? (AUTH_ERRORS[error] ?? { title: 'Sign-in failed', text: 'Please try again.', denied: false }) : null
   return (
     <main className="signin">
       <ArtDesktop />
@@ -220,12 +229,33 @@ export function SignIn({ onPreview }: Props) {
         <h1 id="signin-title">Sign in</h1>
         <p className="muted lead">Use your Pivot Workspace account to open your mailboxes.</p>
 
-        <button type="button" className="btn wide google" disabled aria-describedby="signin-note">
-          Continue with Google
-        </button>
-        <p id="signin-note" className="signin-note">
-          Google sign-in is not connected yet.
-        </p>
+        {err && (
+          <p className="signin-error" role="alert">
+            <strong>{err.title}.</strong> {err.text}
+          </p>
+        )}
+        {real && config.company ? (
+          <a className="btn wide google real" href={startUrl()}>
+            Continue with Google
+          </a>
+        ) : real ? (
+          <div className="co-sign" role="group" aria-label="Choose your company">
+            {config.companies.map((c) => (
+              <a key={c.id} className="btn wide google real" href={startUrl(c.id)}>
+                {c.name} <small>@{c.domain}</small>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <>
+            <button type="button" className="btn wide google" disabled aria-describedby="signin-note">
+              Continue with Google
+            </button>
+            <p id="signin-note" className="signin-note">
+              Google sign-in is not connected yet.
+            </p>
+          </>
+        )}
 
         <div className="or" role="separator">
           <span>or</span>

@@ -30,6 +30,7 @@ Do every step below twice, signed in as a super administrator of that Workspace.
   - pivottmc.com project: `GOOGLE_CLIENT_ID_TMC`, `GOOGLE_CLIENT_SECRET_TMC`
   - pivotscl.com project: `GOOGLE_CLIENT_ID_SCL`, `GOOGLE_CLIENT_SECRET_SCL`
   - one shared random value for `SESSION_SECRET` (32+ random characters), created once.
+  - `ADMIN_EMAILS`: comma-separated addresses of the administrators (for example `you@pivotscl.com,you@pivottmc.com`). Until roles move to the database, this list decides who is an administrator.
 - [ ] 9. Admin console (admin.google.com) → Security → Access and data control → API controls: if third-party app access is restricted, mark the **Pivot Mail** client as **Trusted**.
 - [ ] 10. Test with one staff account of that Workspace once phase 1 is deployed.
 

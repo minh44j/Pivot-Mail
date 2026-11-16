@@ -3896,3 +3896,38 @@ li.slot-end.slot {
 .tb-search input {
   align-self: stretch;
 }
+
+/* Real sign-in */
+a.btn.google.real {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-decoration: none;
+  background: var(--content);
+  color: var(--label);
+  border: 1px solid var(--separator);
+}
+a.btn.google.real:hover {
+  background: var(--fill);
+}
+.co-sign {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.signin-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: #fdeceb;
+  color: #a1180d;
+  font-size: 13px;
+}
+.menu-note {
+  padding: 4px 12px 6px;
+  color: var(--label-2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

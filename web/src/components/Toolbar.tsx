@@ -23,6 +23,10 @@ interface Props {
   onEnableNotifications: () => void
   onRef: () => void
   onSignOut: () => void
+  /** Email of the signed-in person, when real sign-in is used */
+  signedInAs?: string
+  /** Only administrators may preview the staff view */
+  canSwitchRole: boolean
   role: 'admin' | 'staff'
   onRole: (r: 'admin' | 'staff') => void
   onPerformance: () => void
@@ -248,16 +252,19 @@ export function Toolbar(p: Props) {
                   </span>
                   {notifLabel}
                 </button>
-                <Check
-                  role="menuitemcheckbox"
-                  checked={p.role === 'staff'}
-                  label="Preview as staff"
-                  onSelect={() => {
-                    p.onRole(p.role === 'staff' ? 'admin' : 'staff')
-                    close()
-                  }}
-                />
+                {p.canSwitchRole && (
+                  <Check
+                    role="menuitemcheckbox"
+                    checked={p.role === 'staff'}
+                    label="Preview as staff"
+                    onSelect={() => {
+                      p.onRole(p.role === 'staff' ? 'admin' : 'staff')
+                      close()
+                    }}
+                  />
+                )}
                 <div className="menu-sep" role="separator" />
+                {p.signedInAs && <div className="menu-note">Signed in as {p.signedInAs}</div>}
                 <button
                   type="button"
                   role="menuitem"
@@ -268,7 +275,7 @@ export function Toolbar(p: Props) {
                   }}
                 >
                   <span className="ph" />
-                  Sign out (preview)
+                  {p.signedInAs ? 'Sign out' : 'Sign out (preview)'}
                 </button>
               </>
             )}

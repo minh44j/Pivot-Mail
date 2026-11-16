@@ -49,3 +49,13 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 2. Shared-mailbox method (step 8).
 3. First-sync window (step 10).
 4. Reference number rules: digit count and year for PS and PT, confirmed with Pivot OS.
+
+
+## Phase 1 status: real sign-in (built, waiting for the first live test)
+- Server: `web/api/auth/*` (Vercel functions): `start`, `google/callback`, `session`, `logout`, `config`. Authorization-code flow with PKCE, state and nonce; the Google client secret never reaches the browser.
+- Checks before anyone enters: Google's `hd` claim and the email domain must both match the company; the email must be verified; issuer, audience, nonce and expiry are checked. Each company address uses its own Client ID.
+- Session: signed, HttpOnly, Secure, SameSite=Lax, host-only cookie (`__Host-` prefix), 7 days. Role comes from `ADMIN_EMAILS`.
+- Sign-in asks only for identity (`openid email profile`). The Gmail and contacts scopes are requested when mailboxes are connected in phase 2, together with encrypted token storage.
+- Mail is still sample data after sign-in. The UI says who is signed in; staff cannot reach administrator pages.
+- Tests: `npm run test:api` (44 checks against a mocked Google), `npm run check:api` (types).
+- ⚠️ Verify with specialist: security review of the sign-in code before staff use it (cookie lifetime, CSRF on future write endpoints, logging).

@@ -5,6 +5,8 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
+import { fetchAuthConfig, fetchSession, signOut } from './auth'
+import type { AuthConfig, AuthUser } from './auth'
 import { AccountDialog } from './components/AccountDialog'
 import type { AccountDialogState, NewAccount } from './components/AccountDialog'
 import { COMPANIES } from './data/companies'
@@ -131,7 +133,17 @@ export default function App() {
   const [signatures, setSignatures] = useStored<Record<string, string>>('pm.signatures', {}, isRecord)
   const [customTemplates, setCustomTemplates] = useStored<Template[]>('pm.templates', [], isTemplates)
   const [colourNames, setColourNames] = useStored<Record<string, string>>('pm.colours', {}, isRecord)
-  const [role, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
+  const [roleState, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null)
+  const [authError, setAuthError] = useState<string | null>(() => new URLSearchParams(window.location.search).get('auth_error'))
+  // A signed-in person's role comes from the server. Only administrators may preview the staff view.
+  const role: 'admin' | 'staff' = authUser ? (authUser.role === 'admin' ? roleState : 'staff') : roleState
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('auth_error')) window.history.replaceState(null, '', window.location.pathname)
+    void fetchSession().then(setAuthUser)
+    void fetchAuthConfig().then(setAuthConfig)
+  }, [])
   const [netOnline, setOnline] = useState(() => navigator.onLine)
   const [sim, setSim] = useState<Problem | null>(null)
   const [retrying, setRetrying] = useState(false)
@@ -816,7 +828,7 @@ export default function App() {
   // Keyboard shortcuts (Outlook style). The full list is in src/shortcuts.ts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!entered || screen !== 'mail') return
+      if (!(entered || authUser) || screen !== 'mail') return
       const t = e.target as HTMLElement
       const typing = t.matches('input, textarea, select') || t.isContentEditable
       const mod = e.ctrlKey || e.metaKey
@@ -994,7 +1006,7 @@ export default function App() {
   const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? 'All inboxes' : sel.id
   const showReader = pane !== 'off'
 
-  if (!entered) return <SignIn onPreview={() => setEntered(true)} />
+  if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
 
   if (sim === 'expired' || sim === 'denied') {
     return <StatusScreen kind={sim} account={accountList[0]?.email ?? ''} onAction={() => setSim(null)} />
@@ -1091,7 +1103,12 @@ export default function App() {
         onDensity={setDensity}
         onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
         onRef={() => setRefOpen(true)}
-        onSignOut={() => setEntered(false)}
+        signedInAs={authUser?.email}
+        canSwitchRole={!authUser || authUser.role === 'admin'}
+        onSignOut={() => {
+          if (authUser) void signOut().then(() => { setAuthUser(null); setAuthError(null) })
+          setEntered(false)
+        }}
         role={role}
         onRole={setRole}
         onPerformance={() => setScreen('performance')}
