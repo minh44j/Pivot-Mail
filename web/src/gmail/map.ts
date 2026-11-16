@@ -67,5 +67,7 @@ export function toMessage(accountId: string, g: GMessage, labelNames: Record<str
     important: (g.labelIds ?? []).includes('IMPORTANT'),
     attachments,
     loaded: full,
+    rfcId: header(p, 'message-id'),
+    rfcRefs: header(p, 'references'),
   }
 }

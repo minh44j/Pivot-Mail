@@ -33,21 +33,44 @@ async function accessToken(accountId: string, force = false): Promise<string> {
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** GET with the mailbox's key. One refresh on 401, and a few polite retries when Gmail asks us to slow down (429) or is busy (5xx). */
-async function gget<T>(accountId: string, path: string, params: [string, string][] = []): Promise<T> {
-  const url = new URL(`${BASE}${path}`)
-  for (const [k, v] of params) url.searchParams.append(k, v)
+type Params = [string, string][]
+
+interface Req {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+  params?: Params
+  /** JSON body */
+  body?: unknown
+  /** A raw body (message upload) with its content type */
+  raw?: { type: string; data: string }
+  /** false for sends: never repeat a request that may already have been processed (only 401 and 429 are safe to repeat) */
+  idempotent?: boolean
+  /** full address instead of the usual API base (media upload) */
+  url?: string
+}
+
+/** A request with the mailbox's key. One refresh on 401, and a few polite retries when Gmail asks us to slow down (429) or is busy (5xx). */
+async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T> {
+  const url = new URL(o.url ?? `${BASE}${path}`)
+  for (const [k, v] of o.params ?? []) url.searchParams.append(k, v)
+  const idempotent = o.idempotent ?? (o.method ?? 'GET') === 'GET'
   let refreshed = false
   for (let attempt = 0; ; attempt++) {
     const token = await accessToken(accountId, false)
-    const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } })
-    if (res.ok) return (await res.json()) as T
+    const headers: Record<string, string> = { authorization: `Bearer ${token}` }
+    if (o.body !== undefined) headers['content-type'] = 'application/json'
+    if (o.raw) headers['content-type'] = o.raw.type
+    const res = await fetch(url, { method: o.method ?? 'GET', headers, body: o.raw ? o.raw.data : o.body !== undefined ? JSON.stringify(o.body) : undefined })
+    if (res.ok) {
+      const text = await res.text()
+      return (text ? JSON.parse(text) : {}) as T
+    }
     if (res.status === 401 && !refreshed) {
       refreshed = true
       await accessToken(accountId, true)
       continue
     }
-    if ((res.status === 429 || res.status >= 500) && attempt < 4) {
+    const retryable = res.status === 429 || (idempotent && res.status >= 500)
+    if (retryable && attempt < 4) {
       const ra = Number(res.headers.get('retry-after'))
       await wait(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 30) * 1000 : 500 * 2 ** attempt)
       continue
@@ -55,6 +78,8 @@ async function gget<T>(accountId: string, path: string, params: [string, string]
     throw new GmailError(res.status, `Gmail request failed (${res.status})`)
   }
 }
+
+const gget = <T>(accountId: string, path: string, params: Params = []): Promise<T> => greq<T>(accountId, path, { params })
 
 export interface GLabel {
   id: string
@@ -79,7 +104,7 @@ export async function listMessageIds(accountId: string, o: { labelIds?: string[]
   return { ids: r.messages ?? [], next: r.nextPageToken }
 }
 
-const META: [string, string][] = [['format', 'metadata'], ...['From', 'To', 'Cc', 'Subject', 'Date'].map((h): [string, string] => ['metadataHeaders', h])]
+const META: Params = [['format', 'metadata'], ...['From', 'To', 'Cc', 'Subject', 'Date'].map((h): [string, string] => ['metadataHeaders', h])]
 
 export const getMetadata = (accountId: string, id: string): Promise<GMessage> => gget<GMessage>(accountId, `/messages/${encodeURIComponent(id)}`, META)
 
@@ -107,3 +132,53 @@ export async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>
   )
   return out
 }
+
+/* ---------- writing ---------- */
+
+const enc = encodeURIComponent
+
+export const modifyThread = (accountId: string, threadId: string, add: string[], remove: string[]) =>
+  greq(accountId, `/threads/${enc(threadId)}/modify`, { method: 'POST', body: { addLabelIds: add, removeLabelIds: remove }, idempotent: true })
+
+export const trashThread = (accountId: string, threadId: string) => greq(accountId, `/threads/${enc(threadId)}/trash`, { method: 'POST', idempotent: true })
+export const untrashThread = (accountId: string, threadId: string) => greq(accountId, `/threads/${enc(threadId)}/untrash`, { method: 'POST', idempotent: true })
+
+/** Labels on specific messages (up to 1000 per call). */
+export async function modifyMessages(accountId: string, ids: string[], add: string[], remove: string[]): Promise<void> {
+  for (let i = 0; i < ids.length; i += 1000) {
+    await greq(accountId, '/messages/batchModify', { method: 'POST', body: { ids: ids.slice(i, i + 1000), addLabelIds: add, removeLabelIds: remove }, idempotent: true })
+  }
+}
+
+export const createLabel = (accountId: string, name: string) =>
+  greq<GLabel>(accountId, '/labels', { method: 'POST', body: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' }, idempotent: false })
+export const renameLabel = (accountId: string, id: string, name: string) => greq<GLabel>(accountId, `/labels/${enc(id)}`, { method: 'PATCH', body: { name }, idempotent: true })
+export const deleteLabel = (accountId: string, id: string) => greq(accountId, `/labels/${enc(id)}`, { method: 'DELETE', idempotent: true })
+
+export interface Sent {
+  id: string
+  threadId: string
+  labelIds?: string[]
+}
+
+const MAX_JSON_RAW = 4 * 1024 * 1024
+
+/** Sends a finished raw message (URL-safe base64). Larger ones use Gmail's upload endpoint. Never retried after a server error: it might already have gone out. */
+export async function sendRaw(accountId: string, raw: string, threadId?: string): Promise<Sent> {
+  if (raw.length <= MAX_JSON_RAW) return greq<Sent>(accountId, '/messages/send', { method: 'POST', body: { raw, ...(threadId ? { threadId } : {}) }, idempotent: false })
+  const b = `pm${Math.random().toString(36).slice(2)}`
+  const bytes = atob(raw.replace(/-/g, '+').replace(/_/g, '/'))
+  const data = [`--${b}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(threadId ? { threadId } : {}), `--${b}`, 'Content-Type: message/rfc822', '', bytes, `--${b}--`].join('\r\n')
+  return greq<Sent>(accountId, '', { method: 'POST', url: 'https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart', raw: { type: `multipart/related; boundary=${b}`, data }, idempotent: false })
+}
+
+export interface GDraft {
+  id: string
+  message: { id: string; threadId: string }
+}
+
+export const listDrafts = async (accountId: string): Promise<GDraft[]> => (await gget<{ drafts?: GDraft[] }>(accountId, '/drafts', [['maxResults', '100']])).drafts ?? []
+export const createDraft = (accountId: string, raw: string, threadId?: string) => greq<GDraft>(accountId, '/drafts', { method: 'POST', body: { message: { raw, ...(threadId ? { threadId } : {}) } }, idempotent: false })
+export const updateDraft = (accountId: string, draftId: string, raw: string, threadId?: string) =>
+  greq<GDraft>(accountId, `/drafts/${enc(draftId)}`, { method: 'PUT', body: { message: { raw, ...(threadId ? { threadId } : {}) } }, idempotent: true })
+export const deleteDraft = (accountId: string, draftId: string) => greq(accountId, `/drafts/${enc(draftId)}`, { method: 'DELETE', idempotent: true })

@@ -1,3 +1,4 @@
+/* oxlint-disable react/preserve-manual-memoization -- the React Compiler is not part of this build; the rule only notes that it would skip this large component */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row } from './types'
 import { TEMPLATES } from './data/templates'
@@ -12,6 +13,11 @@ import { GmailError, getThreadFull, listLabels } from './gmail/client'
 import type { GLabel } from './gmail/client'
 import { toMessage } from './gmail/map'
 import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
+import { createLabel, createDraft, deleteDraft, deleteLabel, listDrafts, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
+import { buildMime, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
+import type { OutAttachment } from './gmail/compose'
+import { forThreads, gid, labelsOn, moveThread, threadsOf } from './gmail/ops'
+import { ensureBytes, mockBytes } from './data/mockfile'
 import type { Target } from './gmail/sync'
 import type { CompanyId } from './data/companies'
 import { AccountDialog } from './components/AccountDialog'
@@ -194,6 +200,17 @@ export default function App() {
   }, [])
 
   const undo = () => {
+    if (realMode) {
+      const entry = realUndo.current.pop()
+      if (!entry) {
+        showToast('Nothing to undo')
+        return
+      }
+      restoreLocal(entry.before)
+      showToast('Undone')
+      void entry.inverse().catch(() => showToast('Gmail could not undo that change. Refresh the folder to see the real state.'))
+      return
+    }
     const snap = undoStack.current.pop()
     if (!snap) {
       showToast('Nothing to undo')
@@ -301,14 +318,17 @@ export default function App() {
   const loadThread = useCallback(
     async (m: Message) => {
       const have = messagesRef.current.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId)
-      if (have.length > 0 && have.every((x) => x.loaded)) return
+      if (have.length > 0 && have.every((x) => x.loaded)) return have
       try {
         const labels = await ensureLabels(m.accountId)
         const full = await getThreadFull(m.accountId, m.threadId)
         const names = Object.fromEntries(labels.map((l) => [l.id, l.name]))
-        mergeIn(full.map((g) => toMessage(m.accountId, g, names)).filter((x): x is Message => x !== null))
+        const msgs = full.map((g) => toMessage(m.accountId, g, names)).filter((x): x is Message => x !== null)
+        mergeIn(msgs)
+        return msgs
       } catch {
         showToast('Could not open this message. Please try again.')
+        return []
       }
     },
     [ensureLabels, mergeIn, showToast],
@@ -419,16 +439,61 @@ export default function App() {
   )
   const [folderDlg, setFolderDlg] = useState<FolderDialogState | null>(null)
   const folderAction = (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) =>
-    readOnly() ||
     setFolderDlg(action === 'new' ? { mode: 'new', accountId } : { mode: action, accountId, name: name ?? '' })
   const reorderFolder = (accountId: string, name: string, before: string | null) => {
-    if (readOnly()) return
+    if (realMode) {
+      showToast('Gmail lists folders alphabetically, so they cannot be reordered.')
+      return
+    }
     const list = (folders[accountId] ?? []).filter((x) => x !== name)
     const at = before === null ? list.length : list.indexOf(before)
     list.splice(at < 0 ? list.length : at, 0, name)
     setFolders({ ...folders, [accountId]: list })
   }
+  /** Real mailboxes: folders are Gmail labels. */
+  const submitFolderReal = async (value: string) => {
+    const dlg = folderDlg
+    if (!dlg) return
+    setFolderDlg(null)
+    const labels = labelsRef.current[dlg.accountId] ?? []
+    const setLabels = (next: GLabel[]) => {
+      labelsRef.current = { ...labelsRef.current, [dlg.accountId]: next }
+      setLabelsByAccount(labelsRef.current)
+    }
+    try {
+      if (dlg.mode === 'new') {
+        const l = await createLabel(dlg.accountId, value)
+        setLabels([...labels, { ...l, type: l.type ?? 'user' }])
+        showToast(`Folder “${value}” created`)
+      } else if (dlg.mode === 'rename') {
+        const l = labels.find((x) => x.name === dlg.name)
+        if (!l || value === dlg.name) return
+        await renameLabel(dlg.accountId, l.id, value)
+        setLabels(labels.map((x) => (x.id === l.id ? { ...x, name: value } : x)))
+        setMessages((prev) => prev.map((m) => (m.accountId === dlg.accountId && m.labels.includes(dlg.name) ? { ...m, labels: m.labels.map((n) => (n === dlg.name ? value : n)) } : m)))
+        if (sel.kind === 'label' && sel.accountId === dlg.accountId && sel.id === dlg.name) setSel({ ...sel, id: value })
+        showToast(`Renamed to “${value}”`)
+      } else {
+        const l = labels.find((x) => x.name === dlg.name)
+        if (!l) return
+        await deleteLabel(dlg.accountId, l.id)
+        setLabels(labels.filter((x) => x.id !== l.id))
+        setMessages((prev) => prev.map((m) => (m.accountId === dlg.accountId && m.labels.includes(dlg.name) ? { ...m, labels: m.labels.filter((n) => n !== dlg.name) } : m)))
+        if (sel.kind === 'label' && sel.accountId === dlg.accountId && sel.id === dlg.name) {
+          setSel({ accountId: dlg.accountId, kind: 'folder', id: 'inbox' })
+          setSelectedId(null)
+        }
+        showToast(`Folder “${dlg.name}” deleted. No mail was deleted.`)
+      }
+    } catch {
+      showToast('Gmail did not accept that change. Please try again.')
+    }
+  }
   const submitFolder = (value: string) => {
+    if (realMode) {
+      void submitFolderReal(value)
+      return
+    }
     const dlg = folderDlg
     if (!dlg) return
     const list = folders[dlg.accountId] ?? []
@@ -550,8 +615,19 @@ export default function App() {
       anchorId.current = id
       setView('read')
       const row = rows.find((r) => r.msg.id === id)
-      if (row && realMode) void loadThread(row.msg)
-      else if (row) {
+      if (row && realMode) {
+        void loadThread(row.msg)
+        // Opening a conversation reads it, in Gmail as well.
+        const unread = messages.filter((m) => m.unread && (threaded ? m.threadId === row.msg.threadId : m.id === id) && m.accountId === row.msg.accountId)
+        if (unread.length > 0) {
+          const before = unread.map((m) => ({ ...m }))
+          const set = new Set(unread.map((m) => m.id))
+          setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, unread: false } : m)))
+          const acc = row.msg.accountId
+          const call = threaded ? modifyThread(acc, row.msg.threadId, [], ['UNREAD']) : modifyMessages(acc, [gid(row.msg)], [], ['UNREAD'])
+          void call.catch(() => setMessages((prev) => prev.map((m) => before.find((b) => b.id === m.id) ?? m)))
+        }
+      } else if (row) {
         const ids = messages.filter((m) => m.unread && (threaded ? m.threadId === row.msg.threadId : m.id === id) && m.accountId === row.msg.accountId).map((m) => m.id)
         if (ids.length > 0) patch(ids, { unread: false }, false)
       }
@@ -602,8 +678,81 @@ export default function App() {
   }
   const upsert = (m: Message) => setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev.map((x) => (x.id === m.id ? m : x)) : [m, ...prev]))
 
+  /** Everything the composer holds, as the raw email Gmail sends. */
+  const outgoing = async (d: ComposeInit, acc: AuthAccount, lenient = false): Promise<string> => {
+    const files: OutAttachment[] = []
+    let total = 0
+    for (const at of d.attachments) {
+      let bytes: Uint8Array
+      if (at.file instanceof File) bytes = new Uint8Array(await at.file.arrayBuffer())
+      else if (at.source) {
+        await ensureBytes(at)
+        bytes = mockBytes(at)
+      } else if (lenient) continue
+      else throw new Error(`reattach:${at.name}`)
+      total += bytes.length
+      files.push({ name: at.name, mime: at.mime, bytes })
+    }
+    if (total > 25 * 1024 * 1024) throw new Error('toolarge')
+    return toRaw(
+      buildMime({
+        from: { name: acc.name, email: acc.email },
+        to: parseRecipients(d.to),
+        cc: parseRecipients(d.cc),
+        bcc: parseRecipients(d.bcc),
+        subject: d.subject.trim() || '(no subject)',
+        html: outgoingHtml(d.body),
+        text: htmlToPlain(d.body, true),
+        attachments: files,
+        inReplyTo: d.reply?.messageId || undefined,
+        references: d.reply?.references || undefined,
+      }),
+    )
+  }
+  const sendError = (e: unknown): string => {
+    const msg = e instanceof Error ? e.message : ''
+    if (msg.startsWith('reattach:')) return `Please attach “${msg.slice(9)}” again, then send.`
+    if (msg === 'toolarge') return 'The attachments are over Gmail\'s 25 MB limit.'
+    return 'Gmail could not send the message.'
+  }
+
+  const sendReal = async (d: ComposeInit) => {
+    const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
+    if (!acc) throw new Error('no account')
+    const sent = await sendRaw(acc.id, await outgoing(d, acc), d.reply?.threadId)
+    if (d.gmailDraftId) void deleteDraft(acc.id, d.gmailDraftId).catch(() => undefined)
+    mergeIn([fromCompose(d, `${acc.id}:${sent.id}`, 'sent', { threadId: sent.threadId, loaded: true })])
+    lastSynced.current.delete(`${acc.id}/folder/sent`)
+  }
+
+  /** Keep what was typed as a Gmail draft (created the first time, updated after that). */
+  const saveDraftReal = async (d: ComposeInit, oldId?: string) => {
+    const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
+    if (!acc) return
+    try {
+      const raw = await outgoing(d, acc, true)
+      const saved = d.gmailDraftId ? await updateDraft(acc.id, d.gmailDraftId, raw, d.reply?.threadId) : await createDraft(acc.id, raw, d.reply?.threadId)
+      setMessages((prev) => prev.filter((x) => x.id !== oldId))
+      mergeIn([fromCompose(d, `${acc.id}:${saved.message.id}`, 'drafts', { threadId: saved.message.threadId, loaded: true, gmailDraftId: saved.id })])
+      showToast('Draft saved in Gmail')
+    } catch {
+      showToast('Could not save the draft to Gmail.')
+    }
+  }
+
   const finishSend = (d: ComposeInit, id: string) => {
     setPendingSend((p) => (p?.id === id ? null : p))
+    if (realMode) {
+      void sendReal(d).then(
+        () => showToast('Message sent'),
+        (e) => {
+          // Nothing is lost: the message opens again exactly as it was.
+          showToast(`${sendError(e)} Your message is open again.`)
+          openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
+        },
+      )
+      return
+    }
     upsert(fromCompose(d, id, 'sent'))
   }
   const finishRef = useRef(finishSend)
@@ -622,8 +771,11 @@ export default function App() {
     const delay = Number(undoDelay)
     const id = `s-${stamp()}`
     if (delay === 0) {
-      upsert(fromCompose(d, id, 'sent'))
-      showToast('Message sent (mock)')
+      if (realMode) finishSend(d, id)
+      else {
+        upsert(fromCompose(d, id, 'sent'))
+        showToast('Message sent (mock)')
+      }
       return
     }
     setPendingSend({ d, id })
@@ -665,8 +817,35 @@ export default function App() {
   }, [showToast])
 
   /** Reopen a draft in the composer. */
-  const openDraft = (m: Message) =>
+  /** A Gmail draft: fetch the whole message and find its draft id, then edit it where it is. */
+  const openDraftReal = async (m: Message) => {
+    const msgs = await loadThread(m)
+    const full = msgs.find((x) => x.id === m.id) ?? m
+    let draftId = full.gmailDraftId
+    if (!draftId) {
+      try {
+        draftId = (await listDrafts(m.accountId)).find((d) => d.message.id === gid(m))?.id
+      } catch {
+        draftId = undefined
+      }
+    }
+    if (!draftId) {
+      showToast('Could not open this draft for editing.')
+      return
+    }
     openCompose({
+      accountId: m.accountId,
+      to: full.to.map((p) => `${p.name} <${p.email}>`).join(', '),
+      cc: (full.cc ?? []).map((p) => `${p.name} <${p.email}>`).join(', '),
+      subject: full.subject === '(no subject)' ? '' : full.subject,
+      body: full.html ?? textToHtml(full.body),
+      attachments: full.attachments,
+      draftId: m.id,
+      gmailDraftId: draftId,
+    })
+  }
+  const openDraft = (m: Message) =>
+    realMode ? void openDraftReal(m) : openCompose({
       accountId: m.accountId,
       to: m.to.map((p) => `${p.name} <${p.email}>`).join(', '),
       cc: (m.cc ?? []).map((p) => `${p.name} <${p.email}>`).join(', '),
@@ -676,12 +855,6 @@ export default function App() {
       draftId: m.id,
     })
 
-  /** Real mail is read-only until the write phase: changes would look done here but never reach Gmail. */
-  const readOnly = (): boolean => {
-    if (!realMode) return false
-    showToast('Real mail is read-only for now. Changes arrive in the next update.')
-    return true
-  }
   const [confirmEmpty, setConfirmEmpty] = useState(false)
   const [original, setOriginal] = useState<Message | null>(null)
   const threadOf = (m: Message): Message[] =>
@@ -694,14 +867,35 @@ export default function App() {
     if (!platform.openWindow(buildMessageDoc(threadOf(m), m.subject))) showToast('The browser blocked the new window. Allow pop-ups for this site.')
   }
   const markAllRead = () => {
-    if (readOnly()) return
     const ids = scope.filter((m) => m.unread).map((m) => m.id)
     if (ids.length === 0) return
+    if (realMode) {
+      const before = scope.filter((m) => m.unread).map((m) => ({ ...m }))
+      const set = new Set(ids)
+      setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, unread: false } : m)))
+      const accounts = [...new Set(before.map((m) => m.accountId))]
+      const call = (add: string[], remove: string[]) => Promise.all(accounts.map((acc) => modifyMessages(acc, before.filter((m) => m.accountId === acc).map(gid), add, remove)))
+      void call([], ['UNREAD']).then(
+        () => {
+          realUndo.current.push({ before, inverse: async () => void (await call(['UNREAD'], [])) })
+          showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
+        },
+        () => {
+          restoreLocal(before)
+          showToast('Gmail did not accept the change, so it was put back.')
+        },
+      )
+      return
+    }
     patch(ids, { unread: false })
     showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
   }
   const emptyDeleted = () => {
-    if (readOnly()) return
+    if (realMode) {
+      setConfirmEmpty(false)
+      showToast('Gmail empties Deleted Items by itself after 30 days. Permanent deletion from here is not available.')
+      return
+    }
     const gone = new Set(scope.map((m) => m.id))
     setMessages((prev) => prev.filter((m) => !gone.has(m.id)))
     setSelectedId(null)
@@ -778,7 +972,14 @@ export default function App() {
           })
           .join(', ')
       : ''
-    openCompose({ accountId: t.accountId, to: toList.map((p) => p.email).join(', '), cc, subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, body: quote(t) })
+    openCompose({
+      accountId: t.accountId,
+      to: toList.map((p) => p.email).join(', '),
+      cc,
+      subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`,
+      body: quote(t),
+      reply: realMode && t.rfcId ? { threadId: t.threadId, messageId: t.rfcId, references: [t.rfcRefs, t.rfcId].filter(Boolean).join(' ') } : undefined,
+    })
   }
   const forward = (target?: Message) => {
     const t = target ?? last
@@ -865,8 +1066,130 @@ export default function App() {
   }
 
   /** One place for every action on one or many conversations, so keyboard, hover bar, menus and the bulk panel agree. */
+  /** One entry per real change, so Ctrl+Z can take it back in Gmail as well as on screen. */
+  const realUndo = useRef<{ before: Message[]; inverse: () => Promise<void> }[]>([])
+
+  const restoreLocal = (before: Message[]) => {
+    const byId = new Map(before.map((m) => [m.id, m]))
+    setMessages((prev) => prev.map((m) => byId.get(m.id) ?? m))
+  }
+
+  /** Changes to real mail: shown at once, sent to Gmail, and put back (with a message) if Gmail refuses. */
+  const runReal = async (rowIds: string[], op: BulkOp) => {
+    const mids = rowsToMids(rowIds)
+    const group = messages.filter((m) => mids.includes(m.id))
+    if (group.length === 0) return
+    const many = rowIds.length > 1 ? ` (${rowIds.length} conversations)` : ''
+    const threads = threadsOf(group)
+    const leave = (label: string) => {
+      if (selectedId && rowIds.includes(selectedId)) {
+        const next = nextRowAfter(rowIds)
+        setSelectedId(next ? next.msg.id : null)
+        if (!next) setView('list')
+      }
+      setPicked([])
+      showToast(`${label}${many} · ${MOD}+Z to undo`)
+    }
+    const ids = new Set(mids)
+    const patchLocal = (f: (m: Message) => Partial<Message>) => setMessages((prev) => prev.map((m) => (ids.has(m.id) ? { ...m, ...f(m) } : m)))
+    const newest = new Set(threads.map((t) => `${t.accountId}:${t.newestGid}`))
+    const byAccount = (fn: (accountId: string, ts: typeof threads) => Promise<unknown>) => Promise.all([...new Set(threads.map((t) => t.accountId))].map((acc) => fn(acc, threads.filter((t) => t.accountId === acc))))
+
+    let label = ''
+    let remote: () => Promise<unknown>
+    let inverse: () => Promise<void>
+    let finish = () => showToast(`${label}${many} · ${MOD}+Z to undo`)
+
+    switch (op.kind) {
+      case 'delete':
+      case 'archive':
+      case 'move': {
+        if (op.kind === 'move' && op.target.kind === 'label') {
+          const tid = labelsRef.current[op.target.accountId]?.find((l) => l.name === (op.target as { id: string }).id)?.id
+          if (!tid) return showToast('That folder is not a Gmail label.')
+          label = `Added to ${op.target.id}`
+          patchLocal((m) => ({ labels: m.labels.includes((op.target as { id: string }).id) ? m.labels : [...m.labels, (op.target as { id: string }).id] }))
+          remote = () => forThreads(threads, (t) => modifyThread(t.accountId, t.threadId, [tid], []))
+          inverse = async () => void (await forThreads(threads, (t) => modifyThread(t.accountId, t.threadId, [], [tid])))
+          finish = () => showToast(`${label}${many}`)
+          break
+        }
+        const to: FolderId = op.kind === 'delete' ? 'deleted' : op.kind === 'archive' ? 'archive' : op.target.kind === 'folder' ? op.target.id : 'inbox'
+        if (to !== 'inbox' && to !== 'archive' && to !== 'deleted') return showToast('Mail can only be moved to Inbox, Archive, Deleted Items or a label.')
+        if (threads.every((t) => t.folder === to)) return
+        label = to === 'deleted' ? 'Moved to Deleted Items' : to === 'archive' ? 'Archived' : 'Moved to Inbox'
+        patchLocal(() => ({ folder: to }))
+        remote = () => forThreads(threads, (t) => moveThread(t.accountId, t.threadId, t.folder, to))
+        inverse = async () => void (await forThreads(threads, (t) => moveThread(t.accountId, t.threadId, to, t.folder)))
+        finish = () => leave(label)
+        break
+      }
+      case 'toggleRead':
+      case 'read': {
+        const markRead = op.kind === 'toggleRead' ? group.some((m) => m.unread) : op.read
+        if (markRead) {
+          const wasUnread = group.filter((m) => m.unread).map((m) => m.id)
+          label = 'Marked as read'
+          patchLocal(() => ({ unread: false }))
+          remote = () => forThreads(threads, (t) => modifyThread(t.accountId, t.threadId, [], ['UNREAD']))
+          inverse = async () => void (await byAccount((acc) => labelsOn(acc, wasUnread.filter((i) => i.startsWith(`${acc}:`)).map((i) => i.slice(acc.length + 1)), ['UNREAD'], [])))
+        } else {
+          label = 'Marked as unread'
+          patchLocal((m) => (newest.has(m.id) ? { unread: true } : {}))
+          remote = () => byAccount((acc, ts) => labelsOn(acc, ts.map((t) => t.newestGid), ['UNREAD'], []))
+          inverse = async () => void (await byAccount((acc, ts) => labelsOn(acc, ts.map((t) => t.newestGid), [], ['UNREAD'])))
+        }
+        finish = () => undefined
+        break
+      }
+      case 'toggleFlag': {
+        const unflag = group.every((m) => m.flagged)
+        if (unflag) {
+          const was = group.filter((m) => m.flagged).map((m) => m.id)
+          label = 'Flag removed'
+          patchLocal(() => ({ flagged: false, dueAt: undefined }))
+          remote = () => forThreads(threads, (t) => modifyThread(t.accountId, t.threadId, [], ['STARRED']))
+          inverse = async () => void (await byAccount((acc) => labelsOn(acc, was.filter((i) => i.startsWith(`${acc}:`)).map((i) => i.slice(acc.length + 1)), ['STARRED'], [])))
+        } else {
+          label = 'Flagged'
+          patchLocal((m) => (newest.has(m.id) ? { flagged: true } : {}))
+          remote = () => byAccount((acc, ts) => labelsOn(acc, ts.map((t) => t.newestGid), ['STARRED'], []))
+          inverse = async () => void (await byAccount((acc, ts) => labelsOn(acc, ts.map((t) => t.newestGid), [], ['STARRED'])))
+        }
+        finish = () => undefined
+        break
+      }
+      case 'toggleImportant': {
+        const remove = group.every((m) => m.important)
+        label = remove ? 'Importance removed' : 'Marked important'
+        patchLocal(() => ({ important: !remove }))
+        remote = () => forThreads(threads, (t) => modifyThread(t.accountId, t.threadId, remove ? [] : ['IMPORTANT'], remove ? ['IMPORTANT'] : []))
+        inverse = async () => void (await forThreads(threads, (t) => modifyThread(t.accountId, t.threadId, remove ? ['IMPORTANT'] : [], remove ? [] : ['IMPORTANT'])))
+        finish = () => undefined
+        break
+      }
+      default:
+        showToast('Colour categories, snooze and follow-up dates are not available for Gmail mail yet.')
+        return
+    }
+
+    const before = group.map((m) => ({ ...m }))
+    try {
+      await remote()
+      realUndo.current.push({ before, inverse })
+      if (realUndo.current.length > 30) realUndo.current.shift()
+      finish()
+    } catch {
+      restoreLocal(before)
+      showToast('Gmail did not accept the change, so it was put back. Please try again.')
+    }
+  }
+
   const runOp = (rowIds: string[], op: BulkOp) => {
-    if (readOnly()) return
+    if (realMode) {
+      void runReal(rowIds, op)
+      return
+    }
     const mids = rowsToMids(rowIds)
     if (mids.length === 0) return
     const group = messages.filter((m) => mids.includes(m.id))
@@ -1007,8 +1330,8 @@ export default function App() {
     out.push(
       { type: 'item', label: anyUnread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => runOp(rowIds, { kind: 'toggleRead' }) },
       { type: 'item', label: allFlagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => runOp(rowIds, { kind: 'toggleFlag' }) },
-      { type: 'item', label: 'Follow up…', icon: 'flag', tone: 'orange', onSelect: () => setWhen({ mode: 'followup', rowIds }) },
-      { type: 'item', label: 'Snooze…', icon: 'clock', tone: 'orange', onSelect: () => setWhen({ mode: 'snooze', rowIds }), disabled: m.folder === 'drafts' || m.folder === 'sent' || m.folder === 'scheduled' },
+      { type: 'item', label: 'Follow up…', icon: 'flag', tone: 'orange', onSelect: () => setWhen({ mode: 'followup', rowIds }), disabled: realMode },
+      { type: 'item', label: 'Snooze…', icon: 'clock', tone: 'orange', onSelect: () => setWhen({ mode: 'snooze', rowIds }), disabled: realMode || m.folder === 'drafts' || m.folder === 'sent' || m.folder === 'scheduled' },
       { type: 'item', label: allImportant ? 'Remove importance' : 'Mark as important', icon: 'important', tone: 'red', onSelect: () => runOp(rowIds, { kind: 'toggleImportant' }) },
       { type: 'head', label: 'Colour category' },
       { type: 'swatches', current: bulkMode ? undefined : m.colour, onPick: (c) => runOp(rowIds, { kind: 'colour', c }) },
@@ -1456,13 +1779,19 @@ export default function App() {
           init={compose}
           accounts={accounts}
           offline={!online}
-          sendBlocked={realMode ? 'Sending real mail arrives in the next update. Your message stays here as a draft.' : undefined}
+          noSchedule={realMode}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
           onSend={(d, opts) => (opts?.sendAt ? scheduleSend(d, opts.sendAt) : sendWithUndo(d))}
           onClose={(draft, discarded) => {
             const id = compose?.draftId
-            if (discarded && id) setMessages((prev) => prev.filter((x) => x.id !== id))
+            const gd = compose?.gmailDraftId
+            if (realMode) {
+              if (discarded) {
+                if (id) setMessages((prev) => prev.filter((x) => x.id !== id))
+                if (gd) void deleteDraft(compose?.accountId ?? '', gd).catch(() => undefined)
+              } else if (draft) void saveDraftReal(draft, id)
+            } else if (discarded && id) setMessages((prev) => prev.filter((x) => x.id !== id))
             else if (draft) upsert(fromCompose(draft, id ?? `d-${stamp()}`, 'drafts'))
             setCompose(null)
           }}
@@ -1526,7 +1855,7 @@ export default function App() {
         <FolderDialog
           state={folderDlg}
           accountName={accountList.find((x) => x.id === folderDlg.accountId)?.name ?? ''}
-          existing={folders[folderDlg.accountId] ?? []}
+          existing={foldersView[folderDlg.accountId] ?? []}
           count={folderDlg.mode === 'delete' ? messages.filter((m) => m.accountId === folderDlg.accountId && m.labels.includes(folderDlg.name)).length : 0}
           onSubmit={submitFolder}
           onClose={() => setFolderDlg(null)}

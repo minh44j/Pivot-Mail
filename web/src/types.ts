@@ -14,6 +14,8 @@ export interface Attachment {
   mime: string
   /** Real mail only: where to fetch the bytes from Gmail */
   source?: { accountId: string; messageId: string; attachmentId: string }
+  /** A file the person just attached in the composer (kept in memory until sent) */
+  file?: File
 }
 
 export interface Account {
@@ -55,6 +57,11 @@ export interface Message {
   hasAttachments?: boolean
   /** Real mail: false until the full message (body, attachments) has been fetched */
   loaded?: boolean
+  /** Real mail: the Message-ID and References headers, needed to reply inside the conversation */
+  rfcId?: string
+  rfcRefs?: string
+  /** Real mail: id of the Gmail draft, when known */
+  gmailDraftId?: string
 }
 
 export interface Row {
@@ -77,4 +84,8 @@ export interface ComposeInit {
   attachments: Attachment[]
   /** Set when an existing draft is reopened; the body is then used as it is (signature already inside) */
   draftId?: string
+  /** Real mail: the Gmail draft this composer edits */
+  gmailDraftId?: string
+  /** Real mail: reply headers, so the answer joins the conversation */
+  reply?: { threadId: string; messageId: string; references: string }
 }

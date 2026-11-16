@@ -21,8 +21,8 @@ interface Props {
   pendingTemplate: Template | null
   onTemplateUsed: () => void
   offline?: boolean
-  /** When set, Send is refused with this message (real mail is read-only for now) */
-  sendBlocked?: string
+  /** Gmail cannot schedule a send, so real mailboxes hide "Send later" */
+  noSchedule?: boolean
   onSend: (d: ComposeInit, opts?: { sendAt?: string }) => void
   /** draft: what was typed (kept in Drafts); discarded: delete the open draft */
   onClose: (draft?: ComposeInit, discarded?: boolean) => void
@@ -63,6 +63,9 @@ function initialBody(init: ComposeInit, accounts: Account[]): string {
   return `<div><br></div>${sigFor(accounts, init.accountId)}${init.body}`
 }
 
+/** Files cannot be stored in the saved draft; only their names and sizes are. */
+const forStorage = (d: ComposeInit): ComposeInit => ({ ...d, attachments: d.attachments.map(({ file: _file, ...a }) => a) })
+
 function FBtn(props: { label: string; active?: boolean; onClick: () => void; icon?: IconName; children?: ReactNode }) {
   return (
     <button
@@ -78,7 +81,7 @@ function FBtn(props: { label: string; active?: boolean; onClick: () => void; ico
   )
 }
 
-export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
+export function Composer({ init, accounts, offline, noSchedule, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
@@ -172,7 +175,7 @@ export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate
     touched.current = true
     setSaved('saving')
     const t = window.setTimeout(() => {
-      platform.storage.set(DRAFT_KEY, JSON.stringify(d))
+      platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(d)))
       setSaved('saved')
     }, 1200)
     return () => window.clearTimeout(t)
@@ -181,7 +184,7 @@ export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate
   // Closing the window keeps what was typed, even inside the 1.2 s autosave delay.
   useEffect(
     () => () => {
-      if (touched.current && !finished.current) platform.storage.set(DRAFT_KEY, JSON.stringify(latest.current))
+      if (touched.current && !finished.current) platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(latest.current)))
     },
     [],
   )
@@ -303,6 +306,7 @@ export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate
       name: f.name,
       size: f.size,
       mime: f.type || 'application/octet-stream',
+      file: f,
     }))
     if (added.length === 0) return
     setD((prev) => ({ ...prev, attachments: [...prev.attachments, ...added] }))
@@ -319,10 +323,6 @@ export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate
     const bad = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => t.trim()).filter(Boolean).filter((t) => !EMAIL_RE.test(bareAddress(t)))
     if (bad.length > 0) {
       onToast(`Fix the highlighted address: ${bad[0]}`)
-      return
-    }
-    if (sendBlocked) {
-      onToast(sendBlocked)
       return
     }
     if (offline) {
@@ -402,7 +402,7 @@ export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate
           send()
         } else if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
           e.preventDefault()
-          platform.storage.set(DRAFT_KEY, JSON.stringify(latest.current))
+          platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(latest.current)))
           setSaved('saved')
           onToast('Draft saved')
         } else if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
@@ -425,9 +425,11 @@ export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate
         <button type="button" className="primary" onClick={() => send()} disabled={!canSend}>
           <Icon name="send" size={16} /> Send
         </button>
-        <button type="button" onClick={() => (canSend ? setLater(true) : onToast('Add at least one recipient'))} aria-haspopup="dialog">
-          <Icon name="clock" size={16} tone="orange" /> Send later
-        </button>
+        {!noSchedule && (
+          <button type="button" onClick={() => (canSend ? setLater(true) : onToast('Add at least one recipient'))} aria-haspopup="dialog">
+            <Icon name="clock" size={16} tone="orange" /> Send later
+          </button>
+        )}
         <button type="button" onClick={() => fileInput.current?.click()}>
           <Icon name="clip" size={16} tone="blue" /> Attach
         </button>
