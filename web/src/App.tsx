@@ -962,6 +962,11 @@ export default function App() {
       } else if (!inReader && k === 'PageUp') {
         e.preventDefault()
         go(idx - 10)
+      } else if ((k === 'ContextMenu' || (e.shiftKey && k === 'F10')) && selectedRow && !typing) {
+        e.preventDefault()
+        const el = document.querySelector<HTMLElement>('.row.sel')
+        const r = el?.getBoundingClientRect()
+        setCtx({ id: selectedRow.msg.id, x: (r?.left ?? 240) + 48, y: (r?.bottom ?? 200) - 8 })
       } else if (k === 'Enter' && selectedRow && selectedRow.msg.folder === 'drafts') {
         e.preventDefault()
         openDraft(selectedRow.msg)
@@ -1057,6 +1062,10 @@ export default function App() {
 
   return (
     <SettingsContext.Provider value={settingsValue}>
+    <>
+    <a className="skip-link" href="#message-list" onClick={(e) => { e.preventDefault(); document.getElementById('message-list')?.focus() }}>
+      Skip to message list
+    </a>
     <div className={`app${sim === 'offline' || !netOnline || sim === 'syncfail' || sim === 'ratelimit' ? ' has-banner' : ''}`} data-density={density}>
       <Toolbar
         query={query}
@@ -1268,6 +1277,7 @@ export default function App() {
         </div>
       )}
     </div>
+    </>
     </SettingsContext.Provider>
   )
 }

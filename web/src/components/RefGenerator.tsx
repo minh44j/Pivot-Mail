@@ -120,12 +120,12 @@ export function RefGenerator({ onClose, onToast, onNewMail }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby="ref-title">
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="ref-title">Reference number</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
 
         <p className="notice" role="note">
           <strong>Preview only.</strong> These numbers are generated in this browser and are not registered in Pivot OS. Do not use them on real jobs.

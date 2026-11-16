@@ -70,12 +70,12 @@ export function AccountDialog({ state, existing, onAdd, onRemove, onClose }: Pro
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="acc-title">{title}</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           {state.mode === 'remove' ? (
             <>

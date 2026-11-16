@@ -25,12 +25,12 @@ export function ConfirmDialog({ title, children, confirm, danger, onConfirm, onC
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="cf-title">{title}</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           <p>{children}</p>
           <div className="modal-actions">

@@ -66,7 +66,18 @@ export function FolderJump({ mode, accounts, folders, cases, accountId, onPick, 
 
   return (
     <div className="modal-backdrop top" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal jump" role="dialog" aria-modal="true" aria-label={mode === 'go' ? 'Go to folder' : 'Move to folder'}>
+      <div
+        className="modal jump"
+        role="dialog"
+        aria-modal="true"
+        aria-label={mode === 'go' ? 'Go to folder' : 'Move to folder'}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+      >
         <input
           ref={input}
           autoFocus

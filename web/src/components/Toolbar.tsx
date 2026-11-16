@@ -125,8 +125,10 @@ export function Toolbar(p: Props) {
           : 'Turn on notifications'
 
   return (
-    <header className="toolbar" role="toolbar" aria-label="Mail toolbar">
-      <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
+    <header className="toolbar" aria-label="Mail toolbar">
+      <h1 className="logo-h1">
+        <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
+      </h1>
 
       <div className="tb-scroll">
         <div className="tb-group tb-extra" role="group" aria-label="More">

@@ -44,12 +44,12 @@ export function WhenDialog({ mode, onPick, onClose }: Props) {
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="when-title">{TITLES[mode]}</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           <ul className="when-list">
             {presets.map((p, i) => (

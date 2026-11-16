@@ -405,7 +405,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
         } else if (e.key === 'Escape') close()
       }}
     >
-      <header className="composer-head">
+      <div className="composer-head">
         <strong className="grow ellipsis">{d.subject || 'New message'}</strong>
         <span className="muted">{saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : ''}</span>
         <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'}>
@@ -414,7 +414,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
         <button type="button" className="icon-btn" onClick={close} aria-label="Close and keep draft">
           <Icon name="close" />
         </button>
-      </header>
+      </div>
       <div className="composer-bar" role="toolbar" aria-label="Message actions">
         <button type="button" className="primary" onClick={() => send()} disabled={!canSend}>
           <Icon name="send" size={16} /> Send

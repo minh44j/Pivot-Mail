@@ -28,12 +28,12 @@ export function OriginalDialog({ msg, onClose }: { msg: Message; onClose: () => 
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="orig-title">Original message</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close" autoFocus>
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           <pre className="original" tabIndex={0}>
             {head}

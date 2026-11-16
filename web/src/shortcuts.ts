@@ -49,6 +49,7 @@ export const SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Backspace', 'E'], desc: 'Archive' },
       { keys: ['Ctrl+C'], desc: 'Copy the selected email (paste it into a message with Ctrl+V)' },
       { keys: ['Ctrl+Z'], desc: 'Undo the last action' },
+      { keys: ['Menu key', 'Shift+F10'], desc: 'Open the message menu (same as right-click)' },
       { keys: ['Ctrl+Shift+V'], desc: 'Move to folder' },
     ],
   },

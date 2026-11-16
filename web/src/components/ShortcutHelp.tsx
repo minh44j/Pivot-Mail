@@ -17,15 +17,15 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal wide" role="dialog" aria-modal="true" aria-labelledby="sc-title">
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="sc-title">Keyboard shortcuts</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
-        <div className="sc-body">
+        </div>
+        <div className="sc-body" tabIndex={0} role="region" aria-label="Keyboard shortcut list">
           {SHORTCUTS.map((g) => (
-            <section key={g.group} className="sc-group" aria-label={g.group}>
+            <section key={g.group} className="sc-group" aria-label={`${g.group} shortcuts`}>
               <h3>{g.group}</h3>
               <dl>
                 {g.items.map((it) => (

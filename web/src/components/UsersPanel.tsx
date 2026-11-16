@@ -252,12 +252,12 @@ function InviteDialog({ existing, onInvite, onClose }: { existing: string[]; onI
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="inv-title">Invite user</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           <label className="fld">
             <span>Work email</span>
@@ -330,12 +330,12 @@ function AccessDialog({ user, onSave, onClose }: { user: AppUser; onSave: (s: st
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="acc2-title">Shared mailboxes · {user.name}</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           <p className="muted">Their own mailbox is always theirs. Choose which shared mailboxes they can also open.</p>
           <MailboxChecks value={shared} onChange={setShared} />

@@ -142,7 +142,7 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
           })}
         </div>
       )}
-      <div className="scroller" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="list" aria-label="Messages" tabIndex={0}>
+      <div className="scroller" id="message-list" ref={scroller} onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)} role="list" aria-label="Messages" tabIndex={0}>
         {error ? (
           <div className="empty list-error" role="alert">
             <strong>Couldn't load this folder</strong>

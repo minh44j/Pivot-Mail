@@ -58,12 +58,12 @@ export function FolderDialog({ state, accountName, existing, count, onSubmit, on
           }
         }}
       >
-        <header className="modal-head">
+        <div className="modal-head">
           <h2 id="fd-title">{title}</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="modal-body">
           {state.mode === 'delete' ? (
             <p>
