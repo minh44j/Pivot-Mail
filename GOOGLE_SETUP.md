@@ -61,3 +61,14 @@ Do every step below twice, signed in as a super administrator of that Workspace.
 4. Session cookies stay host-only on `mail.pivotscl.com` (never `.pivotscl.com`), so other subdomains cannot read them.
 5. The same address serves both companies. ⚠️ Decide whether pivottmc.com staff are comfortable using a pivotscl.com address, or whether to use a neutral one later (a new Vercel domain and two more redirect URIs).
 6. ⚠️ Verify with specialist: if the consent screen asks for an "authorised domain", add `pivotscl.com` in each project.
+
+## Update: each company uses its own address
+`mail.pivotscl.com` and `mail.pivottmc.com` both point to the same Vercel project. Register in each Google project the address that company's staff use:
+
+| Google project | Authorised origin | Authorised redirect URI |
+|---|---|---|
+| pivotscl.com | `https://mail.pivotscl.com` | `https://mail.pivotscl.com/api/auth/google/callback` |
+| pivottmc.com | `https://mail.pivottmc.com` | `https://mail.pivottmc.com/api/auth/google/callback` |
+
+Optional in both while testing: the two `pivot-mail-web.vercel.app` entries. Sign-in returns to the address the person opened, so cookies stay host-only on each address.
+⚠️ Verify: Vercel's Hobby plan is for personal, non-commercial use. A company tool normally needs a paid Vercel plan; confirm Vercel's current terms before staff use it.
