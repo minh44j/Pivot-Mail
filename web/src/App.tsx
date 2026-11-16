@@ -278,7 +278,9 @@ export default function App() {
 
   /** Cases are stored on the server and shared by the company's staff. */
   const [casesDb, setCasesDb] = useState<CaseRecord[] | null>(null)
+  const casesAt = useRef(0)
   const loadCases = useCallback(async () => {
+    casesAt.current = Date.now()
     const list = await fetchCases()
     if (list) setCasesDb(list)
   }, [])
@@ -506,7 +508,11 @@ export default function App() {
       for (const a of list) await pollAccount(a)
       inboxUnreadStale.current = false
       pollCount.current += 1
-      if (pollCount.current % 4 === 0) void loadCases()
+      // Cases change rarely: refresh about once a minute whatever the mail polling speed is.
+      if (Date.now() - casesAt.current >= 60_000) {
+        casesAt.current = Date.now()
+        void loadCases()
+      }
       failStreak.current = 0
       setLastSync(new Date())
       setSim((v) => (v === 'syncfail' ? null : v))
