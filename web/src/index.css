@@ -3931,3 +3931,14 @@ a.btn.google.real:hover {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.reconnect {
+  color: var(--ink-orange);
+  font-weight: 600;
+}
+
+.list .empty {
+  padding: 24px;
+  text-align: center;
+  line-height: 1.5;
+}

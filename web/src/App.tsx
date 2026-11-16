@@ -5,8 +5,10 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
-import { fetchAuthConfig, fetchSession, signOut } from './auth'
-import type { AuthConfig, AuthUser } from './auth'
+import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, signOut } from './auth'
+import type { AuthAccount, AuthConfig, AuthUser } from './auth'
+import { ConnectDialog } from './components/ConnectDialog'
+import type { CompanyId } from './data/companies'
 import { AccountDialog } from './components/AccountDialog'
 import type { AccountDialogState, NewAccount } from './components/AccountDialog'
 import { COMPANIES } from './data/companies'
@@ -139,11 +141,6 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(() => new URLSearchParams(window.location.search).get('auth_error'))
   // A signed-in person's role comes from the server. Only administrators may preview the staff view.
   const role: 'admin' | 'staff' = authUser ? (authUser.role === 'admin' ? roleState : 'staff') : roleState
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('auth_error')) window.history.replaceState(null, '', window.location.pathname)
-    void fetchSession().then(setAuthUser)
-    void fetchAuthConfig().then(setAuthConfig)
-  }, [])
   const [netOnline, setOnline] = useState(() => navigator.onLine)
   const [sim, setSim] = useState<Problem | null>(null)
   const [retrying, setRetrying] = useState(false)
@@ -204,7 +201,54 @@ export default function App() {
 
   const [addedAccounts, setAddedAccounts] = useStored<Account[]>('pm.accounts.added', [], isAccounts)
   const [removedIds, setRemovedIds] = useStored<string[]>('pm.accounts.removed', [], isStrings)
-  const accountList = useMemo<Account[]>(() => [...ACCOUNTS.filter((a) => !removedIds.includes(a.id)), ...addedAccounts], [addedAccounts, removedIds])
+  // Real mailboxes come from the server once someone has signed in; the preview keeps its sample mailboxes.
+  const realMode = authUser !== null
+  const [realAccounts, setRealAccounts] = useState<AuthAccount[] | null>(null)
+  const [gmailInfo, setGmailInfo] = useState<Record<string, { total: number } | 'error'>>({})
+  const [connectDlg, setConnectDlg] = useState<{ company: CompanyId; kind: 'personal' | 'shared' } | 'new' | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState<AuthAccount | null>(null)
+  const accountList = useMemo<Account[]>(
+    () =>
+      realMode
+        ? (realAccounts ?? []).map((a) => ({ id: a.id, name: a.name, email: a.email, shared: a.kind === 'shared', signature: a.name, status: a.status }))
+        : [...ACCOUNTS.filter((a) => !removedIds.includes(a.id)), ...addedAccounts],
+    [realMode, realAccounts, addedAccounts, removedIds],
+  )
+
+  /** Proves the saved permission still works and reads the mailbox size straight from Gmail (the browser talks to Gmail directly). */
+  const checkMailbox = useCallback(async (a: AuthAccount) => {
+    const access = await fetchGmailAccess(a.id)
+    if ('error' in access) {
+      setGmailInfo((i) => ({ ...i, [a.id]: 'error' }))
+      if (access.error === 'reconnect') setRealAccounts((list) => (list ?? []).map((x) => (x.id === a.id ? { ...x, status: 'needs_reconnect' } : x)))
+      return
+    }
+    const p = await fetchGmailProfile(access.accessToken)
+    setGmailInfo((i) => ({ ...i, [a.id]: p ? { total: p.messagesTotal } : 'error' }))
+  }, [])
+  const loadAccounts = useCallback(async () => {
+    const list = await fetchAccounts()
+    if (list === null) return
+    setRealAccounts(list)
+    setSel((s) => (list.some((a) => a.id === s.accountId) ? s : list[0] ? { accountId: list[0].id, kind: 'folder', id: 'inbox' } : s))
+    for (const a of list) void checkMailbox(a)
+  }, [checkMailbox])
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search)
+    const connected = q.get('connected')
+    const connectError = q.get('connect_error')
+    if (q.has('auth_error') || connected || connectError) window.history.replaceState(null, '', window.location.pathname)
+    void fetchAuthConfig().then(setAuthConfig)
+    void fetchSession().then((u) => {
+      setAuthUser(u)
+      if (!u) return
+      setMessages([]) // a real person never sees the sample mail
+      void loadAccounts().then(() => {
+        if (connected) showToast(`${connected} connected`)
+        else if (connectError) showToast(CONNECT_ERRORS[connectError] ?? 'The mailbox could not be connected.')
+      })
+    })
+  }, [loadAccounts, showToast])
   const accounts = useMemo<Account[]>(() => accountList.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [accountList, signatures])
   const [accDlg, setAccDlg] = useState<AccountDialogState | null>(null)
   const addAccount = (n: NewAccount) => {
@@ -1070,7 +1114,16 @@ export default function App() {
     )
   }
 
-  const emptyText = query.trim() ? `No results for “${query.trim()}”` : smart.length > 0 ? 'No messages match these filters' : 'Nothing in this folder'
+  const gi = gmailInfo[accountId]
+  const realEmpty =
+    realAccounts && realAccounts.length === 0
+      ? 'No mailbox connected yet. Choose Add account in the sidebar.'
+      : gi && gi !== 'error'
+        ? `Connected to Gmail · ${gi.total.toLocaleString()} messages. Showing your mail arrives in the next update.`
+        : gi === 'error'
+          ? 'Connected, but Gmail could not be reached. Try again, or reconnect the account from the ⋯ menu.'
+          : 'Checking the connection…'
+  const emptyText = realMode && !query.trim() ? realEmpty : query.trim() ? `No results for “${query.trim()}”` : smart.length > 0 ? 'No messages match these filters' : 'Nothing in this folder'
 
   return (
     <SettingsContext.Provider value={settingsValue}>
@@ -1122,8 +1175,18 @@ export default function App() {
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane
           accounts={accountList}
-          onAddAccount={() => setAccDlg({ mode: 'add' })}
+          sample={!realMode}
+          onAddAccount={() => (realMode ? setConnectDlg('new') : setAccDlg({ mode: 'add' }))}
+          onReconnect={(id) => {
+            const x = realAccounts?.find((y) => y.id === id)
+            if (x) setConnectDlg({ company: x.company, kind: x.kind })
+          }}
           onRemoveAccount={(id) => {
+            if (realMode) {
+              const x = realAccounts?.find((y) => y.id === id)
+              if (x) setConfirmRemove(x)
+              return
+            }
             const x = accountList.find((y) => y.id === id)
             if (x) setAccDlg({ mode: 'remove', id, name: x.name, email: x.email })
           }}
@@ -1165,6 +1228,7 @@ export default function App() {
           onRowAction={rowAction}
           emptyText={emptyText}
           onOpen={openMessage}
+          sample={!realMode}
           actions={[
             ...(scope.some((m) => m.unread) ? [{ label: 'Mark all as read', onClick: markAllRead }] : []),
             ...(sel.kind === 'folder' && sel.id === 'deleted' && scope.length > 0 ? [{ label: 'Empty folder', onClick: () => setConfirmEmpty(true), danger: true }] : []),
@@ -1258,6 +1322,25 @@ export default function App() {
       {confirmEmpty && (
         <ConfirmDialog title="Empty Deleted Items" confirm="Empty folder" danger onConfirm={emptyDeleted} onClose={() => setConfirmEmpty(false)}>
           Permanently delete {scope.length} message{scope.length === 1 ? '' : 's'} in {accountList.find((x) => x.id === accountId)?.name}? This cannot be undone.
+        </ConfirmDialog>
+      )}
+      {connectDlg && <ConnectDialog isAdmin={role === 'admin'} initial={connectDlg === 'new' ? undefined : connectDlg} onClose={() => setConnectDlg(null)} />}
+      {confirmRemove && (
+        <ConfirmDialog
+          title="Remove account"
+          confirm="Remove account"
+          danger
+          onClose={() => setConfirmRemove(null)}
+          onConfirm={() => {
+            const x = confirmRemove
+            setConfirmRemove(null)
+            void disconnectAccount(x.id).then((ok) => {
+              showToast(ok ? `${x.email} removed` : 'Could not remove the account. You may not have permission.')
+              void loadAccounts()
+            })
+          }}
+        >
+          Pivot Mail will stop using {confirmRemove.email} and forget its saved permission. Mail in Gmail is not touched. You can add it again at any time.
         </ConfirmDialog>
       )}
       {accDlg && <AccountDialog state={accDlg} existing={accountList.map((x) => x.email.toLowerCase())} onAdd={addAccount} onRemove={removeAccount} onClose={() => setAccDlg(null)} />}

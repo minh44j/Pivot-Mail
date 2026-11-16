@@ -20,6 +20,8 @@ export interface Account {
   email: string
   shared: boolean
   signature: string
+  /** Real mailboxes only: 'needs_reconnect' when Google no longer accepts the saved permission */
+  status?: 'active' | 'needs_reconnect' | 'disabled'
 }
 
 export interface Message {

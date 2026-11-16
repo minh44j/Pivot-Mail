@@ -28,6 +28,8 @@ interface Props {
   onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
   emptyText: string
   accountNames?: Record<string, string>
+  /** false for a real mailbox: the footer must not say "sample data" */
+  sample?: boolean
   onOpen: (id: string) => void
   actions: { label: string; onClick: () => void; danger?: boolean }[]
   error?: { onRetry: () => void; busy: boolean }
@@ -38,7 +40,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, onOpen, actions, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, sample = true, onOpen, actions, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -274,7 +276,7 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
             ? 'Offline. Changes will sync when you reconnect.'
             : sync.state === 'syncing'
               ? 'Syncing…'
-              : `Synced ${sync.last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · sample data`}
+              : `Synced ${sync.last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${sample ? ' · sample data' : ''}`}
         </span>
         <button type="button" className="link" onClick={onSync} disabled={sync.state !== 'synced'}>
           Sync now

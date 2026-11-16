@@ -58,5 +58,82 @@ export const AUTH_ERRORS: Record<string, { title: string; text: string; denied: 
   token: { title: 'Sign-in failed', text: 'Google\'s answer could not be checked. Please try again.', denied: false },
   company: { title: 'Choose your company', text: 'This address does not tell us which company you belong to. Choose it below.', denied: false },
   config: { title: 'Sign-in is not available', text: 'Sign-in is not set up on this address yet. Ask your administrator.', denied: false },
+  disabled: { title: 'Access denied', text: 'Your access has been turned off. Ask your administrator.', denied: true },
+  invite: { title: 'Access denied', text: 'Your account has not been added yet. Ask your administrator to invite you.', denied: true },
+  unavailable: { title: 'Sign-in is busy', text: 'Please try again in a moment.', denied: false },
   google: { title: 'Google reported a problem', text: 'Please try again in a moment.', denied: false },
+}
+
+/* ---------- connected mailboxes ---------- */
+export interface AuthAccount {
+  id: string
+  email: string
+  name: string
+  company: 'scl' | 'tmc'
+  kind: 'personal' | 'shared'
+  status: 'active' | 'needs_reconnect' | 'disabled'
+  syncWindowDays: number
+}
+
+export async function fetchAccounts(): Promise<AuthAccount[] | null> {
+  const r = await getJson<{ accounts: AuthAccount[]; configured?: boolean }>('/api/accounts')
+  return r && r.status === 200 && r.data.configured !== false ? r.data.accounts : null
+}
+
+export const connectUrl = (company: 'scl' | 'tmc', kind: 'personal' | 'shared'): string => `/api/accounts/connect?company=${company}&kind=${kind}`
+
+export async function disconnectAccount(id: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/accounts/disconnect', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export interface GmailAccess {
+  accessToken: string
+  /** ms since 1970 */
+  expiresAt: number
+}
+
+/** A one-hour Gmail key for a mailbox. The browser then talks to Gmail directly, so mail does not pass through our server. */
+export async function fetchGmailAccess(accountId: string): Promise<GmailAccess | { error: string }> {
+  const r = await getJson<GmailAccess & { error?: string }>(`/api/accounts/token?id=${encodeURIComponent(accountId)}`)
+  if (!r) return { error: 'unavailable' }
+  if (r.status === 200 && r.data.accessToken) return { accessToken: r.data.accessToken, expiresAt: r.data.expiresAt }
+  return { error: r.data.error ?? 'unavailable' }
+}
+
+export interface GmailProfile {
+  messagesTotal: number
+  threadsTotal: number
+}
+
+export async function fetchGmailProfile(accessToken: string): Promise<GmailProfile | null> {
+  try {
+    const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', { headers: { authorization: `Bearer ${accessToken}` } })
+    if (!res.ok) return null
+    const d = (await res.json()) as GmailProfile
+    return typeof d.messagesTotal === 'number' ? d : null
+  } catch {
+    return null
+  }
+}
+
+export const CONNECT_ERRORS: Record<string, string> = {
+  session: 'Please sign in again, then add the mailbox.',
+  forbidden: 'Only administrators can add a shared mailbox.',
+  mismatch: 'That is not your own account. Choose the account you signed in with, or ask an administrator to add a shared mailbox.',
+  domain: 'That account does not belong to the company you chose.',
+  scope: 'Mail access was not allowed. Tick every permission on Google\'s screen and try again.',
+  norefresh: 'Google did not give lasting access. Remove Pivot Mail from your Google account\'s connected apps and try again.',
+  company: 'Choose which company the mailbox belongs to.',
+  config: 'Mailbox connection is not set up yet. Ask your administrator.',
+  unavailable: 'The service is busy. Please try again in a moment.',
+  state: 'The connection expired. Please start again.',
+  token: 'Google\'s answer could not be checked. Please try again.',
+  expired: 'The connection expired. Please start again.',
+  unverified: 'Google could not confirm that address.',
+  cancelled: 'Connection cancelled.',
 }

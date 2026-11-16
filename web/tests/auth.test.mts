@@ -74,10 +74,10 @@ const sess = cookieOf(c, '__Host-pm_session')
 const sc = c.headers.getSetCookie().find((x) => x.startsWith('__Host-pm_session')) ?? ''
 ok('session cookie: HttpOnly Secure Lax, Path=/, no Domain', /HttpOnly/.test(sc) && /Secure/.test(sc) && /SameSite=Lax/.test(sc) && /Path=\/;/.test(sc + ';') && !/Domain=/i.test(sc))
 ok('oauth cookie cleared', c.headers.getSetCookie().some((x) => x.startsWith('pm_oauth=;') || /pm_oauth=; .*Max-Age=0/.test(x)))
-const me = await session(req(SCL, '/api/auth/session', { headers: { cookie: `__Host-pm_session=${encodeURIComponent(sess)}` } })).json()
+const me = await (await session(req(SCL, '/api/auth/session', { headers: { cookie: `__Host-pm_session=${encodeURIComponent(sess)}` } }))).json()
 ok('session returns the person as staff', me.user.email === 'ann@pivotscl.com' && me.user.role === 'staff')
 c = await run(SCL, 'scl', { email: 'boss@pivotscl.com' })
-const me2 = await session(req(SCL, '/api/auth/session', { headers: { cookie: `__Host-pm_session=${encodeURIComponent(cookieOf(c, '__Host-pm_session'))}` } })).json()
+const me2 = await (await session(req(SCL, '/api/auth/session', { headers: { cookie: `__Host-pm_session=${encodeURIComponent(cookieOf(c, '__Host-pm_session'))}` } }))).json()
 ok('admin list is case-insensitive', me2.user.role === 'admin')
 c = await run(TMC, 'tmc', {})
 ok('travel company signs in on its own address', loc(c) === '/inbox')
@@ -100,14 +100,14 @@ globalThis.fetch = realFetch
 // 5. session safety
 const good = signToken({ email: 'a@pivotscl.com', name: 'A', company: 'scl' }, SECRET, 3600)
 const hdr = (v: string) => ({ headers: { cookie: `__Host-pm_session=${encodeURIComponent(v)}` } })
-ok('valid cookie accepted', session(req(SCL, '/api/auth/session', hdr(good))).status === 200)
-ok('tampered payload rejected', session(req(SCL, '/api/auth/session', hdr('x' + good))).status === 401)
+ok('valid cookie accepted', (await session(req(SCL, '/api/auth/session', hdr(good)))).status === 200)
+ok('tampered payload rejected', (await session(req(SCL, '/api/auth/session', hdr('x' + good)))).status === 401)
 const [b, sg] = good.split('.')
 const forged = Buffer.from(JSON.stringify({ email: 'boss@pivotscl.com', exp: 9999999999 })).toString('base64url') + '.' + sg
-ok('forged payload with old signature rejected', session(req(SCL, '/api/auth/session', hdr(forged))).status === 401 && !!b)
-ok('signed with another secret rejected', session(req(SCL, '/api/auth/session', hdr(signToken({ email: 'a@pivotscl.com' }, 'y'.repeat(40), 3600)))).status === 401)
-ok('expired cookie rejected', session(req(SCL, '/api/auth/session', hdr(signToken({ email: 'a@pivotscl.com' }, SECRET, 3600, Date.now() - 7200_000)))).status === 401)
-ok('no cookie is 401, never cached', session(req(SCL, '/api/auth/session')).status === 401 && session(req(SCL, '/api/auth/session')).headers.get('cache-control') === 'no-store')
+ok('forged payload with old signature rejected', (await session(req(SCL, '/api/auth/session', hdr(forged)))).status === 401 && !!b)
+ok('signed with another secret rejected', (await session(req(SCL, '/api/auth/session', hdr(signToken({ email: 'a@pivotscl.com' }, 'y'.repeat(40), 3600))))).status === 401)
+ok('expired cookie rejected', (await session(req(SCL, '/api/auth/session', hdr(signToken({ email: 'a@pivotscl.com' }, SECRET, 3600, Date.now() - 7200_000))))).status === 401)
+ok('no cookie is 401, never cached', (await session(req(SCL, '/api/auth/session'))).status === 401 && (await session(req(SCL, '/api/auth/session'))).headers.get('cache-control') === 'no-store')
 ok('verifyToken ignores garbage', verifyToken('...', SECRET) === null && verifyToken(undefined, SECRET) === null)
 
 // 6. logout

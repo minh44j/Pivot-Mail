@@ -19,6 +19,9 @@ const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
 interface Props {
   accounts: Account[]
   onAddAccount: () => void
+  /** hides the preview note when real mailboxes are in use */
+  sample?: boolean
+  onReconnect: (id: string) => void
   onRemoveAccount: (id: string) => void
   messages: Message[]
   selection: FolderSel
@@ -31,7 +34,7 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, sample = true, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
   const [accMenu, setAccMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
@@ -83,7 +86,7 @@ export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, 
               </span>
               <span className="grow">
                 <strong>{a.name}</strong>
-                <small>{a.email}</small>
+                <small>{a.status === 'needs_reconnect' ? <span className="reconnect">Reconnect needed · {a.email}</span> : a.email}</small>
               </span>
             </button>
             <button type="button" className="folder-more acc-more" aria-label={`Account options: ${a.name}`} aria-haspopup="menu" onClick={(e) => {
@@ -218,7 +221,10 @@ export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, 
           x={accMenu.x}
           y={accMenu.y}
           onClose={() => setAccMenu(null)}
-          entries={[{ type: 'item', label: 'Remove account…', icon: 'trash', tone: 'red', danger: true, onSelect: () => onRemoveAccount(accMenu.id) }]}
+          entries={[
+            ...(accounts.find((x) => x.id === accMenu.id)?.status === 'needs_reconnect' ? [{ type: 'item' as const, label: 'Reconnect…', icon: 'lock' as const, tone: 'orange' as const, onSelect: () => onReconnect(accMenu.id) }] : []),
+            { type: 'item', label: 'Remove account…', icon: 'trash', tone: 'red', danger: true, onSelect: () => onRemoveAccount(accMenu.id) },
+          ]}
         />
       )}
       {menu && (
@@ -235,7 +241,7 @@ export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, 
           ]}
         />
       )}
-      <p className="preview-note">Preview build · mock data</p>
+      {sample && <p className="preview-note">Preview build · mock data</p>}
     </nav>
   )
 }

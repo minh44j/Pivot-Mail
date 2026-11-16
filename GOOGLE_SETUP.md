@@ -73,3 +73,9 @@ Do every step below twice, signed in as a super administrator of that Workspace.
 
 Optional in both while testing: the two `pivot-mail-web.vercel.app` entries. Sign-in returns to the address the person opened, so cookies stay host-only on each address.
 ⚠️ Verify: Vercel's Hobby plan is for personal, non-commercial use. A company tool normally needs a paid Vercel plan; confirm Vercel's current terms before staff use it.
+
+## Phase 2 additions (connecting mailboxes)
+- **Environment variables** (Vercel): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `TOKEN_ENCRYPTION_KEY`. Optional: `REQUIRE_INVITE=true` refuses sign-in for anyone an administrator has not added.
+- **Scopes** must already be listed under Data Access in both Google projects: `gmail.modify`, `contacts.readonly`, `directory.readonly` (plus the three identity scopes).
+- **Both addresses in both projects (recommended):** adding a mailbox uses the Google project of the *mailbox's* company, on whichever address the person opened. So also add `https://mail.pivottmc.com` and `https://mail.pivottmc.com/api/auth/google/callback` to the pivotscl.com project, and the two `mail.pivotscl.com` entries to the pivottmc.com project. Without it, only mailboxes of the same company as the address in use can be added.
+- On the first connection Google shows a consent screen listing the permissions. Tick all of them.

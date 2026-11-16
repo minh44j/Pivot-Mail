@@ -59,3 +59,13 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 - Mail is still sample data after sign-in. The UI says who is signed in; staff cannot reach administrator pages.
 - Tests: `npm run test:api` (44 checks against a mocked Google), `npm run check:api` (types).
 - ⚠️ Verify with specialist: security review of the sign-in code before staff use it (cookie lifetime, CSRF on future write endpoints, logging).
+
+
+## Phase 2a status: connecting real mailboxes (built, waiting for the first live test)
+- **Add account (real):** the person picks the company and Personal or Shared (shared: administrators only), Google asks for mailbox permission, and the server stores the **encrypted** refresh token in Supabase (AES-256-GCM, key only in Vercel, ciphertext bound to the mailbox address). A personal mailbox must be the signed-in person's own account.
+- **Access:** `mailbox_access` links people to mailboxes; every token request checks it. Disabled users are refused at once; roles come from the database (ADMIN_EMAILS bootstraps the first administrators).
+- **Gmail key:** the server mints a one-hour access token; the browser calls Gmail directly, so mail never passes through or rests on our server. The sidebar now reads each mailbox's real message count from Gmail.
+- **Remove / reconnect:** revokes the permission at Google and deletes the stored token; a revoked permission shows "Reconnect needed".
+- Real people see only their own mailboxes (no sample mail). The preview keeps its sample data.
+- Tests: `npm run test:api` (93 checks: sign-in provisioning, connect rules, encryption, token minting, disconnect).
+- **Next (phase 2b):** read-only mail: first sync (90 days), local index, message list and reading pane from Gmail, then older mail by live Gmail search.

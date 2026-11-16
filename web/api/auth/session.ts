@@ -1,19 +1,14 @@
-import { adminEmails, sessionSecret } from '../_lib/config.js'
-import { parseCookies } from '../_lib/cookies.js'
-import { verifyToken } from '../_lib/crypto.js'
-import { SESSION_COOKIE, hostOf, json } from '../_lib/http.js'
+import { hostOf, json } from '../_lib/http.js'
+import { currentUser } from '../_lib/session.js'
 
-interface Session extends Record<string, unknown> {
-  email: string
-  name: string
-  company: string
-}
-
-/** Who is signed in. Role is re-read from the administrator list on every call, so removing an admin takes effect at once. */
-export function GET(req: Request): Response {
-  const secret = sessionSecret()
-  if (!hostOf(req) || !secret) return json({ user: null }, 401)
-  const s = verifyToken<Session>(parseCookies(req.headers.get('cookie'))[SESSION_COOKIE], secret)
-  if (!s) return json({ user: null }, 401)
-  return json({ user: { email: s.email, name: s.name, company: s.company, role: adminEmails().has(s.email) ? 'admin' : 'staff' } })
+/** Who is signed in. The role and the disabled flag are re-read on every call, so changes take effect at once. */
+export async function GET(req: Request): Promise<Response> {
+  if (!hostOf(req)) return json({ user: null }, 401)
+  try {
+    const me = await currentUser(req)
+    if (!me) return json({ user: null }, 401)
+    return json({ user: { email: me.email, name: me.name, company: me.company, role: me.role } })
+  } catch {
+    return json({ user: null, error: 'unavailable' }, 503)
+  }
 }

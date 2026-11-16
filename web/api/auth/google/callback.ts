@@ -1,8 +1,10 @@
-import { COMPANIES, adminEmails, clientFor, protocolFor, sessionSecret } from '../../_lib/config.js'
+import { COMPANIES, clientFor, protocolFor, sessionSecret } from '../../_lib/config.js'
 import type { CompanyId } from '../../_lib/config.js'
 import { clearCookie, parseCookies, setCookie } from '../../_lib/cookies.js'
 import { signToken, verifyToken } from '../../_lib/crypto.js'
 import { checkClaims, exchangeCode } from '../../_lib/google.js'
+import { finishConnect } from '../../_lib/connect.js'
+import { roleFor, signInUser } from '../../_lib/users.js'
 import { OAUTH_COOKIE, SESSION_COOKIE, SESSION_SECONDS, hostOf, originOf, redirect } from '../../_lib/http.js'
 
 interface OauthState extends Record<string, unknown> {
@@ -11,6 +13,9 @@ interface OauthState extends Record<string, unknown> {
   verifier: string
   company: CompanyId
   next: string
+  /** 'connect' = adding a mailbox for an already signed-in person */
+  purpose?: 'signin' | 'connect'
+  kind?: 'personal' | 'shared'
 }
 
 /** Step 2: Google sends the person back here with a one-time code. Nothing is trusted until every check passes. */
@@ -32,6 +37,8 @@ export async function GET(req: Request): Promise<Response> {
   const company = COMPANIES[saved.company]
   const client = clientFor(company.id)
   if (!company || !client) return fail('config')
+  if (saved.purpose === 'connect') return finishConnect({ req, host, secure, code, saved, company, client, drop })
+
   // The address the person opened must be this company's address (or the shared fallback address).
   if (host === COMPANIES.scl.host && company.id !== 'scl') return fail('company')
   if (host === COMPANIES.tmc.host && company.id !== 'tmc') return fail('company')
@@ -40,7 +47,14 @@ export async function GET(req: Request): Promise<Response> {
   const check = checkClaims(claims, { clientId: client.clientId, nonce: saved.nonce, company })
   if (!check.ok) return fail(check.error)
 
-  const role = adminEmails().has(check.email) ? 'admin' : 'staff'
+  let role = roleFor(check.email)
+  try {
+    const result = await signInUser(check.email, company.id, check.name)
+    if (!result.ok) return fail(result.reason)
+    if (result.user) role = result.user.role
+  } catch {
+    return fail('unavailable')
+  }
   const session = signToken({ email: check.email, name: check.name, company: company.id, role }, secret, SESSION_SECONDS)
   return redirect(saved.next, [drop, setCookie(SESSION_COOKIE, session, { path: '/', maxAge: SESSION_SECONDS, secure })])
 }
