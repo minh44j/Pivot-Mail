@@ -79,3 +79,10 @@ Optional in both while testing: the two `pivot-mail-web.vercel.app` entries. Sig
 - **Scopes** must already be listed under Data Access in both Google projects: `gmail.modify`, `contacts.readonly`, `directory.readonly` (plus the three identity scopes).
 - **Both addresses in both projects (recommended):** adding a mailbox uses the Google project of the *mailbox's* company, on whichever address the person opened. So also add `https://mail.pivottmc.com` and `https://mail.pivottmc.com/api/auth/google/callback` to the pivotscl.com project, and the two `mail.pivotscl.com` entries to the pivottmc.com project. Without it, only mailboxes of the same company as the address in use can be added.
 - On the first connection Google shows a consent screen listing the permissions. Tick all of them.
+
+## Adding a mailbox from the other company's address
+Example: signed in on `mail.pivotscl.com` and adding `minhaj@pivottmc.com`. Pivot Mail uses the **pivottmc.com** Google project for that mailbox, but sends Google back to the address you are on. If that address is not registered in the pivottmc.com project, Google shows **redirect_uri_mismatch**. Fix: in the pivottmc.com project, Clients, add
+- origin `https://mail.pivotscl.com`
+- redirect URI `https://mail.pivotscl.com/api/auth/google/callback`
+
+and in the pivotscl.com project add the two `mail.pivottmc.com` entries (the same, the other way round). A personal mailbox you add this way is private to you.

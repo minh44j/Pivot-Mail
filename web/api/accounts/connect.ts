@@ -9,7 +9,8 @@ import { vaultReady } from '../_lib/vault.js'
 
 /**
  * Starts "Add account": asks Google for permission to read and manage one mailbox.
- * Any signed-in person may connect their own mailbox; only administrators may connect a shared one.
+ * Any signed-in person may connect a personal mailbox in either company, including a second account of their own in the other
+ * Workspace: Google's sign-in proves they control it, and only they get access. Only administrators may connect a shared mailbox.
  * The Google project used is the one of the mailbox's Workspace, so both addresses must be registered in both projects.
  */
 export async function GET(req: Request): Promise<Response> {
@@ -45,7 +46,8 @@ export async function GET(req: Request): Promise<Response> {
     nonce,
     challenge: sha256b64url(verifier),
     company,
-    mailbox: { loginHint: kind === 'personal' ? me.email : undefined },
+    // Suggest the person's own address only when it belongs to the Workspace being connected (a second account is a different address).
+    mailbox: { loginHint: kind === 'personal' && me.email.endsWith(`@${company.domain}`) ? me.email : undefined },
   })
   return redirect(location, [setCookie(OAUTH_COOKIE, cookie, { path: '/api/auth', maxAge: 600, secure: protocolFor(host) === 'https' })])
 }

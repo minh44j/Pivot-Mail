@@ -71,7 +71,7 @@ export function ConnectDialog({ isAdmin, initial, onClose }: Props) {
                 {!isAdmin && <small>Only administrators can add a shared mailbox.</small>}
               </div>
               <p className="muted">
-                Google will ask you to sign in to a <strong>@{co.domain}</strong> account and allow Pivot Mail to read and manage its mail. {kind === 'personal' ? 'Use your own account.' : 'Sign in as the shared mailbox itself.'} You can remove it at any time.
+                Google will ask you to sign in to a <strong>@{co.domain}</strong> account and allow Pivot Mail to read and manage its mail. {kind === 'personal' ? 'It stays private to you. This can be a second account of your own in the other company.' : 'Sign in as the shared mailbox itself.'} You can remove it at any time.
               </p>
               <div className="modal-actions">
                 {!initial && (

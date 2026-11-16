@@ -124,7 +124,6 @@ export async function fetchGmailProfile(accessToken: string): Promise<GmailProfi
 export const CONNECT_ERRORS: Record<string, string> = {
   session: 'Please sign in again, then add the mailbox.',
   forbidden: 'Only administrators can add a shared mailbox.',
-  mismatch: 'That is not your own account. Choose the account you signed in with, or ask an administrator to add a shared mailbox.',
   domain: 'That account does not belong to the company you chose.',
   scope: 'Mail access was not allowed. Tick every permission on Google\'s screen and try again.',
   norefresh: 'Google did not give lasting access. Remove Pivot Mail from your Google account\'s connected apps and try again.',

@@ -38,7 +38,6 @@ export async function finishConnect(p: { req: Request; host: string; secure: boo
   const result = await exchangeCodeFull({ code: p.code, verifier: p.saved.verifier, clientId: p.client.clientId, clientSecret: p.client.clientSecret, redirectUri: `${originOf(p.host)}/api/auth/google/callback` })
   const check = checkClaims(result?.claims ?? null, { clientId: p.client.clientId, nonce: p.saved.nonce, company: p.company })
   if (!result || !check.ok) return fail(check.ok ? 'token' : check.error)
-  if (kind === 'personal' && check.email !== me.email) return fail('mismatch')
   // Google lets people untick permissions on the consent screen; without mail access the connection is useless.
   if (!result.scope.split(' ').includes('https://www.googleapis.com/auth/gmail.modify')) return fail('scope')
   if (!result.refreshToken) return fail('norefresh')
@@ -48,7 +47,7 @@ export async function finishConnect(p: { req: Request; host: string; secure: boo
     if (!account) return fail('unavailable')
     await insert('mail_tokens', { account_id: account.id, refresh_token_enc: seal(result.refreshToken, check.email), key_version: 1, scopes: result.scope, granted_by: me.id, revoked_at: null }, 'account_id')
     await insert('mailbox_access', { user_id: me.id, account_id: account.id, granted_by: me.id }, 'user_id,account_id')
-    await insert('audit_log', { actor_email: me.email, action: 'account.connected', account_id: account.id, detail: { kind, company: p.company.id } })
+    await insert('audit_log', { actor_email: me.email, action: 'account.connected', account_id: account.id, detail: { kind, company: p.company.id, otherAddress: check.email !== me.email } })
   } catch {
     return fail('unavailable')
   }
