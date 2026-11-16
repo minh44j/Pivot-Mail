@@ -14,6 +14,9 @@ import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
 import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
 import { bareAddress, displayName } from './data/contacts'
+import { WhenDialog } from './components/WhenDialog'
+import { fmtWhen } from './when'
+import type { WhenMode } from './when'
 import { OriginalDialog } from './components/OriginalDialog'
 import { buildMessageDoc } from './printdoc'
 import { ConfirmDialog } from './components/ConfirmDialog'
@@ -37,6 +40,9 @@ import type { SmartKey } from './smart'
 import { FolderJump } from './components/FolderJump'
 import { ShortcutHelp } from './components/ShortcutHelp'
 import { BulkPanel } from './components/BulkPanel'
+
+/** Wall-clock milliseconds; used by event handlers only (kept out of render logic). */
+const stamp = (): number => Date.now()
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -84,7 +90,7 @@ const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'obje
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
 
-const FOLDER_TITLES: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', archive: 'Archive', deleted: 'Deleted Items' }
+const FOLDER_TITLES: Record<string, string> = { inbox: 'Inbox', drafts: 'Drafts', sent: 'Sent', archive: 'Archive', deleted: 'Deleted Items', scheduled: 'Scheduled', snoozed: 'Snoozed' }
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>(INITIAL_MESSAGES)
@@ -285,6 +291,7 @@ export default function App() {
   const scope = useMemo(
     () =>
       messages.filter((m) => {
+        if (sel.kind === 'all') return searchAll && query.trim() !== '' ? m.folder !== 'deleted' : m.folder === 'inbox'
         if (m.accountId !== accountId) return false
         if (searchAll && query.trim() !== '') return m.folder !== 'deleted'
         if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
@@ -303,8 +310,8 @@ export default function App() {
     if (!threaded) return inScope.map((msg) => ({ msg, count: 1, unread: msg.unread }))
     const byThread = new Map<string, Row>()
     for (const msg of inScope) {
-      const row = byThread.get(msg.threadId)
-      if (!row) byThread.set(msg.threadId, { msg, count: 1, unread: msg.unread })
+      const row = byThread.get(`${msg.accountId}/${msg.threadId}`)
+      if (!row) byThread.set(`${msg.accountId}/${msg.threadId}`, { msg, count: 1, unread: msg.unread })
       else {
         row.count += 1
         row.unread = row.unread || msg.unread
@@ -320,9 +327,9 @@ export default function App() {
     if (!selectedRow) return []
     if (!threaded) return [selectedRow.msg]
     return messages
-      .filter((m) => m.threadId === selectedRow.msg.threadId && m.accountId === accountId)
+      .filter((m) => m.threadId === selectedRow.msg.threadId && m.accountId === selectedRow.msg.accountId)
       .sort((a, b) => a.date.localeCompare(b.date))
-  }, [selectedRow, threaded, messages, accountId])
+  }, [selectedRow, threaded, messages])
 
   const totalUnread = useMemo(() => messages.filter((m) => m.unread && m.folder === 'inbox').length, [messages])
   useEffect(() => platform.setBadge(totalUnread), [totalUnread])
@@ -335,11 +342,11 @@ export default function App() {
       setView('read')
       const row = rows.find((r) => r.msg.id === id)
       if (row) {
-        const ids = messages.filter((m) => m.unread && (threaded ? m.threadId === row.msg.threadId : m.id === id) && m.accountId === accountId).map((m) => m.id)
+        const ids = messages.filter((m) => m.unread && (threaded ? m.threadId === row.msg.threadId : m.id === id) && m.accountId === row.msg.accountId).map((m) => m.id)
         if (ids.length > 0) patch(ids, { unread: false }, false)
       }
     },
-    [rows, messages, threaded, accountId, patch],
+    [rows, messages, threaded, patch],
   )
 
   const openCompose = useCallback(
@@ -350,6 +357,10 @@ export default function App() {
     [accountId],
   )
 
+  const [when, setWhen] = useState<{ mode: WhenMode; rowIds: string[] } | null>(null)
+  const [undoDelay, setUndoDelay] = usePersisted<string>('pm.undosend', '10', (v) => ['0', '5', '10', '20', '30'].includes(v))
+  const [pendingSend, setPendingSend] = useState<{ d: ComposeInit; id: string } | null>(null)
+  const sendTimer = useRef<number | undefined>(undefined)
   const parseAddrs = (s: string): Person[] =>
     s
       .split(/[;,\n]/)
@@ -380,6 +391,68 @@ export default function App() {
     }
   }
   const upsert = (m: Message) => setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev.map((x) => (x.id === m.id ? m : x)) : [m, ...prev]))
+
+  const finishSend = (d: ComposeInit, id: string) => {
+    setPendingSend((p) => (p?.id === id ? null : p))
+    upsert(fromCompose(d, id, 'sent'))
+  }
+  const finishRef = useRef(finishSend)
+  useEffect(() => {
+    finishRef.current = finishSend
+  })
+
+  /** Send: held for the undo delay (Settings), then it moves to Sent. */
+  const sendWithUndo = (d: ComposeInit) => {
+    if (pendingSend) {
+      window.clearTimeout(sendTimer.current)
+      finishSend(pendingSend.d, pendingSend.id)
+    }
+    if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
+    setCompose(null)
+    const delay = Number(undoDelay)
+    const id = `s-${stamp()}`
+    if (delay === 0) {
+      upsert(fromCompose(d, id, 'sent'))
+      showToast('Message sent (mock)')
+      return
+    }
+    setPendingSend({ d, id })
+    sendTimer.current = window.setTimeout(() => finishRef.current(d, id), delay * 1000)
+  }
+  const undoSend = () => {
+    if (!pendingSend) return
+    window.clearTimeout(sendTimer.current)
+    const { d } = pendingSend
+    setPendingSend(null)
+    openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
+    showToast('Sending cancelled. Your message is open again.')
+  }
+  const scheduleSend = (d: ComposeInit, iso: string) => {
+    if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
+    upsert(fromCompose(d, `q-${stamp()}`, 'scheduled', { sendAt: iso }))
+    setCompose(null)
+    showToast(`Scheduled for ${fmtWhen(iso)}`)
+  }
+
+  // Scheduled mail is sent and snoozed mail comes back when its time arrives.
+  useEffect(() => {
+    const tick = () => {
+      const n = stamp()
+      const due = messagesRef.current.filter((m) => (m.folder === 'scheduled' && m.sendAt && Date.parse(m.sendAt) <= n) || (m.folder === 'snoozed' && m.snoozedUntil && Date.parse(m.snoozedUntil) <= n))
+      if (due.length === 0) return
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.folder === 'scheduled' && m.sendAt && Date.parse(m.sendAt) <= n) return { ...m, folder: 'sent', date: m.sendAt, sendAt: undefined }
+          if (m.folder === 'snoozed' && m.snoozedUntil && Date.parse(m.snoozedUntil) <= n) return { ...m, folder: 'inbox', unread: true, snoozedUntil: undefined }
+          return m
+        }),
+      )
+      const back = due.filter((m) => m.folder === 'snoozed').length
+      if (back > 0) showToast(`${back} snoozed message${back === 1 ? '' : 's'} back in the Inbox`)
+    }
+    const t = window.setInterval(tick, 15_000)
+    return () => window.clearInterval(t)
+  }, [showToast])
 
   /** Reopen a draft in the composer. */
   const openDraft = (m: Message) =>
@@ -426,6 +499,23 @@ export default function App() {
     else popOut(m)
   }
 
+  const sm = selectedRow?.msg
+  const readerBanner: { text: string; actions: { label: string; onClick: () => void }[] } | undefined = !sm
+    ? undefined
+    : sm.folder === 'scheduled' && sm.sendAt
+      ? {
+          text: `Scheduled to send ${fmtWhen(sm.sendAt)}`,
+          actions: [
+            { label: 'Edit', onClick: () => openDraft(sm) },
+            { label: 'Cancel send', onClick: () => patch([sm.id], { folder: 'drafts', sendAt: undefined }) },
+          ],
+        }
+      : sm.folder === 'snoozed' && sm.snoozedUntil
+        ? { text: `Snoozed until ${fmtWhen(sm.snoozedUntil)}`, actions: [{ label: 'Unsnooze', onClick: () => patch([sm.id], { folder: 'inbox', snoozedUntil: undefined }) }] }
+        : sm.flagged && sm.dueAt
+          ? { text: `Follow up ${fmtWhen(sm.dueAt)}`, actions: [{ label: 'Mark complete', onClick: () => patch([sm.id], { flagged: false, dueAt: undefined }) }] }
+          : undefined
+
   const sentLabel = (m: Message): string => {
     const d = new Date(m.date)
     return `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
@@ -454,13 +544,13 @@ export default function App() {
   const last = thread[thread.length - 1]
   const reply = (all: boolean) => {
     if (!last) return
-    const acc = accountList.find((a) => a.id === accountId)
+    const acc = accountList.find((a) => a.id === last.accountId)
     const cc = all ? [...last.to, ...(last.cc ?? [])].map((t) => t.email).filter((e) => e !== acc?.email && e !== last.from.email).join(', ') : ''
-    openCompose({ to: last.from.email, cc, subject: /^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`, body: quote(last) })
+    openCompose({ accountId: last.accountId, to: last.from.email, cc, subject: /^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`, body: quote(last) })
   }
   const forward = () => {
     if (!last) return
-    openCompose({ subject: /^fwd?:/i.test(last.subject) ? last.subject : `Fwd: ${last.subject}`, body: quote(last), attachments: last.attachments })
+    openCompose({ accountId: last.accountId, subject: /^fwd?:/i.test(last.subject) ? last.subject : `Fwd: ${last.subject}`, body: quote(last), attachments: last.attachments })
   }
 
   const retry = () => {
@@ -507,6 +597,8 @@ export default function App() {
     | { kind: 'toggleImportant' }
     | { kind: 'colour'; c: Colour | undefined }
     | { kind: 'move'; target: FolderSel }
+    | { kind: 'snooze'; until: string }
+    | { kind: 'followup'; due: string | null }
 
   /** Rows the keyboard and toolbar act on: the whole selection, or the open conversation. */
   const selRows = (): string[] => (multi ? pickedRows : selectedId ? [selectedId] : [])
@@ -561,7 +653,15 @@ export default function App() {
         patch(mids, { unread: !op.read })
         break
       case 'toggleFlag':
-        patch(mids, { flagged: !group.every((m) => m.flagged) })
+        patch(mids, group.every((m) => m.flagged) ? { flagged: false, dueAt: undefined } : { flagged: true })
+        break
+      case 'snooze':
+        patch(mids, { folder: 'snoozed', snoozedUntil: op.until })
+        leave(`Snoozed until ${fmtWhen(op.until)}`)
+        break
+      case 'followup':
+        patch(mids, { flagged: true, dueAt: op.due ?? undefined })
+        showToast(op.due ? `Follow up ${fmtWhen(op.due)}${many}` : `Flagged${many}`)
         break
       case 'toggleImportant':
         patch(mids, { important: !group.every((m) => m.important) })
@@ -664,6 +764,8 @@ export default function App() {
     out.push(
       { type: 'item', label: anyUnread ? 'Mark as read' : 'Mark as unread', icon: 'eye', tone: 'blue', onSelect: () => runOp(rowIds, { kind: 'toggleRead' }) },
       { type: 'item', label: allFlagged ? 'Remove flag' : 'Flag', icon: 'flag', tone: 'orange', onSelect: () => runOp(rowIds, { kind: 'toggleFlag' }) },
+      { type: 'item', label: 'Follow up…', icon: 'flag', tone: 'orange', onSelect: () => setWhen({ mode: 'followup', rowIds }) },
+      { type: 'item', label: 'Snooze…', icon: 'clock', tone: 'orange', onSelect: () => setWhen({ mode: 'snooze', rowIds }), disabled: m.folder === 'drafts' || m.folder === 'sent' || m.folder === 'scheduled' },
       { type: 'item', label: allImportant ? 'Remove importance' : 'Mark as important', icon: 'important', tone: 'red', onSelect: () => runOp(rowIds, { kind: 'toggleImportant' }) },
       { type: 'head', label: 'Colour category' },
       { type: 'swatches', current: bulkMode ? undefined : m.colour, onPick: (c) => runOp(rowIds, { kind: 'colour', c }) },
@@ -728,7 +830,7 @@ export default function App() {
         setScreen('settings')
         return
       }
-      if (mod && !e.altKey && !e.shiftKey && (lk === 'y' || lk === 'g') && !typing) {
+      if (mod && !e.altKey && !e.shiftKey && (lk === 'y' || lk === 'g') && (!typing || t.closest('.tb-search'))) {
         e.preventDefault()
         setJump('go')
         return
@@ -869,7 +971,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.id
+  const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? 'All inboxes' : sel.id
   const showReader = pane !== 'off'
 
   if (!entered) return <SignIn onPreview={() => setEntered(true)} />
@@ -904,6 +1006,8 @@ export default function App() {
           }}
           notifications={notif}
           onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
+          undoDelay={undoDelay}
+          onUndoDelay={setUndoDelay}
           onBack={() => setScreen('mail')}
           sim={sim}
           onSim={(p) => {
@@ -1007,7 +1111,8 @@ export default function App() {
           showSmart={showSmart}
           onToggleSmart={toggleSmart}
           title={title}
-          subtitle={accountList.find((a) => a.id === accountId)?.email ?? ''}
+          subtitle={sel.kind === 'all' ? `${accountList.length} mailboxes` : (accountList.find((a) => a.id === accountId)?.email ?? '')}
+          accountNames={sel.kind === 'all' ? Object.fromEntries(accountList.map((x) => [x.id, x.name])) : undefined}
           picked={pickedRows}
           onRowClick={rowClick}
           onToggle={toggleRow}
@@ -1056,6 +1161,7 @@ export default function App() {
             onDelete={() => selectedRow && rowAction(selectedRow.msg.id, 'delete')}
             onFlag={() => selectedRow && rowAction(selectedRow.msg.id, 'flag')}
             onUnread={() => selectedRow && rowAction(selectedRow.msg.id, 'unread')}
+            banner={readerBanner}
             onEditDraft={() => selectedRow && openDraft(selectedRow.msg)}
             onMore={(x, y) => selectedRow && setCtx({ id: selectedRow.msg.id, x, y })}
             flagged={Boolean(selectedRow?.msg.flagged)}
@@ -1071,16 +1177,11 @@ export default function App() {
           offline={!online}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
-          onSend={(d) => {
-            if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
-            upsert(fromCompose(d, `s-${Date.now()}`, 'sent'))
-            setCompose(null)
-            showToast('Message sent (mock)')
-          }}
+          onSend={(d, opts) => (opts?.sendAt ? scheduleSend(d, opts.sendAt) : sendWithUndo(d))}
           onClose={(draft, discarded) => {
             const id = compose?.draftId
             if (discarded && id) setMessages((prev) => prev.filter((x) => x.id !== id))
-            else if (draft) upsert(fromCompose(draft, id ?? `d-${Date.now()}`, 'drafts'))
+            else if (draft) upsert(fromCompose(draft, id ?? `d-${stamp()}`, 'drafts'))
             setCompose(null)
           }}
           onToast={showToast}
@@ -1089,6 +1190,26 @@ export default function App() {
       {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
       {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {pendingSend && (
+        <div className="toast with-action" role="status">
+          <span>Message sent</span>
+          <button type="button" onClick={undoSend}>
+            Undo
+          </button>
+        </div>
+      )}
+      {when && (
+        <WhenDialog
+          mode={when.mode}
+          onClose={() => setWhen(null)}
+          onPick={(iso) => {
+            const ids = when.rowIds
+            if (when.mode === 'snooze' && iso) runOp(ids, { kind: 'snooze', until: iso })
+            else if (when.mode === 'followup') runOp(ids, { kind: 'followup', due: iso })
+            setWhen(null)
+          }}
+        />
+      )}
       {original && <OriginalDialog msg={original} onClose={() => setOriginal(null)} />}
       {confirmEmpty && (
         <ConfirmDialog title="Empty Deleted Items" confirm="Empty folder" danger onConfirm={emptyDeleted} onClose={() => setConfirmEmpty(false)}>

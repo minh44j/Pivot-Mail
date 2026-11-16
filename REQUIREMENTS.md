@@ -200,3 +200,13 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - Sidebar "Add account": choose the company (pivottmc.com or pivotscl.com), enter the Google address, choose Personal or Shared mailbox. Other domains, wrong-company domains and duplicates are refused with a clear message.
 - Remove account (hover the mailbox header, ⋯): deletes the local copy only; Google is untouched. At least one account must remain.
 - Preview stores the account list in the browser (`pm.accounts.added`, `pm.accounts.removed`). Real sign-in and encrypted server-side tokens arrive in roadmap phase 1.
+
+## Daily-use batch (status: built in preview)
+- **Drafts:** anything typed and closed is kept in Drafts (blank mail leaves nothing). Open a draft with double-click, Enter or "Continue editing". Sent mail appears in Sent.
+- **All inboxes:** one combined, mailbox-tagged inbox at the top of the sidebar (Ctrl+Y → "All inboxes"). Replies come from the mailbox the message arrived in.
+- **Folder tools:** "Mark all as read" (undo with Ctrl+Z) and "Empty folder" for Deleted Items (confirmation, permanent).
+- **Reader More menu:** copy subject, print or save as PDF (Ctrl+P), open in new window (also double-click), show original (headers are simulated in the preview), move, mark, flag.
+- **Undo send:** sending is held for 0/5/10/20/30 s (Settings → General, default 10 s) with an Undo bar. ⚠️ Preview only: closing the tab during the delay loses the message; the real version holds it server-side.
+- **Send later:** presets or a custom time, Scheduled folder, Cancel send returns it to Drafts, sent automatically when due.
+- **Snooze and follow-up:** Snooze… returns mail to the Inbox as unread; Follow up… sets a due date (overdue shows red; Mark complete clears it). Times use the device time zone. ⚠️ Verify: business-hours defaults (08:00 / 17:00) with staff.
+- **Fixes found while testing:** composer recipient chips no longer wrap; Ctrl+Y works from the search box; folder jump matches several words.

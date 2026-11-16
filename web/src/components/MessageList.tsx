@@ -4,6 +4,7 @@ import { formatListTime, groupLabel } from '../util'
 import { useSettings } from '../settings'
 import { SMART } from '../smart'
 import type { SmartKey } from '../smart'
+import { fmtWhen } from '../when'
 import { Icon } from './Icon'
 
 interface Props {
@@ -26,6 +27,7 @@ interface Props {
   onContext: (id: string, x: number, y: number) => void
   onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
   emptyText: string
+  accountNames?: Record<string, string>
   onOpen: (id: string) => void
   actions: { label: string; onClick: () => void; danger?: boolean }[]
   error?: { onRetry: () => void; busy: boolean }
@@ -36,11 +38,12 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, onOpen, actions, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, onOpen, actions, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
   const [height, setHeight] = useState(600)
+  const [nowMs] = useState(() => new Date().getTime())
   const rowH = density === 'compact' ? 52 : 72
   const headH = 28
 
@@ -233,6 +236,7 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
                     </div>
                     <div className="row-sub">
                       <span className="subject">{msg.subject}</span>
+                      {accountNames && <span className="pill acc">{accountNames[msg.accountId]}</span>}
                       {msg.attachments.length > 0 && (
                         <span className="icon-inline" role="img" aria-label={`${msg.attachments.length} attachment(s)`}>
                           <Icon name="clip" size={14} />
@@ -248,6 +252,9 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
                           <Icon name="flag" size={14} tone="orange" />
                         </span>
                       )}
+                      {msg.sendAt && <span className="pill">Sends {fmtWhen(msg.sendAt)}</span>}
+                      {msg.snoozedUntil && <span className="pill">Until {fmtWhen(msg.snoozedUntil)}</span>}
+                      {msg.dueAt && <span className={`pill${new Date(msg.dueAt).getTime() < nowMs ? ' warn' : ''}`}>Due {fmtWhen(msg.dueAt)}</span>}
                       {msg.colour && (
                         <span className={`dot c-${msg.colour}`} role="img" aria-label={`Category: ${colours.find((c) => c.id === msg.colour)?.label ?? ''}`} />
                       )}

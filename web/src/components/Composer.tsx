@@ -12,6 +12,7 @@ import { matchCopiedEmail } from '../emailClipboard'
 import { FileIcon } from './FileIcon'
 import { RecipientField } from './RecipientField'
 import { Icon } from './Icon'
+import { WhenDialog } from './WhenDialog'
 import type { IconName } from './Icon'
 
 interface Props {
@@ -20,7 +21,7 @@ interface Props {
   pendingTemplate: Template | null
   onTemplateUsed: () => void
   offline?: boolean
-  onSend: (d: ComposeInit) => void
+  onSend: (d: ComposeInit, opts?: { sendAt?: string }) => void
   /** draft: what was typed (kept in Drafts); discarded: delete the open draft */
   onClose: (draft?: ComposeInit, discarded?: boolean) => void
   onToast: (m: string) => void
@@ -79,6 +80,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
+  const [later, setLater] = useState(false)
   const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [dragging, setDragging] = useState(false)
   // The new message window opens at the size of the reading pane. The corner button switches to a small floating window.
@@ -307,7 +309,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
   const canSend = d.to.trim().length > 0
   const sigOn = d.body.includes('data-sig')
 
-  const send = () => {
+  const send = (sendAt?: string) => {
     if (!canSend) {
       onToast('Add at least one recipient')
       return
@@ -323,7 +325,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
     }
     finished.current = true
     platform.storage.remove(DRAFT_KEY)
-    onSend(d)
+    onSend(d, sendAt ? { sendAt } : undefined)
   }
 
   const measure = () => setRect(readerBox())
@@ -414,8 +416,11 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
         </button>
       </header>
       <div className="composer-bar" role="toolbar" aria-label="Message actions">
-        <button type="button" className="primary" onClick={send} disabled={!canSend}>
+        <button type="button" className="primary" onClick={() => send()} disabled={!canSend}>
           <Icon name="send" size={16} /> Send
+        </button>
+        <button type="button" onClick={() => (canSend ? setLater(true) : onToast('Add at least one recipient'))} aria-haspopup="dialog">
+          <Icon name="clock" size={16} tone="orange" /> Send later
         </button>
         <button type="button" onClick={() => fileInput.current?.click()}>
           <Icon name="clip" size={16} tone="blue" /> Attach
@@ -578,6 +583,16 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
         />
         {dragging && <div className="drop-hint">Drop files to attach</div>}
       </div>
+      {later && (
+        <WhenDialog
+          mode="send"
+          onClose={() => setLater(false)}
+          onPick={(iso) => {
+            setLater(false)
+            if (iso) send(iso)
+          }}
+        />
+      )}
     </div>
   )
 }

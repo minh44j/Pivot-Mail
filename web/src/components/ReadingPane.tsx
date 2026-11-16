@@ -20,9 +20,10 @@ interface Props {
   unread: boolean
   onEditDraft: () => void
   onMore: (x: number, y: number) => void
+  banner?: { text: string; actions: { label: string; onClick: () => void }[] }
 }
 
-export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore }: Props) {
+export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore, banner }: Props) {
   const lastId = messages[messages.length - 1]?.id ?? ''
   // Reset expansion when the conversation changes, derived during render (no effect).
   const [state, setState] = useState<{ key: string; open: Set<string> }>({ key: lastId, open: new Set([lastId]) })
@@ -86,6 +87,16 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </span>
         </div>
       </header>
+      {banner && (
+        <div className="reader-banner" role="status">
+          <span className="grow">{banner.text}</span>
+          {banner.actions.map((x) => (
+            <button key={x.label} type="button" className="link" onClick={x.onClick}>
+              {x.label}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="reader-scroll" tabIndex={-1}>
         {messages.map((m) => {
           const expanded = open.has(m.id)

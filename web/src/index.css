@@ -992,7 +992,7 @@ small {
   min-height: 44px;
   border-bottom: 1px solid var(--separator);
 }
-.field span {
+.field > span {
   width: 56px;
   flex: none;
   color: var(--label-2);
@@ -1107,7 +1107,7 @@ small {
   gap: 10px;
   min-height: 44px;
 }
-.field-inner span {
+.field-inner > span:first-child {
   width: 56px;
   flex: none;
   color: var(--label-2);
@@ -2519,8 +2519,8 @@ code {
     min-height: 30px;
     gap: 8px;
   }
-  .field span,
-  .field-inner span {
+  .field > span,
+  .field-inner > span:first-child {
     width: 48px;
     font-size: 12px;
   }
@@ -3603,4 +3603,85 @@ li.slot-end.slot {
   font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+/* When picker */
+.when-list {
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.when-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.when-item:hover,
+.when-item:focus-visible {
+  background: var(--fill);
+}
+.when-item small {
+  color: var(--label-2);
+}
+.toast.with-action {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  bottom: 76px;
+}
+.toast.with-action button {
+  border: 0;
+  background: none;
+  color: #9ecbff;
+  font-weight: 600;
+  cursor: pointer;
+}
+.pill {
+  flex: none;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--fill-2);
+  color: var(--label-2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.pill.warn {
+  background: #fdeceb;
+  color: #a1180d;
+}
+.reader-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: #fff4e0;
+  color: #7a4300;
+  font-size: 13px;
+}
+.reader-banner .link {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.folder.all-inboxes {
+  width: calc(100% - 12px);
+  margin: 6px 6px 2px;
+  font-weight: 600;
+}
+.pill.acc {
+  background: color-mix(in srgb, var(--ic-teal) 14%, var(--content));
+  color: var(--ic-teal);
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

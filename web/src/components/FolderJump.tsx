@@ -21,6 +21,8 @@ const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
   { id: 'drafts', label: 'Drafts', icon: 'draft', tone: 'gray' },
   { id: 'sent', label: 'Sent', icon: 'send', tone: 'green' },
   { id: 'deleted', label: 'Deleted Items', icon: 'trash', tone: 'red' },
+  { id: 'snoozed', label: 'Snoozed', icon: 'clock', tone: 'orange' },
+  { id: 'scheduled', label: 'Scheduled', icon: 'clock', tone: 'blue' },
 ]
 
 interface Item {
@@ -39,9 +41,10 @@ export function FolderJump({ mode, accounts, folders, cases, accountId, onPick, 
 
   const all = useMemo<Item[]>(() => {
     const out: Item[] = []
+    if (mode === 'go' && accounts.length > 1) out.push({ sel: { accountId, kind: 'all', id: 'inbox' }, label: 'All inboxes', sub: `${accounts.length} mailboxes`, icon: 'inbox', tone: 'blue' })
     for (const a of accounts) {
       if (mode === 'move' && a.id !== accountId) continue
-      for (const f of FOLDERS) out.push({ sel: { accountId: a.id, kind: 'folder', id: f.id }, label: f.label, sub: a.email, icon: f.icon, tone: f.tone })
+      for (const f of FOLDERS.filter((x) => mode === 'go' || (x.id !== 'snoozed' && x.id !== 'scheduled'))) out.push({ sel: { accountId: a.id, kind: 'folder', id: f.id }, label: f.label, sub: a.email, icon: f.icon, tone: f.tone })
       for (const l of folders[a.id] ?? []) out.push({ sel: { accountId: a.id, kind: 'label', id: l }, label: l, sub: a.email, icon: 'folder', tone: 'gray' })
       if (mode === 'go') for (const c of cases[a.id] ?? []) out.push({ sel: { accountId: a.id, kind: 'case', id: c }, label: c, sub: `Case · ${a.email}`, icon: 'hash', tone: c.startsWith('PT') ? 'teal' : 'purple' })
     }

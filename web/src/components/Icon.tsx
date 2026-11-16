@@ -37,6 +37,7 @@ const PATHS = {
   hash: 'M5 9h14|M5 15h14|M10 4L8 20|M16 4l-2 16',
   expand: 'M15 3h6v6|M9 21H3v-6|M21 3l-7 7|M3 21l7-7',
   collapse: 'M4 14h6v6|M20 10h-6V4|M14 10l7-7|M3 21l7-7',
+  clock: 'M12 3a9 9 0 100 18 9 9 0 000-18z|M12 7v5l3 2',
   plus: 'M12 5v14|M5 12h14',
   passport: 'M6 3h12v18H6z|M12 9a3 3 0 100 6 3 3 0 000-6z|M9 18h6',
   hotel: 'M3 20V8l9-5 9 5v12|M3 20h18|M9 20v-5h6v5|M8 10h.01|M12 10h.01|M16 10h.01',

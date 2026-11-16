@@ -4,7 +4,7 @@ import { ContextMenu } from './ContextMenu'
 import { Icon } from './Icon'
 import type { IconName, Tone } from './Icon'
 
-export type FolderSel = { accountId: string; kind: 'folder'; id: FolderId } | { accountId: string; kind: 'label'; id: string } | { accountId: string; kind: 'case'; id: string }
+export type FolderSel = { accountId: string; kind: 'folder'; id: FolderId } | { accountId: string; kind: 'label'; id: string } | { accountId: string; kind: 'case'; id: string } | { accountId: string; kind: 'all'; id: 'inbox' }
 
 const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
   { id: 'inbox', label: 'Inbox', icon: 'inbox', tone: 'blue' },
@@ -12,6 +12,8 @@ const FOLDERS: { id: FolderId; label: string; icon: IconName; tone: Tone }[] = [
   { id: 'drafts', label: 'Drafts', icon: 'draft', tone: 'gray' },
   { id: 'sent', label: 'Sent', icon: 'send', tone: 'green' },
   { id: 'deleted', label: 'Deleted Items', icon: 'trash', tone: 'red' },
+  { id: 'snoozed', label: 'Snoozed', icon: 'clock', tone: 'orange' },
+  { id: 'scheduled', label: 'Scheduled', icon: 'clock', tone: 'blue' },
 ]
 
 interface Props {
@@ -63,6 +65,13 @@ export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, 
 
   return (
     <nav className="folders" aria-label="Mail folders">
+      {accounts.length > 1 && (
+        <button type="button" className={`folder all-inboxes${selection.kind === 'all' ? ' active' : ''}`} aria-current={selection.kind === 'all'} onClick={() => onSelect({ accountId: selection.accountId, kind: 'all', id: 'inbox' })}>
+          <Icon name="inbox" size={15} tone="blue" />
+          <span className="grow">All inboxes</span>
+          {messages.filter((m) => m.folder === 'inbox' && m.unread && accounts.some((x) => x.id === m.accountId)).length > 0 && <span className="count">{messages.filter((m) => m.folder === 'inbox' && m.unread && accounts.some((x) => x.id === m.accountId)).length}</span>}
+        </button>
+      )}
       {accounts.map((a) => {
         const open = !collapsed[a.id]
         return (
@@ -86,8 +95,8 @@ export function FolderPane({ accounts, onAddAccount, onRemoveAccount, messages, 
             </div>
             {open && (
               <ul className="folder-list">
-                {FOLDERS.map((f) => {
-                  const count = f.id === 'drafts' ? drafts(a.id) : f.id === 'inbox' ? unread(a.id, 'inbox') : 0
+                {FOLDERS.filter((f) => (f.id !== 'snoozed' && f.id !== 'scheduled') || messages.some((m) => m.accountId === a.id && m.folder === f.id) || isActive(a.id, 'folder', f.id)).map((f) => {
+                  const count = f.id === 'drafts' ? drafts(a.id) : f.id === 'inbox' ? unread(a.id, 'inbox') : f.id === 'snoozed' || f.id === 'scheduled' ? messages.filter((m) => m.accountId === a.id && m.folder === f.id).length : 0
                   const on = isActive(a.id, 'folder', f.id)
                   return (
                     <li key={f.id}>

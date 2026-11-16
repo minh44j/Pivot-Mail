@@ -32,6 +32,8 @@ interface Props {
   onShowSmart: (v: boolean) => void
   notifications: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
+  undoDelay: string
+  onUndoDelay: (v: string) => void
   onBack: () => void
   sim: Problem | null
   onSim: (p: Problem | null) => void
@@ -230,6 +232,20 @@ export function SettingsPage(p: Props) {
                   options={[
                     { id: 'comfortable', label: 'Comfortable' },
                     { id: 'compact', label: 'Compact' },
+                  ]}
+                />
+              </Row>
+              <Row title="Undo send" hint="Hold a sent message for a moment so you can take it back.">
+                <Segmented
+                  label="Undo send delay"
+                  value={p.undoDelay}
+                  onChange={p.onUndoDelay}
+                  options={[
+                    { id: '0', label: 'Off' },
+                    { id: '5', label: '5 s' },
+                    { id: '10', label: '10 s' },
+                    { id: '20', label: '20 s' },
+                    { id: '30', label: '30 s' },
                   ]}
                 />
               </Row>
