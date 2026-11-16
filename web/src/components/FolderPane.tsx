@@ -21,6 +21,8 @@ interface Props {
   onAddAccount: () => void
   /** hides the preview note when real mailboxes are in use */
   sample?: boolean
+  /** Real mailboxes: the Inbox unread counts as Gmail reports them (not only the loaded mail) */
+  unreadOverride?: Record<string, number>
   onReconnect: (id: string) => void
   onRemoveAccount: (id: string) => void
   messages: Message[]
@@ -34,7 +36,7 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, sample = true, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
   const [accMenu, setAccMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
@@ -59,7 +61,9 @@ export function FolderPane({ accounts, sample = true, onAddAccount, onReconnect,
     },
   })
 
-  const unread = (accountId: string, folder: FolderId): number => messages.filter((m) => m.accountId === accountId && m.folder === folder && m.unread).length
+  const unread = (accountId: string, folder: FolderId): number =>
+    folder === 'inbox' && unreadOverride && unreadOverride[accountId] !== undefined ? (unreadOverride[accountId] as number) : messages.filter((m) => m.accountId === accountId && m.folder === folder && m.unread).length
+  const allUnread = unreadOverride ? accounts.reduce((s, x) => s + (unreadOverride[x.id] ?? 0), 0) : messages.filter((m) => m.folder === 'inbox' && m.unread && accounts.some((x) => x.id === m.accountId)).length
   const unreadLabel = (accountId: string, label: string): number =>
     messages.filter((m) => m.accountId === accountId && m.folder === 'inbox' && m.unread && m.labels.includes(label)).length
   const drafts = (accountId: string): number => messages.filter((m) => m.accountId === accountId && m.folder === 'drafts').length
@@ -72,7 +76,7 @@ export function FolderPane({ accounts, sample = true, onAddAccount, onReconnect,
         <button type="button" className={`folder all-inboxes${selection.kind === 'all' ? ' active' : ''}`} aria-current={selection.kind === 'all'} onClick={() => onSelect({ accountId: selection.accountId, kind: 'all', id: 'inbox' })}>
           <Icon name="inbox" size={15} tone="blue" />
           <span className="grow">All inboxes</span>
-          {messages.filter((m) => m.folder === 'inbox' && m.unread && accounts.some((x) => x.id === m.accountId)).length > 0 && <span className="count">{messages.filter((m) => m.folder === 'inbox' && m.unread && accounts.some((x) => x.id === m.accountId)).length}</span>}
+          {allUnread > 0 && <span className="count">{allUnread}</span>}
         </button>
       )}
       {accounts.map((a) => {

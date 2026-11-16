@@ -9,10 +9,13 @@ import type { Problem } from './problems'
 import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
-import { GmailError, getThreadFull, listLabels } from './gmail/client'
+import { GmailError, getLabel, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
 import type { GLabel } from './gmail/client'
 import { toMessage } from './gmail/map'
 import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
+import { fetchChanges } from './gmail/history'
+import type { Changes } from './gmail/history'
+import { applyLabelIds } from './gmail/map'
 import { createLabel, createDraft, deleteDraft, deleteLabel, listDrafts, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
 import { buildMime, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
 import type { OutAttachment } from './gmail/compose'
@@ -237,6 +240,31 @@ export default function App() {
     [realMode, realAccounts, addedAccounts, removedIds],
   )
 
+  /* ---------- fast sync: ask Gmail what changed, every few seconds ---------- */
+  const historyIds = useRef(new Map<string, string>())
+  /** Messages the person just changed here: a slightly older Gmail answer must not flip them back. */
+  const recentlyChanged = useRef(new Map<string, number>())
+  const touch = useCallback((ids: string[]) => {
+    const n = stamp()
+    for (const i of ids) recentlyChanged.current.set(i, n)
+  }, [])
+  const hasReal = (realAccounts?.length ?? 0) > 0
+  const inboxUnreadStale = useRef(true)
+  const [inboxUnread, setInboxUnread] = useState<Record<string, number>>({})
+  const failStreak = useRef(0)
+  const polling = useRef(false)
+  const selRef = useRef(sel)
+  const selectedIdRef = useRef(selectedId)
+  useEffect(() => {
+    selRef.current = sel
+    selectedIdRef.current = selectedId
+  })
+
+  const setHistory = useCallback((accountId: string, id: string) => {
+    historyIds.current.set(accountId, id)
+    void platform.cache.setMeta(`hist:${accountId}`, id)
+  }, [])
+
   const [labelsByAccount, setLabelsByAccount] = useState<Record<string, GLabel[]>>({})
   const labelsRef = useRef<Record<string, GLabel[]>>({})
   const realAccountsRef = useRef<AuthAccount[]>([])
@@ -316,9 +344,9 @@ export default function App() {
 
   /** Fetch the whole conversation (bodies, attachments) when it is opened. */
   const loadThread = useCallback(
-    async (m: Message) => {
+    async (m: Message, force = false) => {
       const have = messagesRef.current.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId)
-      if (have.length > 0 && have.every((x) => x.loaded)) return have
+      if (!force && have.length > 0 && have.every((x) => x.loaded)) return have
       try {
         const labels = await ensureLabels(m.accountId)
         const full = await getThreadFull(m.accountId, m.threadId)
@@ -344,8 +372,13 @@ export default function App() {
       void checkMailbox(a)
       void ensureLabels(a.id).catch(() => undefined)
       void platform.cache.load(a.id).then((ms) => setMessages((prev) => mergeMessages(prev, ms)))
+      // Where change tracking continues: the saved point, or "now" for a mailbox seen for the first time.
+      void platform.cache.getMeta(`hist:${a.id}`).then((v) => {
+        if (v) historyIds.current.set(a.id, v)
+        else void getProfile(a.id).then((p) => setHistory(a.id, p.historyId)).catch(() => undefined)
+      })
     }
-  }, [checkMailbox, ensureLabels])
+  }, [checkMailbox, ensureLabels, setHistory])
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     const connected = q.get('connected')
@@ -363,9 +396,145 @@ export default function App() {
     })
   }, [loadAccounts, showToast])
 
+
+  const applyChanges = useCallback(
+    async (accountId: string, r: Changes) => {
+      const labels = await ensureLabels(accountId)
+      const names = Object.fromEntries(labels.map((l) => [l.id, l.name]))
+      const now = stamp()
+      const fresh = (i: string) => now - (recentlyChanged.current.get(`${accountId}:${i}`) ?? 0) < 8000
+
+      if (r.deleted.size > 0) {
+        const ids = new Set([...r.deleted].map((i) => `${accountId}:${i}`))
+        setMessages((prev) => prev.filter((m) => !ids.has(m.id)))
+        void platform.cache.remove([...ids])
+      }
+
+      const known = new Map(messagesRef.current.filter((m) => m.accountId === accountId).map((m) => [m.id, m]))
+      const updates = new Map<string, string[]>()
+      const fetchIds: string[] = []
+      for (const [i, v] of r.labels) {
+        const id = `${accountId}:${i}`
+        if (known.has(id)) {
+          if (!fresh(i)) updates.set(id, v.labelIds)
+        } else if (r.added.has(i) || v.labelIds.includes('INBOX')) fetchIds.push(i)
+      }
+      if (updates.size > 0) {
+        const next: Message[] = []
+        const dropped: string[] = []
+        for (const [id, lids] of updates) {
+          const m = known.get(id)
+          const changed = m ? applyLabelIds(m, lids, names) : null
+          if (changed) next.push(changed)
+          else dropped.push(id)
+        }
+        if (dropped.length > 0) setMessages((prev) => prev.filter((m) => !dropped.includes(m.id)))
+        mergeIn(next)
+      }
+
+      let added: Message[] = []
+      if (fetchIds.length > 0) {
+        const got = await pool(fetchIds, 4, (i) => getMetadata(accountId, i))
+        added = got.map((g) => toMessage(accountId, g, names)).filter((x): x is Message => x !== null)
+        mergeIn(added)
+        lastSynced.current.delete(`${accountId}/folder/inbox`)
+      }
+
+      // The conversation on screen picks up new replies at once.
+      const open = messagesRef.current.find((m) => m.id === selectedIdRef.current)
+      if (open && open.accountId === accountId && added.some((m) => m.threadId === open.threadId)) void loadThread(open, true)
+
+      // Alert for new unread mail in the Inbox, not for what we sent ourselves.
+      const me = realAccountsRef.current.find((x) => x.id === accountId)?.email
+      const fresh2 = added.filter((m) => m.folder === 'inbox' && m.unread && m.from.email !== me && !known.has(m.id))
+      if (fresh2.length === 1) platform.notify(fresh2[0]?.from.name ?? 'New mail', fresh2[0]?.subject ?? '')
+      else if (fresh2.length > 1) platform.notify(`${fresh2.length} new messages`, fresh2.map((m) => m.from.name).slice(0, 3).join(', '))
+    },
+    [ensureLabels, mergeIn, loadThread],
+  )
+
+  const pollAccount = useCallback(
+    async (a: AuthAccount) => {
+      let start = historyIds.current.get(a.id)
+      if (!start) {
+        start = (await getProfile(a.id)).historyId
+        setHistory(a.id, start)
+        return
+      }
+      const r = await fetchChanges(a.id, start)
+      if (r === 'expired') {
+        // Gmail no longer remembers that point: read the open folders again from scratch.
+        setHistory(a.id, (await getProfile(a.id)).historyId)
+        lastSynced.current.clear()
+        const s = selRef.current
+        void syncTarget(s, true)
+        return
+      }
+      const changed = r.added.size + r.deleted.size + r.labels.size > 0
+      if (changed) await applyChanges(a.id, r)
+      if (r.latestId !== start) setHistory(a.id, r.latestId)
+      if (changed || inboxUnreadStale.current) {
+        const l = await getLabel(a.id, 'INBOX')
+        setInboxUnread((u) => ({ ...u, [a.id]: l.messagesUnread ?? 0 }))
+      }
+    },
+    [applyChanges, setHistory, syncTarget],
+  )
+  const pollAll = useCallback(async () => {
+    if (polling.current) return
+    polling.current = true
+    try {
+      const list = realAccountsRef.current.filter((x) => x.status !== 'needs_reconnect')
+      for (const a of list) await pollAccount(a)
+      inboxUnreadStale.current = false
+      failStreak.current = 0
+      setLastSync(new Date())
+      setSim((v) => (v === 'syncfail' ? null : v))
+    } catch (e) {
+      failStreak.current += 1
+      if (e instanceof GmailError && e.status === 401) {
+        /* the key is refreshed by the next call */
+      } else if (failStreak.current >= 3) setSim('syncfail')
+    } finally {
+      polling.current = false
+    }
+  }, [pollAccount])
+  const pollRef = useRef(pollAll)
+  useEffect(() => {
+    pollRef.current = pollAll
+  })
+
+  // 15 s while the tab is open, 60 s when hidden, backing off while Gmail is unreachable; at once on return or reconnect.
+  useEffect(() => {
+    if (!realMode || !hasReal) return
+    let timer: number | undefined
+    let last = 0
+    const delay = () => Math.min(120_000, (document.visibilityState === 'visible' ? 15_000 : 60_000) * 2 ** Math.min(failStreak.current, 3))
+    const loop = async () => {
+      last = stamp()
+      await pollRef.current()
+      timer = window.setTimeout(() => void loop(), delay())
+    }
+    const wake = () => {
+      if (stamp() - last < 4000) return
+      window.clearTimeout(timer)
+      void loop()
+    }
+    const onVis = () => document.visibilityState === 'visible' && wake()
+    timer = window.setTimeout(() => void loop(), 3000)
+    document.addEventListener('visibilitychange', onVis)
+    window.addEventListener('online', wake)
+    window.addEventListener('focus', wake)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVis)
+      window.removeEventListener('online', wake)
+      window.removeEventListener('focus', wake)
+    }
+  }, [realMode, hasReal])
+
   // Real mail: fetch whenever another folder (or mailbox) is opened.
   const selKey = `${sel.accountId}|${sel.kind}|${sel.id}`
-  const hasReal = (realAccounts?.length ?? 0) > 0
   useEffect(() => {
     if (!realMode || !hasReal) return
     const [accountId, kind, id] = selKey.split('|') as [string, FolderSel['kind'], string]
@@ -594,7 +763,13 @@ export default function App() {
     return Array.from(byThread.values())
   }, [scope, query, smart, now, threaded, liveOn])
 
-  const selectedRow = rows.find((r) => r.msg.id === selectedId)
+  // The row's newest message changes when a reply arrives; the conversation stays selected.
+  const selectedRow = useMemo(() => {
+    const exact = rows.find((r) => r.msg.id === selectedId)
+    if (exact || !selectedId || !threaded) return exact
+    const was = messages.find((m) => m.id === selectedId)
+    return was ? rows.find((r) => r.msg.accountId === was.accountId && r.msg.threadId === was.threadId) : undefined
+  }, [rows, selectedId, threaded, messages])
   const pickedRows = useMemo(() => picked.filter((id) => rows.some((r) => r.msg.id === id)), [picked, rows])
   const multi = pickedRows.length > 1
   const thread = useMemo<Message[]>(() => {
@@ -605,7 +780,7 @@ export default function App() {
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [selectedRow, threaded, messages])
 
-  const totalUnread = useMemo(() => messages.filter((m) => m.unread && m.folder === 'inbox').length, [messages])
+  const totalUnread = useMemo(() => (realMode ? Object.values(inboxUnread).reduce((s, n) => s + n, 0) : messages.filter((m) => m.unread && m.folder === 'inbox').length), [messages, realMode, inboxUnread])
   useEffect(() => platform.setBadge(totalUnread), [totalUnread])
 
   const select = useCallback(
@@ -622,6 +797,7 @@ export default function App() {
         if (unread.length > 0) {
           const before = unread.map((m) => ({ ...m }))
           const set = new Set(unread.map((m) => m.id))
+          touch([...set])
           setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, unread: false } : m)))
           const acc = row.msg.accountId
           const call = threaded ? modifyThread(acc, row.msg.threadId, [], ['UNREAD']) : modifyMessages(acc, [gid(row.msg)], [], ['UNREAD'])
@@ -632,7 +808,7 @@ export default function App() {
         if (ids.length > 0) patch(ids, { unread: false }, false)
       }
     },
-    [rows, messages, threaded, patch, realMode, loadThread],
+    [rows, messages, threaded, patch, realMode, loadThread, touch],
   )
 
   const openCompose = useCallback(
@@ -872,6 +1048,7 @@ export default function App() {
     if (realMode) {
       const before = scope.filter((m) => m.unread).map((m) => ({ ...m }))
       const set = new Set(ids)
+      touch(ids)
       setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, unread: false } : m)))
       const accounts = [...new Set(before.map((m) => m.accountId))]
       const call = (add: string[], remove: string[]) => Promise.all(accounts.map((acc) => modifyMessages(acc, before.filter((m) => m.accountId === acc).map(gid), add, remove)))
@@ -1020,6 +1197,7 @@ export default function App() {
     if (!online || syncing) return
     if (realMode) {
       void syncTarget(sel, true)
+      void pollAll()
       return
     }
     setSyncing(true)
@@ -1079,6 +1257,7 @@ export default function App() {
     const mids = rowsToMids(rowIds)
     const group = messages.filter((m) => mids.includes(m.id))
     if (group.length === 0) return
+    touch(mids)
     const many = rowIds.length > 1 ? ` (${rowIds.length} conversations)` : ''
     const threads = threadsOf(group)
     const leave = (label: string) => {
@@ -1420,7 +1599,7 @@ export default function App() {
 
       // ---- message list ----
       const inReader = Boolean(t.closest('.reader-scroll'))
-      const idx = rows.findIndex((r) => r.msg.id === selectedId)
+      const idx = rows.findIndex((r) => r.msg.id === (selectedRow?.msg.id ?? selectedId))
       const go = (n: number) => {
         const row = rows[Math.max(0, Math.min(rows.length - 1, n))]
         if (row) select(row.msg.id)
@@ -1672,6 +1851,7 @@ export default function App() {
         <FolderPane
           accounts={accountList}
           sample={!realMode}
+          unreadOverride={realMode ? inboxUnread : undefined}
           onAddAccount={() => (realMode ? setConnectDlg('new') : setAccDlg({ mode: 'add' }))}
           onReconnect={(id) => {
             const x = realAccounts?.find((y) => y.id === id)
@@ -1704,7 +1884,7 @@ export default function App() {
           onRemoveChip={removeChip}
           allFolders={searchAll && query.trim() !== ''}
           rows={rows}
-          selectedId={selectedId}
+          selectedId={selectedRow?.msg.id ?? selectedId}
           density={density}
           smart={showSmart ? smart : []}
           smartCounts={smartCounts}

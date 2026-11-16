@@ -71,3 +71,17 @@ export function toMessage(accountId: string, g: GMessage, labelNames: Record<str
     rfcRefs: header(p, 'references'),
   }
 }
+
+/** The parts of a message that come from its Gmail labels, recomputed after a label change. Null when it is now spam (never shown). */
+export function applyLabelIds(m: Message, labelIds: string[], labelNames: Record<string, string>): Message | null {
+  const folder = folderOf(labelIds)
+  if (folder === 'spam') return null
+  return {
+    ...m,
+    folder,
+    labels: labelIds.filter(isUserLabel).map((id) => labelNames[id]).filter((n): n is string => Boolean(n)),
+    unread: labelIds.includes('UNREAD'),
+    flagged: labelIds.includes('STARRED'),
+    important: labelIds.includes('IMPORTANT'),
+  }
+}

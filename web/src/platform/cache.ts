@@ -6,14 +6,15 @@ import type { Message } from '../types'
  */
 const DB = 'pivot-mail'
 const STORE = 'messages'
+const META = 'meta'
 const MAX_PER_ACCOUNT = 4000
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1)
+    const req = indexedDB.open(DB, 2)
     req.onupgradeneeded = () => {
-      const s = req.result.createObjectStore(STORE, { keyPath: 'id' })
-      s.createIndex('accountId', 'accountId')
+      if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE, { keyPath: 'id' }).createIndex('accountId', 'accountId')
+      if (!req.result.objectStoreNames.contains(META)) req.result.createObjectStore(META, { keyPath: 'key' })
     }
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
@@ -67,8 +68,9 @@ async function clearAccount(accountId: string): Promise<void> {
   try {
     const db = await open()
     const all = await load(accountId)
-    const tx = db.transaction(STORE, 'readwrite')
+    const tx = db.transaction([STORE, META], 'readwrite')
     for (const m of all) tx.objectStore(STORE).delete(m.id)
+    tx.objectStore(META).delete(`hist:${accountId}`)
     await done(tx)
   } catch {
     /* nothing to clear */
@@ -78,12 +80,50 @@ async function clearAccount(accountId: string): Promise<void> {
 async function clearAll(): Promise<void> {
   try {
     const db = await open()
-    const tx = db.transaction(STORE, 'readwrite')
+    const tx = db.transaction([STORE, META], 'readwrite')
     tx.objectStore(STORE).clear()
+    tx.objectStore(META).clear()
     await done(tx)
   } catch {
     /* nothing to clear */
   }
 }
 
-export const cache = { load, save, clearAccount, clearAll }
+async function remove(ids: string[]): Promise<void> {
+  if (ids.length === 0) return
+  try {
+    const db = await open()
+    const tx = db.transaction(STORE, 'readwrite')
+    for (const id of ids) tx.objectStore(STORE).delete(id)
+    await done(tx)
+  } catch {
+    /* cache is optional */
+  }
+}
+
+/** Small values kept beside the mail, such as where change tracking stopped. */
+async function getMeta(key: string): Promise<string | null> {
+  try {
+    const db = await open()
+    return await new Promise<string | null>((resolve, reject) => {
+      const r = db.transaction(META).objectStore(META).get(key)
+      r.onsuccess = () => resolve((r.result as { value: string } | undefined)?.value ?? null)
+      r.onerror = () => reject(r.error)
+    })
+  } catch {
+    return null
+  }
+}
+
+async function setMeta(key: string, value: string): Promise<void> {
+  try {
+    const db = await open()
+    const tx = db.transaction(META, 'readwrite')
+    tx.objectStore(META).put({ key, value })
+    await done(tx)
+  } catch {
+    /* cache is optional */
+  }
+}
+
+export const cache = { load, save, remove, getMeta, setMeta, clearAccount, clearAll }

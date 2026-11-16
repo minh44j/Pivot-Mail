@@ -182,3 +182,30 @@ export const createDraft = (accountId: string, raw: string, threadId?: string) =
 export const updateDraft = (accountId: string, draftId: string, raw: string, threadId?: string) =>
   greq<GDraft>(accountId, `/drafts/${enc(draftId)}`, { method: 'PUT', body: { message: { raw, ...(threadId ? { threadId } : {}) } }, idempotent: true })
 export const deleteDraft = (accountId: string, draftId: string) => greq(accountId, `/drafts/${enc(draftId)}`, { method: 'DELETE', idempotent: true })
+
+/* ---------- change tracking ---------- */
+
+export interface GMsgRef {
+  id: string
+  threadId: string
+  labelIds?: string[]
+}
+
+export interface GHistory {
+  id: string
+  messagesAdded?: { message: GMsgRef }[]
+  messagesDeleted?: { message: GMsgRef }[]
+  labelsAdded?: { message: GMsgRef; labelIds?: string[] }[]
+  labelsRemoved?: { message: GMsgRef; labelIds?: string[] }[]
+}
+
+export const getProfile = (accountId: string) => gget<{ emailAddress: string; messagesTotal: number; threadsTotal: number; historyId: string }>(accountId, '/profile')
+
+/** What changed since a history id. A 404 means the id is too old (Gmail keeps about a week) and everything must be re-read. */
+export async function listHistory(accountId: string, startHistoryId: string, pageToken?: string): Promise<{ history?: GHistory[]; historyId?: string; nextPageToken?: string }> {
+  const params: Params = [['startHistoryId', startHistoryId], ['maxResults', '500'], ...['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'].map((t): [string, string] => ['historyTypes', t])]
+  if (pageToken) params.push(['pageToken', pageToken])
+  return gget(accountId, '/history', params)
+}
+
+export const getLabel = (accountId: string, id: string) => gget<{ messagesUnread?: number; threadsUnread?: number }>(accountId, `/labels/${enc(id)}`)
