@@ -12,6 +12,9 @@ interface Props {
   role: 'admin' | 'staff'
   onBack: () => void
   onToast: (m: string) => void
+  /** Real figures from the server; without it the sample data is shown */
+  data?: { staff: StaffMember[]; days: Map<string, DayStat[]> }
+  status?: 'loading' | 'error' | 'ready'
 }
 
 const RANGES: { id: Range; label: string; prev: string }[] = [
@@ -172,16 +175,17 @@ interface Row {
   agg: Aggregate
 }
 
-export function PerformancePage({ role, onBack, onToast }: Props) {
+export function PerformancePage({ role, onBack, onToast, data, status = 'ready' }: Props) {
+  const staffList = data?.staff ?? STAFF
   const [range, setRange] = useState<Range>(7)
   const [sortKey, setSortKey] = useState<SortKey>('sent')
   const [asc, setAsc] = useState(false)
-  const [selected, setSelected] = useState<string>(STAFF[0]?.id ?? '')
+  const [selected, setSelected] = useState<string>(staffList[0]?.id ?? '')
 
-  const all = useMemo(() => new Map(STAFF.map((s) => [s.id, buildDays(s, 60)])), [])
+  const all = useMemo(() => data?.days ?? new Map(STAFF.map((s) => [s.id, buildDays(s, 60)])), [data])
 
-  const rows = useMemo<Row[]>(() => STAFF.map((staff) => ({ staff, agg: aggregate(windowOf(all, staff.id, range, 0)) })), [range, all])
-  const prevRows = useMemo<Row[]>(() => STAFF.map((staff) => ({ staff, agg: aggregate(windowOf(all, staff.id, range * 2, range)) })), [range, all])
+  const rows = useMemo<Row[]>(() => staffList.map((staff) => ({ staff, agg: aggregate(windowOf(all, staff.id, range, 0)) })), [range, all, staffList])
+  const prevRows = useMemo<Row[]>(() => staffList.map((staff) => ({ staff, agg: aggregate(windowOf(all, staff.id, range * 2, range)) })), [range, all, staffList])
 
   const sorted = useMemo(() => {
     const val = (r: Row): number | string => (sortKey === 'name' ? r.staff.name : (r.agg[sortKey] ?? -1))
@@ -201,7 +205,7 @@ export function PerformancePage({ role, onBack, onToast }: Props) {
   }
   const prevLabel = RANGES.find((r) => r.id === range)?.prev ?? ''
 
-  const person = STAFF.find((s) => s.id === selected) ?? STAFF[0]
+  const person = staffList.find((s) => s.id === selected) ?? staffList[0]
   const chartDays = person ? windowOf(all, person.id, range === 1 ? 7 : range, 0) : []
 
   const setSort = (k: SortKey) => {
@@ -213,14 +217,14 @@ export function PerformancePage({ role, onBack, onToast }: Props) {
   }
 
   const exportCsv = () => {
-    const header = ['Staff', 'Role', 'Sent', 'Received', 'Cases opened (sample)', 'Avg active minutes per day', 'Typical first open', 'Typical last activity', 'Active days']
+    const header = ['Staff', 'Role', 'Sent', 'Received', data ? 'Cases opened' : 'Cases opened (sample)', 'Avg active minutes per day', 'Typical first open', 'Typical last activity', 'Active days']
     const lines = [header, ...sorted.map((r) => [r.staff.name, r.staff.role, r.agg.sent, r.agg.received, r.agg.cases, r.agg.avgActiveMin, fmtClock(r.agg.avgFirst), fmtClock(r.agg.avgLast), r.agg.activeDays])]
     const csv = lines.map((l) => l.map(csvCell).join(',')).join('\r\n')
     const a = document.createElement('a')
     a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
-    a.download = `pivot-mail-performance-${range === 1 ? 'today' : `${range}d`}-SAMPLE.csv`
+    a.download = `pivot-mail-performance-${range === 1 ? 'today' : `${range}d`}${data ? '' : '-SAMPLE'}.csv`
     a.click()
-    onToast('Exported sample CSV')
+    onToast(data ? 'Exported CSV' : 'Exported sample CSV')
   }
 
   if (role !== 'admin') {
@@ -272,14 +276,22 @@ export function PerformancePage({ role, onBack, onToast }: Props) {
       </header>
 
       <div className="perf-body">
-        <p className="notice" role="note">
-          <strong>Sample data.</strong> These figures are generated for the preview. Real numbers need Google sign-in, case records and activity tracking, none of which exist yet.
-        </p>
+        {data ? (
+          <p className="notice" role="note">
+            <strong>How to read this.</strong> Sent and received are counted in each person's own browser from their personal mailbox in Gmail (mail handled elsewhere is included, shared mailboxes are not). Cases come from the case records. Active time counts the minutes Pivot Mail was open and in use; first open and last activity are the first and last of those minutes in your time zone.
+          </p>
+        ) : (
+          <p className="notice" role="note">
+            <strong>Sample data.</strong> These figures are generated for the preview.
+          </p>
+        )}
+        {status === 'loading' && <p className="muted" role="status">Loading the figures…</p>}
+        {status === 'error' && <p className="err" role="alert">Could not load the figures. Please go back and try again.</p>}
 
         <section className="tiles" aria-label="Summary">
           <Tile label="Emails sent" value={sum(rows, 'sent').toLocaleString()} delta={delta(sum(rows, 'sent'), sum(prevRows, 'sent'), prevLabel)} />
           <Tile label="Emails received" value={sum(rows, 'received').toLocaleString()} delta={delta(sum(rows, 'received'), sum(prevRows, 'received'), prevLabel)} />
-          <Tile label="Cases opened" value={sum(rows, 'cases').toLocaleString()} delta={delta(sum(rows, 'cases'), sum(prevRows, 'cases'), prevLabel)} note="Needs the Reference Generator (Phase 2)" />
+          <Tile label="Cases opened" value={sum(rows, 'cases').toLocaleString()} delta={delta(sum(rows, 'cases'), sum(prevRows, 'cases'), prevLabel)} note={data ? undefined : "Sample figure"} />
           <Tile label="Avg active time per day" value={fmtDuration(meanActive(rows))} delta={delta(meanActive(rows), meanActive(prevRows), prevLabel)} />
         </section>
 

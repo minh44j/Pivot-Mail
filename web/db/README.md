@@ -14,3 +14,4 @@ Only the server (Vercel functions) reads or writes these tables, using the proje
 | File | What it does |
 |---|---|
 | `0003_cases.sql` | Shared cases (reference, client, details, notes, status) and the atomic provisional number counter (`next_case_ref`, starts at 90001 each year, PS and PT series). |
+| `0004_activity.sql` | Active minutes (one row per minute in use, server time), daily mail counts reported by each person's browser, and `performance_report()` for the administrator's page. |

@@ -193,20 +193,22 @@ export function Toolbar(p: Props) {
                   <span className="ph" />
                   Keyboard shortcuts
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onPerformance()
-                    close()
-                  }}
-                >
-                  <span className="ph">
-                    <Icon name="layout" size={14} />
-                  </span>
-                  Staff performance (admin)
-                </button>
+                {p.role === 'admin' && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      p.onPerformance()
+                      close()
+                    }}
+                  >
+                    <span className="ph">
+                      <Icon name="layout" size={14} />
+                    </span>
+                    Staff performance (admin)
+                  </button>
+                )}
                 <div className="menu-sep" role="separator" />
                 <div className="menu-head">View</div>
                 <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />

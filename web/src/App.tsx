@@ -10,6 +10,8 @@ import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetc
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
 import { CasePanel } from './components/CasePanel'
+import { fetchPerformance, reportMailStats, startHeartbeat } from './activity'
+import type { DayStat, StaffMember } from './data/performance'
 import { CASE_ERRORS, fetchCases, openCase, updateCase } from './cases'
 import type { CaseRecord, NewCase } from './cases'
 import { GmailError, getLabel, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
@@ -64,6 +66,8 @@ import { BulkPanel } from './components/BulkPanel'
 
 /** Wall-clock milliseconds; used by event handlers only (kept out of render logic). */
 const stamp = (): number => Date.now()
+
+const EMPTY_PERF = { staff: [] as StaffMember[], days: new Map<string, DayStat[]>() }
 
 function usePersisted<T extends string | boolean>(key: string, initial: T, valid: (v: string) => boolean): [T, (v: T) => void] {
   const [value, setValue] = useState<T>(() => {
@@ -543,6 +547,25 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('online', wake)
       window.removeEventListener('focus', wake)
+    }
+  }, [realMode, hasReal])
+
+  // Usage figures for the administrator's page: active minutes, and the person's own mail counts measured in Gmail.
+  useEffect(() => {
+    if (!authUser) return
+    return startHeartbeat()
+  }, [authUser])
+  useEffect(() => {
+    if (!realMode || !hasReal) return
+    const run = () => {
+      const ids = realAccountsRef.current.filter((x) => x.kind === 'personal' && x.status === 'active').map((x) => x.id)
+      if (ids.length > 0) void reportMailStats(ids).catch(() => undefined)
+    }
+    const first = window.setTimeout(run, 8000)
+    const every = window.setInterval(run, 30 * 60_000)
+    return () => {
+      window.clearTimeout(first)
+      window.clearInterval(every)
     }
   }, [realMode, hasReal])
 
@@ -1049,6 +1072,13 @@ export default function App() {
       draftId: m.id,
     })
 
+  const [perf, setPerf] = useState<{ status: 'loading' | 'error' | 'ready'; data?: { staff: StaffMember[]; days: Map<string, DayStat[]> } }>({ status: 'loading' })
+  const openPerformance = () => {
+    setScreen('performance')
+    if (!authUser) return
+    setPerf({ status: 'loading' })
+    void fetchPerformance().then((data) => setPerf(data ? { status: 'ready', data } : { status: 'error' }))
+  }
   const [confirmEmpty, setConfirmEmpty] = useState(false)
   const [original, setOriginal] = useState<Message | null>(null)
   const threadOf = (m: Message): Message[] =>
@@ -1810,7 +1840,7 @@ export default function App() {
   if (screen === 'performance') {
     return (
       <>
-        <PerformancePage role={role} onBack={() => setScreen('mail')} onToast={showToast} />
+        <PerformancePage role={role} onBack={() => setScreen('mail')} onToast={showToast} data={authUser ? (perf.data ?? EMPTY_PERF) : undefined} status={authUser ? perf.status : 'ready'} />
         {toast && (
           <div className="toast" role="status">
             {toast}
@@ -1873,7 +1903,7 @@ export default function App() {
         }}
         role={role}
         onRole={setRole}
-        onPerformance={() => setScreen('performance')}
+        onPerformance={openPerformance}
         onSettings={() => setScreen('settings')}
         onHelp={() => setHelp(true)}
         registerSearch={setSearchEl}
