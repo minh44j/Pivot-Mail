@@ -1,0 +1,91 @@
+import type { Message } from '../types'
+import { listMessageIds, getMetadata, pool } from './client'
+import type { GLabel } from './client'
+import { toMessage } from './map'
+
+export interface ListQuery {
+  labelIds?: string[]
+  q?: string
+  includeSpamTrash?: boolean
+}
+
+export type Target = { kind: 'folder'; id: string } | { kind: 'label'; id: string } | { kind: 'case'; id: string }
+
+/** What to ask Gmail for each folder. Mail older than the window is reached by search, not by folder. */
+export function queryFor(t: Target, windowDays: number, labels: GLabel[]): ListQuery | null {
+  const win = `newer_than:${windowDays}d`
+  if (t.kind === 'case') return { q: t.id, includeSpamTrash: false }
+  if (t.kind === 'label') {
+    const l = labels.find((x) => x.name === t.id)
+    return l ? { labelIds: [l.id], q: win } : null
+  }
+  switch (t.id) {
+    case 'inbox':
+      return { labelIds: ['INBOX'], q: win }
+    case 'sent':
+      return { labelIds: ['SENT'], q: win }
+    case 'drafts':
+      return { labelIds: ['DRAFT'] }
+    case 'deleted':
+      return { labelIds: ['TRASH'], q: win, includeSpamTrash: true }
+    case 'archive':
+      return { q: `-in:inbox -in:sent -in:drafts -in:trash -in:spam ${win}` }
+    default:
+      return null // scheduled and snoozed do not exist in Gmail yet
+  }
+}
+
+async function pageIds(accountId: string, query: ListQuery, cap: number): Promise<{ id: string; threadId: string }[]> {
+  const out: { id: string; threadId: string }[] = []
+  let token: string | undefined
+  do {
+    const page = await listMessageIds(accountId, { ...query, pageToken: token, max: Math.min(100, cap - out.length) })
+    out.push(...page.ids)
+    token = page.next
+  } while (token && out.length < cap)
+  return out
+}
+
+/**
+ * Brings one folder (or search) up to date. The list of ids is cheap; message headers are fetched only for ids not seen before,
+ * plus the newest 100 so recent changes (read, starred, moved) show. Batches are reported as they arrive so the list fills in at once.
+ * Interim approach: exact change tracking (Gmail history) replaces this later.
+ */
+export async function syncQuery(p: {
+  accountId: string
+  query: ListQuery
+  known: Map<string, Message>
+  labelNames: Record<string, string>
+  cap?: number
+  refreshNewest?: number
+  isCancelled?: () => boolean
+  onBatch: (msgs: Message[]) => void
+}): Promise<number> {
+  const cap = p.cap ?? 500
+  const ids = await pageIds(p.accountId, p.query, cap)
+  if (p.isCancelled?.()) return 0
+  const withAtt = new Set((await pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap)).map((x) => x.id))
+  const refresh = p.refreshNewest ?? 100
+  const need = ids.filter((x, i) => i < refresh || !p.known.has(`${p.accountId}:${x.id}`))
+  for (let i = 0; i < need.length; i += 20) {
+    if (p.isCancelled?.()) return i
+    const chunk = need.slice(i, i + 20)
+    const got = await pool(chunk, 4, (x) => getMetadata(p.accountId, x.id))
+    const msgs = got.map((g) => toMessage(p.accountId, g, p.labelNames)).filter((m): m is Message => m !== null)
+    for (const m of msgs) m.hasAttachments = withAtt.has(m.id.split(':')[1] ?? '')
+    p.onBatch(msgs)
+  }
+  return ids.length
+}
+
+/** Combine fetched messages into what is already known, never replacing a fully loaded message with a header-only one. */
+export function mergeMessages(prev: Message[], incoming: Message[]): Message[] {
+  if (incoming.length === 0) return prev
+  const byId = new Map(prev.map((m) => [m.id, m]))
+  for (const m of incoming) {
+    const old = byId.get(m.id)
+    if (old?.loaded && !m.loaded) byId.set(m.id, { ...old, folder: m.folder, labels: m.labels, unread: m.unread, flagged: m.flagged, important: m.important, hasAttachments: m.hasAttachments ?? old.hasAttachments })
+    else byId.set(m.id, m)
+  }
+  return [...byId.values()]
+}

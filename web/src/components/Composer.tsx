@@ -21,6 +21,8 @@ interface Props {
   pendingTemplate: Template | null
   onTemplateUsed: () => void
   offline?: boolean
+  /** When set, Send is refused with this message (real mail is read-only for now) */
+  sendBlocked?: string
   onSend: (d: ComposeInit, opts?: { sendAt?: string }) => void
   /** draft: what was typed (kept in Drafts); discarded: delete the open draft */
   onClose: (draft?: ComposeInit, discarded?: boolean) => void
@@ -76,7 +78,7 @@ function FBtn(props: { label: string; active?: boolean; onClick: () => void; ico
   )
 }
 
-export function Composer({ init, accounts, offline, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
+export function Composer({ init, accounts, offline, sendBlocked, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
@@ -317,6 +319,10 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
     const bad = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => t.trim()).filter(Boolean).filter((t) => !EMAIL_RE.test(bareAddress(t)))
     if (bad.length > 0) {
       onToast(`Fix the highlighted address: ${bad[0]}`)
+      return
+    }
+    if (sendBlocked) {
+      onToast(sendBlocked)
       return
     }
     if (offline) {

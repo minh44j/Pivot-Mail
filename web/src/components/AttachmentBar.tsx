@@ -3,7 +3,7 @@ import type { PointerEvent as RPointerEvent } from 'react'
 import type { Attachment } from '../types'
 import { formatSize } from '../util'
 import { platform } from '../platform'
-import { mockBlob, mockBytes } from '../data/mockfile'
+import { ensureBytes, isReady, mockBlob, mockBytes } from '../data/mockfile'
 import { makeZip } from '../zip'
 import { AttachmentPreview } from './AttachmentPreview'
 import { FileIcon } from './FileIcon'
@@ -71,9 +71,15 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
   const chosen = (): Attachment[] => attachments.filter((a) => selected.has(a.id))
 
   /** One file downloads as is; several download as a single zip. */
-  const download = (files: Attachment[], name?: string) => {
+  const download = async (files: Attachment[], name?: string) => {
     const first = files[0]
     if (!first) return
+    try {
+      await Promise.all(files.map(ensureBytes))
+    } catch {
+      onToast('Could not fetch the attachment from Gmail. Please try again.')
+      return
+    }
     if (files.length === 1) {
       platform.saveBlob(mockBlob(first), first.name)
       onToast(`Downloaded ${first.name}`)
@@ -89,6 +95,12 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
     const first = files[0]
     if (!first) return
     if (files.length === 1) {
+      try {
+        await ensureBytes(first)
+      } catch {
+        onToast('Could not fetch the attachment from Gmail. Please try again.')
+        return
+      }
       const r = await platform.copyBlob(mockBlob(first))
       if (r === 'copied') {
         onToast(`Copied ${first.name}`)
@@ -139,9 +151,11 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
     const files = selected.has(a.id) ? chosen() : [a]
     const first = files[0] ?? a
     // Chromium-only: lets the user drop the file onto the desktop or a folder.
-    const url = URL.createObjectURL(mockBlob(first))
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
-    e.dataTransfer.setData('DownloadURL', `${first.mime}:${first.name}:${url}`)
+    if (isReady(first)) {
+      const url = URL.createObjectURL(mockBlob(first))
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+      e.dataTransfer.setData('DownloadURL', `${first.mime}:${first.name}:${url}`)
+    }
     e.dataTransfer.setData('text/plain', files.map((f) => f.name).join('\n'))
     e.dataTransfer.effectAllowed = 'copy'
   }

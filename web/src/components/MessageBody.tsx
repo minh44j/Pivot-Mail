@@ -51,6 +51,21 @@ function HtmlFrame({ html }: { html: string }) {
 }
 
 export function MessageBody({ msg }: { msg: Message }) {
+  // Real mail: the list only has the first lines until the whole message has been fetched.
+  if (msg.loaded === false) {
+    return (
+      <div className="msg-content">
+        <div className="msg-body">{msg.body}</div>
+        <p className="muted" role="status">
+          Loading the full message…
+        </p>
+      </div>
+    )
+  }
+  return <FullBody msg={msg} />
+}
+
+function FullBody({ msg }: { msg: Message }) {
   const [images, setImages] = useState(false)
   const [showQuote, setShowQuote] = useState(false)
 

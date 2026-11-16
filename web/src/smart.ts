@@ -23,7 +23,7 @@ export const SMART: SmartDef[] = [
   { id: 'unread', label: 'Unread', dot: '--ic-green', test: (m) => m.unread },
   { id: 'important', label: 'Important', dot: '--ic-red', test: (m) => Boolean(m.important) },
   { id: 'followup', label: 'Follow up', dot: '--ic-orange', test: (m) => m.flagged },
-  { id: 'attachments', label: 'Attachments', dot: '--ic-purple', test: (m) => m.attachments.length > 0 },
+  { id: 'attachments', label: 'Attachments', dot: '--ic-purple', test: (m) => m.attachments.length > 0 || m.hasAttachments === true },
   { id: 'today', label: 'Today', dot: '--ic-blue', test: (m, now) => sameDay(m.date, now) },
 ]
 

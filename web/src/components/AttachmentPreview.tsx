@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Attachment } from '../types'
-import { mockBlob, mockBytes, previewKind } from '../data/mockfile'
+import { ensureBytes, isReady, mockBlob, mockBytes, previewKind } from '../data/mockfile'
 import { formatSize } from '../util'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
@@ -18,8 +18,23 @@ interface Props {
 export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, onCopy }: Props) {
   const a = files[index]
   const kind = a ? previewKind(a) : 'none'
-  const url = useMemo(() => (a ? URL.createObjectURL(mockBlob(a)) : ''), [a])
-  const text = useMemo(() => (a && kind === 'text' ? new TextDecoder().decode(mockBytes(a)) : ''), [a, kind])
+  // Real attachments are fetched from Gmail first; `ready` re-renders once the bytes are here.
+  const [ready, setReady] = useState(0)
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    if (!a || isReady(a)) return
+    let live = true
+    ensureBytes(a).then(
+      () => live && setReady((n) => n + 1),
+      () => live && setFailed(true),
+    )
+    return () => {
+      live = false
+    }
+  }, [a])
+  const have = ready >= 0 && a ? isReady(a) : false
+  const url = useMemo(() => (a && have ? URL.createObjectURL(mockBlob(a)) : ''), [a, have])
+  const text = useMemo(() => (a && kind === 'text' && have ? new TextDecoder().decode(mockBytes(a)) : ''), [a, kind, have])
 
   useEffect(
     () => () => {
@@ -51,7 +66,7 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal preview" role="dialog" aria-modal="true" aria-label={`Preview of ${a.name}`}>
-        <header className="preview-head">
+        <div className="preview-head">
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={() => onIndex(index - 1)} disabled={index === 0} aria-label="Previous attachment">
             <Icon name="back" />
           </button>
@@ -76,11 +91,18 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close preview">
             <Icon name="close" />
           </button>
-        </header>
+        </div>
         <div className="preview-body">
-          {kind === 'pdf' && <iframe key={url} src={url} title={`Preview of ${a.name}`} className="preview-frame" />}
-          {kind === 'image' && <img key={url} src={url} alt={a.name} className="preview-img" />}
-          {kind === 'text' && <pre className="preview-text">{text}</pre>}
+          {!url && kind !== 'none' && (
+            <div className="preview-none">
+              <p className="muted" role="status">
+                {failed ? 'Could not fetch this file from Gmail. Try Download.' : 'Loading…'}
+              </p>
+            </div>
+          )}
+          {url && kind === 'pdf' && <iframe key={url} src={url} title={`Preview of ${a.name}`} className="preview-frame" />}
+          {url && kind === 'image' && <img key={url} src={url} alt={a.name} className="preview-img" />}
+          {url && kind === 'text' && <pre className="preview-text">{text}</pre>}
           {kind === 'none' && (
             <div className="preview-none">
               <FileIcon name={a.name} mime={a.mime} size={64} />

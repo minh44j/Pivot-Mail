@@ -128,7 +128,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
                     {m.cc && m.cc.length > 0 && <> · Cc: {m.cc.map((t) => t.email).join(', ')}</>} · {formatFullDate(m.date)}
                   </small>
                 </span>
-                {m.attachments.length > 0 && <Icon name="clip" size={14} />}
+                {(m.attachments.length > 0 || m.hasAttachments) && <Icon name="clip" size={14} />}
               </button>
               {expanded && (
                 <>

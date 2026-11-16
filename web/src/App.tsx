@@ -8,6 +8,11 @@ import type { Problem } from './problems'
 import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
+import { GmailError, getThreadFull, listLabels } from './gmail/client'
+import type { GLabel } from './gmail/client'
+import { toMessage } from './gmail/map'
+import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
+import type { Target } from './gmail/sync'
 import type { CompanyId } from './data/companies'
 import { AccountDialog } from './components/AccountDialog'
 import type { AccountDialogState, NewAccount } from './components/AccountDialog'
@@ -215,24 +220,112 @@ export default function App() {
     [realMode, realAccounts, addedAccounts, removedIds],
   )
 
+  const [labelsByAccount, setLabelsByAccount] = useState<Record<string, GLabel[]>>({})
+  const labelsRef = useRef<Record<string, GLabel[]>>({})
+  const realAccountsRef = useRef<AuthAccount[]>([])
+  const lastSynced = useRef(new Map<string, number>())
+  const runId = useRef(0)
+  const [liveSearch, setLiveSearch] = useState<{ query: string; ids: Set<string> } | null>(null)
+
+  /** Everything fetched from Gmail goes through here: into the list and into this device's local copy. */
+  const mergeIn = useCallback((msgs: Message[]) => {
+    setMessages((prev) => mergeMessages(prev, msgs))
+    void platform.cache.save(msgs)
+  }, [])
+
+  const ensureLabels = useCallback(async (accountId: string): Promise<GLabel[]> => {
+    const have = labelsRef.current[accountId]
+    if (have) return have
+    const list = await listLabels(accountId)
+    labelsRef.current = { ...labelsRef.current, [accountId]: list }
+    setLabelsByAccount(labelsRef.current)
+    return list
+  }, [])
+
+  const markReconnect = useCallback((accountId: string) => {
+    setRealAccounts((list) => (list ?? []).map((x) => (x.id === accountId ? { ...x, status: 'needs_reconnect' } : x)))
+  }, [])
+
   /** Proves the saved permission still works and reads the mailbox size straight from Gmail (the browser talks to Gmail directly). */
   const checkMailbox = useCallback(async (a: AuthAccount) => {
     const access = await fetchGmailAccess(a.id)
     if ('error' in access) {
       setGmailInfo((i) => ({ ...i, [a.id]: 'error' }))
-      if (access.error === 'reconnect') setRealAccounts((list) => (list ?? []).map((x) => (x.id === a.id ? { ...x, status: 'needs_reconnect' } : x)))
+      if (access.error === 'reconnect') markReconnect(a.id)
       return
     }
     const p = await fetchGmailProfile(access.accessToken)
     setGmailInfo((i) => ({ ...i, [a.id]: p ? { total: p.messagesTotal } : 'error' }))
-  }, [])
+  }, [markReconnect])
+
+  /** Bring a folder (or the inboxes of all mailboxes, or a case) up to date. A newer choice cancels an older one still running. */
+  const syncTarget = useCallback(
+    async (s: FolderSel, force = false) => {
+      const accounts = realAccountsRef.current
+      const jobs: { accountId: string; t: Target }[] =
+        s.kind === 'all' ? accounts.map((x) => ({ accountId: x.id, t: { kind: 'folder', id: 'inbox' } })) : [{ accountId: s.accountId, t: { kind: s.kind, id: s.id } }]
+      const my = ++runId.current
+      setSyncing(true)
+      let current = ''
+      try {
+        for (const { accountId, t } of jobs) {
+          const acc = accounts.find((x) => x.id === accountId)
+          if (!acc || acc.status === 'needs_reconnect') continue
+          current = accountId
+          const key = `${accountId}/${t.kind}/${t.id}`
+          if (!force && stamp() - (lastSynced.current.get(key) ?? 0) < 60_000) continue
+          const labels = await ensureLabels(accountId)
+          const query = queryFor(t, acc.syncWindowDays, labels)
+          if (!query) continue
+          const known = new Map(messagesRef.current.filter((m) => m.accountId === accountId).map((m) => [m.id, m]))
+          await syncQuery({ accountId, query, known, labelNames: Object.fromEntries(labels.map((l) => [l.id, l.name])), isCancelled: () => runId.current !== my, onBatch: mergeIn })
+          if (runId.current === my) lastSynced.current.set(key, stamp())
+        }
+        if (runId.current === my) {
+          setLastSync(new Date())
+          setSim((v) => (v === 'syncfail' ? null : v))
+        }
+      } catch (e) {
+        if (runId.current === my) {
+          if (e instanceof GmailError && e.status === 401 && current) markReconnect(current)
+          else setSim('syncfail')
+        }
+      } finally {
+        if (runId.current === my) setSyncing(false)
+      }
+    },
+    [ensureLabels, mergeIn, markReconnect],
+  )
+
+  /** Fetch the whole conversation (bodies, attachments) when it is opened. */
+  const loadThread = useCallback(
+    async (m: Message) => {
+      const have = messagesRef.current.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId)
+      if (have.length > 0 && have.every((x) => x.loaded)) return
+      try {
+        const labels = await ensureLabels(m.accountId)
+        const full = await getThreadFull(m.accountId, m.threadId)
+        const names = Object.fromEntries(labels.map((l) => [l.id, l.name]))
+        mergeIn(full.map((g) => toMessage(m.accountId, g, names)).filter((x): x is Message => x !== null))
+      } catch {
+        showToast('Could not open this message. Please try again.')
+      }
+    },
+    [ensureLabels, mergeIn, showToast],
+  )
+
   const loadAccounts = useCallback(async () => {
     const list = await fetchAccounts()
     if (list === null) return
+    realAccountsRef.current = list
     setRealAccounts(list)
     setSel((s) => (list.some((a) => a.id === s.accountId) ? s : list[0] ? { accountId: list[0].id, kind: 'folder', id: 'inbox' } : s))
-    for (const a of list) void checkMailbox(a)
-  }, [checkMailbox])
+    for (const a of list) {
+      void checkMailbox(a)
+      void ensureLabels(a.id).catch(() => undefined)
+      void platform.cache.load(a.id).then((ms) => setMessages((prev) => mergeMessages(prev, ms)))
+    }
+  }, [checkMailbox, ensureLabels])
   useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     const connected = q.get('connected')
@@ -249,6 +342,18 @@ export default function App() {
       })
     })
   }, [loadAccounts, showToast])
+
+  // Real mail: fetch whenever another folder (or mailbox) is opened.
+  const selKey = `${sel.accountId}|${sel.kind}|${sel.id}`
+  const hasReal = (realAccounts?.length ?? 0) > 0
+  useEffect(() => {
+    if (!realMode || !hasReal) return
+    const [accountId, kind, id] = selKey.split('|') as [string, FolderSel['kind'], string]
+    // A short delay also absorbs rapid folder switching.
+    const t = window.setTimeout(() => void syncTarget({ accountId, kind, id } as FolderSel), 120)
+    return () => window.clearTimeout(t)
+  }, [realMode, hasReal, selKey, syncTarget])
+
   const accounts = useMemo<Account[]>(() => accountList.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [accountList, signatures])
   const [accDlg, setAccDlg] = useState<AccountDialogState | null>(null)
   const addAccount = (n: NewAccount) => {
@@ -307,10 +412,17 @@ export default function App() {
     }
     return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, [...v.entries()].sort((x, y) => y[1].localeCompare(x[1])).map(([r]) => r)])) as Record<string, string[]>
   }, [messages])
+  /** Real mailboxes show their Gmail labels as folders; the preview keeps its own list. */
+  const foldersView = useMemo<Record<string, string[]>>(
+    () => (realMode ? Object.fromEntries(Object.entries(labelsByAccount).map(([id, ls]) => [id, ls.filter((l) => l.type === 'user').map((l) => l.name).sort((x, y) => x.localeCompare(y))])) : folders),
+    [realMode, labelsByAccount, folders],
+  )
   const [folderDlg, setFolderDlg] = useState<FolderDialogState | null>(null)
   const folderAction = (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) =>
+    readOnly() ||
     setFolderDlg(action === 'new' ? { mode: 'new', accountId } : { mode: action, accountId, name: name ?? '' })
   const reorderFolder = (accountId: string, name: string, before: string | null) => {
+    if (readOnly()) return
     const list = (folders[accountId] ?? []).filter((x) => x !== name)
     const at = before === null ? list.length : list.indexOf(before)
     list.splice(at < 0 ? list.length : at, 0, name)
@@ -343,17 +455,58 @@ export default function App() {
   }
 
   const [now] = useState(() => new Date())
+  const liveQuery = query.trim()
+  const liveOn = realMode && liveQuery !== '' && liveSearch !== null && liveSearch.query === liveQuery
+  /** Real mail: Gmail's own search (any age). Results appear as they arrive; until then the loaded mail is filtered locally. */
+  useEffect(() => {
+    if (!realMode || liveQuery === '') return
+    const t = window.setTimeout(() => {
+      const acc = accountId
+      const folderQ: Record<string, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', deleted: 'in:trash', archive: '-in:inbox -in:sent -in:drafts -in:trash -in:spam' }
+      const scopeQ = searchAll || selKey.split('|')[1] === 'all' ? '' : selKey.split('|')[1] === 'label' ? `label:"${selKey.split('|')[2]}"` : selKey.split('|')[1] === 'folder' ? (folderQ[selKey.split('|')[2] ?? ''] ?? '') : ''
+      const ids = new Set<string>()
+      const targets = selKey.split('|')[1] === 'all' ? realAccountsRef.current.map((x) => x.id) : [acc]
+      void Promise.all(
+        targets.map(async (accountId2) => {
+          const labels = await ensureLabels(accountId2)
+          const known = new Map(messagesRef.current.filter((m) => m.accountId === accountId2).map((m) => [m.id, m]))
+          await syncQuery({
+            accountId: accountId2,
+            query: { q: `${liveQuery} ${scopeQ}`.trim() },
+            known,
+            labelNames: Object.fromEntries(labels.map((l) => [l.id, l.name])),
+            cap: 100,
+            onBatch: (ms) => {
+              mergeIn(ms)
+              for (const m of ms) ids.add(m.id)
+              setLiveSearch({ query: liveQuery, ids: new Set(ids) })
+            },
+          })
+        }),
+      )
+        .then(() => setLiveSearch({ query: liveQuery, ids: new Set(ids) }))
+        .catch(() => showToast('Gmail search is not available right now. Showing mail already loaded.'))
+    }, 450)
+    return () => window.clearTimeout(t)
+  }, [realMode, liveQuery, accountId, searchAll, selKey, ensureLabels, mergeIn, showToast])
+
   /** Messages of the open folder or label, before search and smart filters. */
   const scope = useMemo(
     () =>
       messages.filter((m) => {
+        if (liveOn) return liveSearch !== null && liveSearch.ids.has(m.id)
+        // Real mail: a folder shows the indexed window only; older mail is reached by search (it may be cached from an earlier search).
+        if (realMode && sel.kind !== 'case' && m.folder !== 'drafts') {
+          const days = realAccounts?.find((x) => x.id === m.accountId)?.syncWindowDays ?? 90
+          if (new Date(m.date).getTime() < now.getTime() - days * 86_400_000) return false
+        }
         if (sel.kind === 'all') return searchAll && query.trim() !== '' ? m.folder !== 'deleted' : m.folder === 'inbox'
         if (m.accountId !== accountId) return false
         if (searchAll && query.trim() !== '') return m.folder !== 'deleted'
         if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
         return sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id)
       }),
-    [messages, accountId, sel, searchAll, query],
+    [messages, accountId, sel, searchAll, query, liveOn, liveSearch, realMode, realAccounts, now],
   )
   const smartCounts = useMemo(() => Object.fromEntries(SMART.map((d) => [d.id, scope.filter((m) => d.test(m, now)).length])) as Record<SmartKey, number>, [scope, now])
   const toggleSmart = (k: SmartKey) => setSmart((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
@@ -361,7 +514,7 @@ export default function App() {
   const rows = useMemo<Row[]>(() => {
     const parsed = parseQuery(query)
     const active = new Set(smart)
-    const inScope = scope.filter((m) => matchesQuery(m, parsed) && smartMatches(m, active, now))
+    const inScope = scope.filter((m) => (liveOn || matchesQuery(m, parsed)) && smartMatches(m, active, now))
     inScope.sort((a, b) => b.date.localeCompare(a.date))
     if (!threaded) return inScope.map((msg) => ({ msg, count: 1, unread: msg.unread }))
     const byThread = new Map<string, Row>()
@@ -374,7 +527,7 @@ export default function App() {
       }
     }
     return Array.from(byThread.values())
-  }, [scope, query, smart, now, threaded])
+  }, [scope, query, smart, now, threaded, liveOn])
 
   const selectedRow = rows.find((r) => r.msg.id === selectedId)
   const pickedRows = useMemo(() => picked.filter((id) => rows.some((r) => r.msg.id === id)), [picked, rows])
@@ -397,12 +550,13 @@ export default function App() {
       anchorId.current = id
       setView('read')
       const row = rows.find((r) => r.msg.id === id)
-      if (row) {
+      if (row && realMode) void loadThread(row.msg)
+      else if (row) {
         const ids = messages.filter((m) => m.unread && (threaded ? m.threadId === row.msg.threadId : m.id === id) && m.accountId === row.msg.accountId).map((m) => m.id)
         if (ids.length > 0) patch(ids, { unread: false }, false)
       }
     },
-    [rows, messages, threaded, patch],
+    [rows, messages, threaded, patch, realMode, loadThread],
   )
 
   const openCompose = useCallback(
@@ -522,6 +676,12 @@ export default function App() {
       draftId: m.id,
     })
 
+  /** Real mail is read-only until the write phase: changes would look done here but never reach Gmail. */
+  const readOnly = (): boolean => {
+    if (!realMode) return false
+    showToast('Real mail is read-only for now. Changes arrive in the next update.')
+    return true
+  }
   const [confirmEmpty, setConfirmEmpty] = useState(false)
   const [original, setOriginal] = useState<Message | null>(null)
   const threadOf = (m: Message): Message[] =>
@@ -534,12 +694,14 @@ export default function App() {
     if (!platform.openWindow(buildMessageDoc(threadOf(m), m.subject))) showToast('The browser blocked the new window. Allow pop-ups for this site.')
   }
   const markAllRead = () => {
+    if (readOnly()) return
     const ids = scope.filter((m) => m.unread).map((m) => m.id)
     if (ids.length === 0) return
     patch(ids, { unread: false })
     showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
   }
   const emptyDeleted = () => {
+    if (readOnly()) return
     const gone = new Set(scope.map((m) => m.id))
     setMessages((prev) => prev.filter((m) => !gone.has(m.id)))
     setSelectedId(null)
@@ -626,6 +788,11 @@ export default function App() {
 
   const retry = () => {
     if (retrying) return
+    if (realMode) {
+      setRetrying(true)
+      void syncTarget(sel, true).finally(() => setRetrying(false))
+      return
+    }
     setRetrying(true)
     window.setTimeout(() => {
       setRetrying(false)
@@ -650,6 +817,10 @@ export default function App() {
 
   const syncNow = () => {
     if (!online || syncing) return
+    if (realMode) {
+      void syncTarget(sel, true)
+      return
+    }
     setSyncing(true)
     window.setTimeout(() => {
       setSyncing(false)
@@ -695,6 +866,7 @@ export default function App() {
 
   /** One place for every action on one or many conversations, so keyboard, hover bar, menus and the bulk panel agree. */
   const runOp = (rowIds: string[], op: BulkOp) => {
+    if (readOnly()) return
     const mids = rowsToMids(rowIds)
     if (mids.length === 0) return
     const group = messages.filter((m) => mids.includes(m.id))
@@ -1115,15 +1287,16 @@ export default function App() {
   }
 
   const gi = gmailInfo[accountId]
+  const windowDays = realAccounts?.find((x) => x.id === accountId)?.syncWindowDays ?? 90
   const realEmpty =
     realAccounts && realAccounts.length === 0
       ? 'No mailbox connected yet. Choose Add account in the sidebar.'
-      : gi && gi !== 'error'
-        ? `Connected to Gmail · ${gi.total.toLocaleString()} messages. Showing your mail arrives in the next update.`
-        : gi === 'error'
-          ? 'Connected, but Gmail could not be reached. Try again, or reconnect the account from the ⋯ menu.'
-          : 'Checking the connection…'
-  const emptyText = realMode && !query.trim() ? realEmpty : query.trim() ? `No results for “${query.trim()}”` : smart.length > 0 ? 'No messages match these filters' : 'Nothing in this folder'
+      : syncing
+        ? 'Loading your mail…'
+        : realAccounts?.find((x) => x.id === accountId)?.status === 'needs_reconnect'
+          ? 'This mailbox needs to be reconnected. Use the ⋯ menu next to its name.'
+          : `Nothing here from the last ${windowDays} days.${gi && gi !== 'error' ? ` Search to look further back: Gmail holds ${gi.total.toLocaleString()} messages in total.` : ''}`
+  const emptyText = realMode && (!query.trim() || syncing) ? realEmpty : query.trim() ? `No results for “${query.trim()}”` : smart.length > 0 ? 'No messages match these filters' : 'Nothing in this folder'
 
   return (
     <SettingsContext.Provider value={settingsValue}>
@@ -1159,7 +1332,7 @@ export default function App() {
         signedInAs={authUser?.email}
         canSwitchRole={!authUser || authUser.role === 'admin'}
         onSignOut={() => {
-          if (authUser) void signOut().then(() => { setAuthUser(null); setAuthError(null) })
+          if (authUser) void platform.cache.clearAll().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
           setEntered(false)
         }}
         role={role}
@@ -1192,7 +1365,7 @@ export default function App() {
           }}
           messages={messages}
           selection={sel}
-          folders={folders}
+          folders={foldersView}
           cases={cases}
           onFolderAction={folderAction}
           onReorder={reorderFolder}
@@ -1283,6 +1456,7 @@ export default function App() {
           init={compose}
           accounts={accounts}
           offline={!online}
+          sendBlocked={realMode ? 'Sending real mail arrives in the next update. Your message stays here as a draft.' : undefined}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
           onSend={(d, opts) => (opts?.sendAt ? scheduleSend(d, opts.sendAt) : sendWithUndo(d))}
@@ -1336,6 +1510,10 @@ export default function App() {
             setConfirmRemove(null)
             void disconnectAccount(x.id).then((ok) => {
               showToast(ok ? `${x.email} removed` : 'Could not remove the account. You may not have permission.')
+              if (ok) {
+                void platform.cache.clearAccount(x.id)
+                setMessages((prev) => prev.filter((m) => m.accountId !== x.id))
+              }
               void loadAccounts()
             })
           }}
@@ -1359,7 +1537,7 @@ export default function App() {
         <FolderJump
           mode={jump}
           accounts={accountList}
-          folders={folders}
+          folders={foldersView}
           cases={cases}
           accountId={accountId}
           onClose={() => setJump(null)}

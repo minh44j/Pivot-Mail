@@ -69,3 +69,15 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 - Real people see only their own mailboxes (no sample mail). The preview keeps its sample data.
 - Tests: `npm run test:api` (93 checks: sign-in provisioning, connect rules, encryption, token minting, disconnect).
 - **Next (phase 2b):** read-only mail: first sync (90 days), local index, message list and reading pane from Gmail, then older mail by live Gmail search.
+
+
+## Phase 2b status: real read-only mail (built, waiting for the first live test)
+- **What you see:** your real Inbox, Sent, Drafts, Deleted Items, Archive (mail with no Inbox/Sent/Draft/Trash label), Gmail labels as folders, and cases found from references in subjects. Spam is never shown.
+- **Loading:** the newest 90 days per folder (each mailbox's window, 90 by default). The list fills in as headers arrive; opening a conversation fetches the full thread. The browser talks to Gmail directly with a one-hour key from our server.
+- **Search:** typed searches go to Gmail itself (any age), scoped to the folder, or to all folders with the All folders switch; Gmail operators (from:, to:, subject:, has:attachment, is:unread, label:) work as typed.
+- **Attachments:** the paperclip shows in the list before opening; preview, copy and download fetch the real file from Gmail.
+- **Local copy:** fetched mail is kept in this browser (IndexedDB, up to 4,000 messages per mailbox) so the list opens instantly and survives a reload; it is deleted on sign-out and when a mailbox is removed.
+- **Read-only on purpose:** delete, archive, flag, mark read, move, colours, snooze, follow-up, folders and sending show "Real mail is read-only for now". Nothing is written to Gmail. Opening a message does **not** mark it read.
+- **Known limits (interim, until the change-tracking and write phases):** changes made in Gmail itself to mail older than the newest 100 per folder appear after a manual refresh of that folder or a search; inline images inside message bodies show as placeholders; unread counts in the sidebar count loaded mail only; scheduled and snoozed folders do not exist for real mail.
+- Tests: `npm run test:api` (126 checks including MIME parsing) and a 41-check browser run against a pretend Gmail (folders, labels, threads, attachment bytes, search, expired key, rate limit, offline cache).
+- **Next (phase 3):** write actions: mark read, archive, delete, flag, labels, send, reply, drafts, with undo.

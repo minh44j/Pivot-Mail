@@ -12,6 +12,8 @@ export interface Attachment {
   name: string
   size: number
   mime: string
+  /** Real mail only: where to fetch the bytes from Gmail */
+  source?: { accountId: string; messageId: string; attachmentId: string }
 }
 
 export interface Account {
@@ -49,6 +51,10 @@ export interface Message {
   snoozedUntil?: string
   /** Follow-up due date, set with the flag */
   dueAt?: string
+  /** Real mail: the list knows there is an attachment before the message is opened */
+  hasAttachments?: boolean
+  /** Real mail: false until the full message (body, attachments) has been fetched */
+  loaded?: boolean
 }
 
 export interface Row {

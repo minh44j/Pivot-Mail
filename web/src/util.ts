@@ -86,7 +86,7 @@ export function matchesQuery(m: Message, p: ParsedQuery): boolean {
   if (p.to && !m.to.some((t) => `${t.name} ${t.email}`.toLowerCase().includes(p.to as string))) return false
   if (p.subject && !m.subject.toLowerCase().includes(p.subject)) return false
   if (p.label && !m.labels.some((l) => l.toLowerCase() === p.label)) return false
-  if (p.hasAttachment && m.attachments.length === 0) return false
+  if (p.hasAttachment && m.attachments.length === 0 && !m.hasAttachments) return false
   if (p.isUnread && !m.unread) return false
   if (p.isFlagged && !m.flagged) return false
   if (p.terms.length > 0) {

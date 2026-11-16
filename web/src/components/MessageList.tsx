@@ -239,8 +239,8 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
                     <div className="row-sub">
                       <span className="subject">{msg.subject}</span>
                       {accountNames && <span className="pill acc">{accountNames[msg.accountId]}</span>}
-                      {msg.attachments.length > 0 && (
-                        <span className="icon-inline" role="img" aria-label={`${msg.attachments.length} attachment(s)`}>
+                      {(msg.attachments.length > 0 || msg.hasAttachments) && (
+                        <span className="icon-inline" role="img" aria-label="Has attachments">
                           <Icon name="clip" size={14} />
                         </span>
                       )}

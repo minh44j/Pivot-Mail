@@ -40,7 +40,21 @@ function samplePdf(lines: string[]): Uint8Array {
   return new TextEncoder().encode(out)
 }
 
+/** Real attachment bytes, fetched from Gmail once and kept for this session. */
+const realBytes = new Map<string, Uint8Array>()
+
+/** Makes sure a real attachment's bytes are available (sample attachments are generated on the spot). */
+export async function ensureBytes(a: Attachment): Promise<void> {
+  if (!a.source || realBytes.has(a.id)) return
+  const { getAttachmentBytes } = await import('../gmail/client')
+  realBytes.set(a.id, await getAttachmentBytes(a.source.accountId, a.source.messageId, a.source.attachmentId))
+}
+
+export const isReady = (a: Attachment): boolean => !a.source || realBytes.has(a.id)
+
 export function mockBytes(a: Attachment): Uint8Array {
+  const real = realBytes.get(a.id)
+  if (real) return real
   const lines = ['Pivot Mail sample attachment', a.name, formatSize(a.size), 'Sample content for previewing only.']
   if (a.mime === 'application/pdf') return samplePdf(lines)
   return new TextEncoder().encode(lines.join('\n'))

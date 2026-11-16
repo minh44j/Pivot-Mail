@@ -140,4 +140,6 @@ function openWindow(html: string): boolean {
   return w !== null
 }
 
-export const platform = { printHtml, openWindow, storage, copyText, setBadge, notificationState, requestNotifications, notify, saveBlob, copyBlob, copyRich }
+import { cache } from './cache'
+
+export const platform = { cache, printHtml, openWindow, storage, copyText, setBadge, notificationState, requestNotifications, notify, saveBlob, copyBlob, copyRich }
