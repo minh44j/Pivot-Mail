@@ -47,3 +47,9 @@ Do every step below twice, signed in as a super administrator of that Workspace.
 | Client ID | ☐ | ☐ |
 | Environment variables added in Vercel (yes/no) | ☐ | ☐ |
 | Test staff address for the pilot | ☐ | ☐ |
+
+## Later: Windows (and Mac) desktop app
+- No change to the setup above. The desktop app signs in through the **system browser** (Google blocks sign-in inside embedded web views), against the same Vercel server and the same Web client.
+- After Google's callback, the server hands a one-time code back to the app through a loopback address (`http://127.0.0.1:<random port>`), and the app exchanges it for its own session. Tokens stay on the server.
+- An "Authorised origin" is only needed for the browser version. A desktop wrapper that serves the page from its own address (for example `tauri://localhost`) cannot be used as an origin, which is why sign-in does not happen inside it.
+- Only if we ever store Google tokens on the device itself would we add a separate **Desktop app** OAuth client (loopback redirect with PKCE). Not planned. ⚠️ Verify with specialist against Google's current OAuth guidance for installed apps.
