@@ -65,6 +65,9 @@ import { ShortcutHelp } from './components/ShortcutHelp'
 import { BulkPanel } from './components/BulkPanel'
 
 /** Wall-clock milliseconds; used by event handlers only (kept out of render logic). */
+/** How often Gmail is asked for changes while the tab is visible (hidden tabs: 60 s). */
+const POLL_VISIBLE_MS = 5_000
+
 const stamp = (): number => Date.now()
 
 const EMPTY_PERF = { staff: [] as StaffMember[], days: new Map<string, DayStat[]>() }
@@ -526,7 +529,7 @@ export default function App() {
     if (!realMode || !hasReal) return
     let timer: number | undefined
     let last = 0
-    const delay = () => Math.min(120_000, (document.visibilityState === 'visible' ? 15_000 : 60_000) * 2 ** Math.min(failStreak.current, 3))
+    const delay = () => Math.min(120_000, (document.visibilityState === 'visible' ? POLL_VISIBLE_MS : 60_000) * 2 ** Math.min(failStreak.current, 3))
     const loop = async () => {
       last = stamp()
       await pollRef.current()
