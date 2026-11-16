@@ -7,10 +7,11 @@ import { mergeColours } from '../settings'
 import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
+import { UsersPanel } from './UsersPanel'
 import { PROBLEMS } from '../problems'
 import type { Problem } from '../problems'
 
-type Section = 'general' | 'signatures' | 'templates' | 'colours' | 'problems'
+type Section = 'general' | 'signatures' | 'templates' | 'colours' | 'users' | 'problems'
 
 interface Props {
   role: 'admin' | 'staff'
@@ -45,6 +46,7 @@ const SECTIONS: { id: Section; label: string }[] = [
   { id: 'signatures', label: 'Signatures' },
   { id: 'templates', label: 'Templates' },
   { id: 'colours', label: 'Colour categories' },
+  { id: 'users', label: 'Users and roles' },
   { id: 'problems', label: 'Problem states' },
 ]
 
@@ -180,7 +182,7 @@ export function SettingsPage(p: Props) {
 
       <div className="settings-body">
         <nav className="settings-nav" aria-label="Settings sections">
-          {SECTIONS.map((s) => (
+          {SECTIONS.filter((s) => s.id !== 'users' || isAdmin).map((s) => (
             <button
               key={s.id}
               type="button"
@@ -259,6 +261,8 @@ export function SettingsPage(p: Props) {
               </Row>
             </section>
           )}
+
+          {section === 'users' && isAdmin && <UsersPanel onToast={p.onToast} />}
 
           {section === 'problems' && (
             <section className="card" aria-labelledby="h-prob">

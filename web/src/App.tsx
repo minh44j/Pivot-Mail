@@ -542,15 +542,30 @@ export default function App() {
     showToast(ok ? 'Email copied. Paste it into a message with Ctrl+V.' : 'Copy was blocked by the browser')
   }
   const last = thread[thread.length - 1]
-  const reply = (all: boolean) => {
-    if (!last) return
-    const acc = accountList.find((a) => a.id === last.accountId)
-    const cc = all ? [...last.to, ...(last.cc ?? [])].map((t) => t.email).filter((e) => e !== acc?.email && e !== last.from.email).join(', ') : ''
-    openCompose({ accountId: last.accountId, to: last.from.email, cc, subject: /^re:/i.test(last.subject) ? last.subject : `Re: ${last.subject}`, body: quote(last) })
+  /** Reply to a specific message (default: the last one in the open conversation). Replying to your own message writes to its recipients. */
+  const reply = (all: boolean, target?: Message) => {
+    const t = target ?? last
+    if (!t) return
+    const acc = accountList.find((a) => a.id === t.accountId)
+    const mine = t.from.email === acc?.email
+    const toList = mine && t.to.length > 0 ? t.to : [t.from]
+    const taken = new Set([acc?.email, ...toList.map((p) => p.email)])
+    const cc = all
+      ? [...t.to, ...(t.cc ?? [])]
+          .map((p) => p.email)
+          .filter((e) => {
+            if (taken.has(e)) return false
+            taken.add(e)
+            return true
+          })
+          .join(', ')
+      : ''
+    openCompose({ accountId: t.accountId, to: toList.map((p) => p.email).join(', '), cc, subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`, body: quote(t) })
   }
-  const forward = () => {
-    if (!last) return
-    openCompose({ accountId: last.accountId, subject: /^fwd?:/i.test(last.subject) ? last.subject : `Fwd: ${last.subject}`, body: quote(last), attachments: last.attachments })
+  const forward = (target?: Message) => {
+    const t = target ?? last
+    if (!t) return
+    openCompose({ accountId: t.accountId, subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`, body: quote(t), attachments: t.attachments })
   }
 
   const retry = () => {
@@ -751,9 +766,9 @@ export default function App() {
     if (bulkMode) out.push({ type: 'head', label: `${rowIds.length} conversations selected` })
     else
       out.push(
-        { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false) },
-        { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true) },
-        { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: forward },
+        { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false, m) },
+        { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true, m) },
+        { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: () => forward(m) },
         { type: 'item', label: 'Copy email', icon: 'copy', tone: 'purple', onSelect: () => void copyEmail(m) },
         { type: 'item', label: 'Copy subject', icon: 'copy', onSelect: () => void platform.copyText(m.subject).then((ok) => showToast(ok ? 'Subject copied' : 'Copy was blocked by the browser')) },
         { type: 'item', label: 'Print or save as PDF…', icon: 'download', tone: 'teal', onSelect: () => printThread(m) },
@@ -1154,7 +1169,10 @@ export default function App() {
             messages={thread}
             onReply={() => reply(false)}
             onReplyAll={() => reply(true)}
-            onForward={forward}
+            onForward={() => forward()}
+            onReplyTo={reply}
+            onForwardMsg={forward}
+            onMoreMsg={(m, x, y) => setCtx({ id: m.id, x, y })}
             onBack={() => setView('list')}
             onToast={showToast}
             onForwardWith={(files: Attachment[]) => openCompose({ attachments: files })}

@@ -20,10 +20,13 @@ interface Props {
   unread: boolean
   onEditDraft: () => void
   onMore: (x: number, y: number) => void
+  onReplyTo: (all: boolean, m: Message) => void
+  onForwardMsg: (m: Message) => void
+  onMoreMsg: (m: Message, x: number, y: number) => void
   banner?: { text: string; actions: { label: string; onClick: () => void }[] }
 }
 
-export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore, banner }: Props) {
+export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore, onReplyTo, onForwardMsg, onMoreMsg, banner }: Props) {
   const lastId = messages[messages.length - 1]?.id ?? ''
   // Reset expansion when the conversation changes, derived during render (no effect).
   const [state, setState] = useState<{ key: string; open: Set<string> }>({ key: lastId, open: new Set([lastId]) })
@@ -129,6 +132,31 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
               </button>
               {expanded && (
                 <>
+                  {messages.length > 1 && !isDraft && (
+                    <div className="msg-actions" role="toolbar" aria-label={`Actions for the message from ${m.from.name}`}>
+                      <button type="button" data-tone="blue" onClick={() => onReplyTo(false, m)} aria-label={`Reply to ${m.from.name}`}>
+                        <Icon name="reply" size={15} /> Reply
+                      </button>
+                      <button type="button" data-tone="blue" onClick={() => onReplyTo(true, m)} aria-label={`Reply all to ${m.from.name}`}>
+                        <Icon name="replyAll" size={15} /> Reply all
+                      </button>
+                      <button type="button" data-tone="blue" onClick={() => onForwardMsg(m)} aria-label={`Forward the message from ${m.from.name}`}>
+                        <Icon name="forward" size={15} /> Forward
+                      </button>
+                      <button
+                        type="button"
+                        data-tone="gray"
+                        aria-label={`More actions for the message from ${m.from.name}`}
+                        aria-haspopup="menu"
+                        onClick={(e) => {
+                          const b = e.currentTarget.getBoundingClientRect()
+                          onMoreMsg(m, Math.max(8, b.right - 230), b.bottom + 4)
+                        }}
+                      >
+                        <Icon name="more" size={15} />
+                      </button>
+                    </div>
+                  )}
                   <AttachmentBar attachments={m.attachments} zipName={`${m.subject} attachments`} onToast={onToast} onForwardWith={onForwardWith} />
                   <MessageBody msg={m} />
                 </>

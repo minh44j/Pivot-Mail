@@ -210,3 +210,9 @@ Right-click a conversation, then Copy email (or Ctrl+C with a message selected a
 - **Send later:** presets or a custom time, Scheduled folder, Cancel send returns it to Drafts, sent automatically when due.
 - **Snooze and follow-up:** Snooze… returns mail to the Inbox as unread; Follow up… sets a due date (overdue shows red; Mark complete clears it). Times use the device time zone. ⚠️ Verify: business-hours defaults (08:00 / 17:00) with staff.
 - **Fixes found while testing:** composer recipient chips no longer wrap; Ctrl+Y works from the search box; folder jump matches several words.
+
+## Reply to a specific message and user management (status: built in preview)
+- **Per-message actions:** in a conversation of 2 or more messages, each open message has Reply, Reply all, Forward and More. They act on that message (the quote is that message). Replying to your own message writes to its recipients. Ctrl+R and the header buttons still act on the newest message.
+- **Users and roles** (Settings, administrators only): list with company (from the email domain), Staff/Admin switch, shared-mailbox access, status (active, invited, disabled), last activity. Invite (only @pivottmc.com and @pivotscl.com), change access, disable or enable sign-in, remove (confirmation), resend invitation, search.
+- **Safeguards:** you cannot demote, disable or remove yourself; at least one active administrator must remain; removing a user never touches their Google account or mail.
+- ⚠️ Verify: preview stores the list in the browser only. In the real version roles live in Pivot Mail's database and are checked on the server for every request; the Workspace admin console remains the owner of who has a Google account.
