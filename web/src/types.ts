@@ -1,4 +1,4 @@
-export type FolderId = 'inbox' | 'drafts' | 'sent' | 'archive' | 'deleted'
+export type FolderId = 'inbox' | 'drafts' | 'sent' | 'archive' | 'deleted' | 'scheduled' | 'snoozed'
 
 export type Colour = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple'
 
@@ -41,6 +41,12 @@ export interface Message {
   important?: boolean
   colour?: Colour
   attachments: Attachment[]
+  /** Scheduled send time (folder 'scheduled') */
+  sendAt?: string
+  /** Snoozed until (folder 'snoozed'); returns to the Inbox as unread */
+  snoozedUntil?: string
+  /** Follow-up due date, set with the flag */
+  dueAt?: string
 }
 
 export interface Row {
@@ -61,4 +67,6 @@ export interface ComposeInit {
   subject: string
   body: string
   attachments: Attachment[]
+  /** Set when an existing draft is reopened; the body is then used as it is (signature already inside) */
+  draftId?: string
 }

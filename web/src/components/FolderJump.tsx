@@ -49,8 +49,8 @@ export function FolderJump({ mode, accounts, folders, cases, accountId, onPick, 
   }, [accounts, folders, cases, mode, accountId])
 
   const items = useMemo(() => {
-    const q = text.trim().toLowerCase()
-    return q ? all.filter((i) => `${i.label} ${i.sub}`.toLowerCase().includes(q)) : all
+    const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean)
+    return words.length > 0 ? all.filter((i) => words.every((w) => `${i.label} ${i.sub}`.toLowerCase().includes(w))) : all
   }, [all, text])
 
   useEffect(() => input.current?.focus(), [])

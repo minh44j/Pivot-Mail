@@ -26,6 +26,8 @@ interface Props {
   onContext: (id: string, x: number, y: number) => void
   onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
   emptyText: string
+  onOpen: (id: string) => void
+  actions: { label: string; onClick: () => void; danger?: boolean }[]
   error?: { onRetry: () => void; busy: boolean }
   sync: { state: 'synced' | 'syncing' | 'offline'; last: Date }
   onSync: () => void
@@ -34,7 +36,7 @@ interface Props {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, onOpen, actions, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -100,6 +102,15 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
           {title}
           <small>{subtitle}</small>
         </h2>
+        {actions.length > 0 && (
+          <div className="head-actions">
+            {actions.map((a) => (
+              <button key={a.label} type="button" className={`link${a.danger ? ' danger' : ''}`} onClick={a.onClick}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
       {(chips.length > 0 || allFolders) && (
         <div className="smart-row filter-row" role="group" aria-label="Search filters">
@@ -161,6 +172,7 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
                   className={`row${sel ? ' sel' : ''}${isPicked ? ' picked' : ''}${unread ? ' unread' : ''}${msg.colour ? ` tint-${msg.colour}` : ''}`}
                   style={{ position: 'absolute', top: y, height: rowH }}
                   onClick={(e) => onRowClick(msg.id, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
+                  onDoubleClick={() => onOpen(msg.id)}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/x-pivot-msg', isPicked && picked.length > 1 ? picked.join(',') : msg.id)

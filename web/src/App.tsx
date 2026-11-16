@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Account, Attachment, Colour, ComposeInit, Density, MobileView, Message, PaneLayout, Person, Row } from './types'
+import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row } from './types'
 import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
@@ -12,7 +12,9 @@ import { FolderDialog } from './components/FolderDialog'
 import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
-import { escapeHtml, textToHtml } from './richtext'
+import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
+import { bareAddress, displayName } from './data/contacts'
+import { ConfirmDialog } from './components/ConfirmDialog'
 import { Toolbar } from './components/Toolbar'
 import { FolderPane } from './components/FolderPane'
 import type { FolderSel } from './components/FolderPane'
@@ -345,6 +347,70 @@ export default function App() {
     },
     [accountId],
   )
+
+  const parseAddrs = (s: string): Person[] =>
+    s
+      .split(/[;,\n]/)
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .map((t) => ({ name: displayName(bareAddress(t)), email: bareAddress(t) }))
+
+  /** A message record from what was typed in the composer. */
+  const fromCompose = (d: ComposeInit, id: string, folder: FolderId, extra: Partial<Message> = {}): Message => {
+    const acc = accountList.find((x) => x.id === d.accountId) ?? (accountList[0] as Account)
+    return {
+      id,
+      threadId: id,
+      accountId: acc.id,
+      folder,
+      labels: [],
+      from: { name: acc.name, email: acc.email },
+      to: parseAddrs(d.to),
+      cc: parseAddrs(d.cc),
+      subject: d.subject.trim() || '(no subject)',
+      body: htmlToPlain(d.body),
+      html: d.body,
+      date: new Date().toISOString(),
+      unread: false,
+      flagged: false,
+      attachments: d.attachments,
+      ...extra,
+    }
+  }
+  const upsert = (m: Message) => setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev.map((x) => (x.id === m.id ? m : x)) : [m, ...prev]))
+
+  /** Reopen a draft in the composer. */
+  const openDraft = (m: Message) =>
+    openCompose({
+      accountId: m.accountId,
+      to: m.to.map((p) => `${p.name} <${p.email}>`).join(', '),
+      cc: (m.cc ?? []).map((p) => `${p.name} <${p.email}>`).join(', '),
+      subject: m.subject === '(no subject)' ? '' : m.subject,
+      body: m.html ?? textToHtml(m.body),
+      attachments: m.attachments,
+      draftId: m.id,
+    })
+
+  const [confirmEmpty, setConfirmEmpty] = useState(false)
+  const markAllRead = () => {
+    const ids = scope.filter((m) => m.unread).map((m) => m.id)
+    if (ids.length === 0) return
+    patch(ids, { unread: false })
+    showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
+  }
+  const emptyDeleted = () => {
+    const gone = new Set(scope.map((m) => m.id))
+    setMessages((prev) => prev.filter((m) => !gone.has(m.id)))
+    setSelectedId(null)
+    setPicked([])
+    setConfirmEmpty(false)
+    showToast('Deleted Items emptied')
+  }
+  /** Open: drafts continue in the composer. */
+  const openMessage = (id: string) => {
+    const m = messages.find((x) => x.id === id)
+    if (m?.folder === 'drafts') openDraft(m)
+  }
 
   const sentLabel = (m: Message): string => {
     const d = new Date(m.date)
@@ -757,6 +823,9 @@ export default function App() {
       } else if (!inReader && k === 'PageUp') {
         e.preventDefault()
         go(idx - 10)
+      } else if (k === 'Enter' && selectedRow && selectedRow.msg.folder === 'drafts') {
+        e.preventDefault()
+        openDraft(selectedRow.msg)
       } else if (k === 'Enter' && selectedRow) {
         e.preventDefault()
         setView('read')
@@ -927,6 +996,11 @@ export default function App() {
           }}
           onRowAction={rowAction}
           emptyText={emptyText}
+          onOpen={openMessage}
+          actions={[
+            ...(scope.some((m) => m.unread) ? [{ label: 'Mark all as read', onClick: markAllRead }] : []),
+            ...(sel.kind === 'folder' && sel.id === 'deleted' && scope.length > 0 ? [{ label: 'Empty folder', onClick: () => setConfirmEmpty(true), danger: true }] : []),
+          ]}
           error={sim === 'listerror' ? { onRetry: retry, busy: retrying } : undefined}
           sync={{ state: !online ? 'offline' : syncing ? 'syncing' : 'synced', last: lastSync }}
           onSync={syncNow}
@@ -960,6 +1034,7 @@ export default function App() {
             onDelete={() => selectedRow && rowAction(selectedRow.msg.id, 'delete')}
             onFlag={() => selectedRow && rowAction(selectedRow.msg.id, 'flag')}
             onUnread={() => selectedRow && rowAction(selectedRow.msg.id, 'unread')}
+            onEditDraft={() => selectedRow && openDraft(selectedRow.msg)}
             flagged={Boolean(selectedRow?.msg.flagged)}
             unread={Boolean(selectedRow?.unread)}
           />
@@ -973,17 +1048,29 @@ export default function App() {
           offline={!online}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
-          onSend={() => {
+          onSend={(d) => {
+            if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
+            upsert(fromCompose(d, `s-${Date.now()}`, 'sent'))
             setCompose(null)
             showToast('Message sent (mock)')
           }}
-          onClose={() => setCompose(null)}
+          onClose={(draft, discarded) => {
+            const id = compose?.draftId
+            if (discarded && id) setMessages((prev) => prev.filter((x) => x.id !== id))
+            else if (draft) upsert(fromCompose(draft, id ?? `d-${Date.now()}`, 'drafts'))
+            setCompose(null)
+          }}
           onToast={showToast}
         />
       )}
       {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
       {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {confirmEmpty && (
+        <ConfirmDialog title="Empty Deleted Items" confirm="Empty folder" danger onConfirm={emptyDeleted} onClose={() => setConfirmEmpty(false)}>
+          Permanently delete {scope.length} message{scope.length === 1 ? '' : 's'} in {accountList.find((x) => x.id === accountId)?.name}? This cannot be undone.
+        </ConfirmDialog>
+      )}
       {accDlg && <AccountDialog state={accDlg} existing={accountList.map((x) => x.email.toLowerCase())} onAdd={addAccount} onRemove={removeAccount} onClose={() => setAccDlg(null)} />}
       {folderDlg && (
         <FolderDialog

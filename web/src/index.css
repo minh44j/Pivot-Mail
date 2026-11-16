@@ -3572,3 +3572,19 @@ li.slot-end.slot {
 .co-card small {
   color: var(--label-2);
 }
+
+/* List header actions */
+.list-head {
+  position: relative;
+}
+.head-actions {
+  display: flex;
+  gap: 12px;
+  margin-left: auto;
+  align-self: flex-start;
+  padding-top: 4px;
+  font-size: 12px;
+}
+.head-actions .link.danger {
+  color: var(--ic-red);
+}

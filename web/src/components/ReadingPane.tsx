@@ -18,9 +18,10 @@ interface Props {
   onUnread: () => void
   flagged: boolean
   unread: boolean
+  onEditDraft: () => void
 }
 
-export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread }: Props) {
+export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft }: Props) {
   const lastId = messages[messages.length - 1]?.id ?? ''
   // Reset expansion when the conversation changes, derived during render (no effect).
   const [state, setState] = useState<{ key: string; open: Set<string> }>({ key: lastId, open: new Set([lastId]) })
@@ -37,6 +38,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
   }
 
   const subject = messages[messages.length - 1]?.subject ?? ''
+  const isDraft = messages[messages.length - 1]?.folder === 'drafts'
   return (
     <section className="reader" aria-label="Reading pane">
       <header className="reader-head">
@@ -45,6 +47,11 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </button>
         <h2>{subject}</h2>
         <div className="reader-actions">
+        {isDraft ? (
+          <button type="button" className="primary" onClick={onEditDraft}>
+            <Icon name="draft" size={16} /> Continue editing
+          </button>
+        ) : (<>
         <button type="button" onClick={onReply}>
           <Icon name="reply" size={16} /> Reply
         </button>
@@ -53,7 +60,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </button>
         <button type="button" onClick={onForward}>
           <Icon name="forward" size={16} /> Forward
-        </button>
+        </button></>)}
         <span className="reader-touch">
           <button type="button" onClick={onDelete} aria-label="Delete">
             <Icon name="trash" size={18} tone="red" />

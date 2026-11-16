@@ -88,3 +88,10 @@ export function bodyText(html: string): string {
 export function signatureHtml(signature: string): string {
   return signature.trim() ? `<div data-sig="1" contenteditable="false"><br>-- <br>${textToHtml(signature.trim())}</div>` : ''
 }
+
+/** Plain text of an HTML body (line breaks kept), for previews and plain-text copies. */
+export function htmlToPlain(html: string): string {
+  const doc = new DOMParser().parseFromString(`<body>${html.replace(/<br\s*\/?>/gi, '\n').replace(/<\/(div|p|li|tr|h[1-6])>/gi, '\n')}</body>`, 'text/html')
+  doc.querySelectorAll('[data-quote]').forEach((n) => n.remove())
+  return (doc.body.textContent ?? '').replace(/\n{3,}/g, '\n\n').trim()
+}

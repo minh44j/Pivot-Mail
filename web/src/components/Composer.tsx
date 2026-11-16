@@ -21,7 +21,8 @@ interface Props {
   onTemplateUsed: () => void
   offline?: boolean
   onSend: (d: ComposeInit) => void
-  onClose: () => void
+  /** draft: what was typed (kept in Drafts); discarded: delete the open draft */
+  onClose: (draft?: ComposeInit, discarded?: boolean) => void
   onToast: (m: string) => void
 }
 
@@ -55,6 +56,7 @@ function sigFor(accounts: Account[], id: string): string {
 
 /** New mail: caret line, then signature. Reply or forward: caret line, signature, then the quoted message. */
 function initialBody(init: ComposeInit, accounts: Account[]): string {
+  if (init.draftId) return init.body
   return `<div><br></div>${sigFor(accounts, init.accountId)}${init.body}`
 }
 
@@ -344,8 +346,25 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
   const discard = () => {
     finished.current = true
     platform.storage.remove(DRAFT_KEY)
-    onClose()
+    onClose(undefined, true)
     onToast('Draft discarded')
+  }
+
+  /** Close: anything typed goes to the Drafts folder (reopen it from there). */
+  const close = () => {
+    const x = latest.current
+    const holder = document.createElement('div')
+    holder.innerHTML = x.body
+    holder.querySelectorAll('[data-sig]').forEach((n) => n.remove())
+    const has = x.to.trim() !== '' || x.cc.trim() !== '' || x.subject.trim() !== '' || (holder.textContent ?? '').trim() !== '' || x.attachments.length > 0
+    if (touched.current && has) {
+      finished.current = true
+      platform.storage.remove(DRAFT_KEY)
+      onClose(x)
+    } else {
+      if (!has) platform.storage.remove(DRAFT_KEY)
+      onClose()
+    }
   }
 
   return (
@@ -381,7 +400,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
         } else if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
           e.preventDefault()
           exec('insertUnorderedList')
-        } else if (e.key === 'Escape') onClose()
+        } else if (e.key === 'Escape') close()
       }}
     >
       <header className="composer-head">
@@ -390,7 +409,7 @@ export function Composer({ init, accounts, offline, pendingTemplate, onTemplateU
         <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'}>
           <Icon name={expanded ? 'collapse' : 'expand'} />
         </button>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close and keep draft">
+        <button type="button" className="icon-btn" onClick={close} aria-label="Close and keep draft">
           <Icon name="close" />
         </button>
       </header>
