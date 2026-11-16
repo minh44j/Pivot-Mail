@@ -19,9 +19,10 @@ interface Props {
   flagged: boolean
   unread: boolean
   onEditDraft: () => void
+  onMore: (x: number, y: number) => void
 }
 
-export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft }: Props) {
+export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore }: Props) {
   const lastId = messages[messages.length - 1]?.id ?? ''
   // Reset expansion when the conversation changes, derived during render (no effect).
   const [state, setState] = useState<{ key: string; open: Set<string> }>({ key: lastId, open: new Set([lastId]) })
@@ -60,6 +61,17 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </button>
         <button type="button" onClick={onForward}>
           <Icon name="forward" size={16} /> Forward
+        </button>
+        <button
+          type="button"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          onClick={(e) => {
+            const b = e.currentTarget.getBoundingClientRect()
+            onMore(Math.max(8, b.right - 230), b.bottom + 4)
+          }}
+        >
+          <Icon name="more" size={18} />
         </button></>)}
         <span className="reader-touch">
           <button type="button" onClick={onDelete} aria-label="Delete">

@@ -14,6 +14,8 @@ import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
 import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
 import { bareAddress, displayName } from './data/contacts'
+import { OriginalDialog } from './components/OriginalDialog'
+import { buildMessageDoc } from './printdoc'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { Toolbar } from './components/Toolbar'
 import { FolderPane } from './components/FolderPane'
@@ -392,6 +394,16 @@ export default function App() {
     })
 
   const [confirmEmpty, setConfirmEmpty] = useState(false)
+  const [original, setOriginal] = useState<Message | null>(null)
+  const threadOf = (m: Message): Message[] =>
+    (threaded ? messages.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId) : [m]).sort((p, q) => p.date.localeCompare(q.date))
+  const printThread = (m: Message) => {
+    platform.printHtml(buildMessageDoc(threadOf(m), m.subject))
+    showToast('Opening the print dialog. Choose "Save as PDF" to make a PDF.')
+  }
+  const popOut = (m: Message) => {
+    if (!platform.openWindow(buildMessageDoc(threadOf(m), m.subject))) showToast('The browser blocked the new window. Allow pop-ups for this site.')
+  }
   const markAllRead = () => {
     const ids = scope.filter((m) => m.unread).map((m) => m.id)
     if (ids.length === 0) return
@@ -409,7 +421,9 @@ export default function App() {
   /** Open: drafts continue in the composer. */
   const openMessage = (id: string) => {
     const m = messages.find((x) => x.id === id)
-    if (m?.folder === 'drafts') openDraft(m)
+    if (!m) return
+    if (m.folder === 'drafts') openDraft(m)
+    else popOut(m)
   }
 
   const sentLabel = (m: Message): string => {
@@ -641,6 +655,10 @@ export default function App() {
         { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true) },
         { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: forward },
         { type: 'item', label: 'Copy email', icon: 'copy', tone: 'purple', onSelect: () => void copyEmail(m) },
+        { type: 'item', label: 'Copy subject', icon: 'copy', onSelect: () => void platform.copyText(m.subject).then((ok) => showToast(ok ? 'Subject copied' : 'Copy was blocked by the browser')) },
+        { type: 'item', label: 'Print or save as PDF…', icon: 'download', tone: 'teal', onSelect: () => printThread(m) },
+        { type: 'item', label: 'Open in new window', icon: 'expand', onSelect: () => popOut(m) },
+        { type: 'item', label: 'Show original', icon: 'draft', onSelect: () => setOriginal(m) },
         { type: 'sep' },
       )
     out.push(
@@ -764,6 +782,10 @@ export default function App() {
         if (!last) return
         e.preventDefault()
         reply(e.shiftKey)
+      } else if (mod && !e.altKey && !e.shiftKey && lk === 'p') {
+        if (!last) return
+        e.preventDefault()
+        printThread(last)
       } else if (mod && !e.altKey && !e.shiftKey && lk === 'j') {
         if (!last) return
         e.preventDefault()
@@ -1035,6 +1057,7 @@ export default function App() {
             onFlag={() => selectedRow && rowAction(selectedRow.msg.id, 'flag')}
             onUnread={() => selectedRow && rowAction(selectedRow.msg.id, 'unread')}
             onEditDraft={() => selectedRow && openDraft(selectedRow.msg)}
+            onMore={(x, y) => selectedRow && setCtx({ id: selectedRow.msg.id, x, y })}
             flagged={Boolean(selectedRow?.msg.flagged)}
             unread={Boolean(selectedRow?.unread)}
           />
@@ -1066,6 +1089,7 @@ export default function App() {
       {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
       {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
+      {original && <OriginalDialog msg={original} onClose={() => setOriginal(null)} />}
       {confirmEmpty && (
         <ConfirmDialog title="Empty Deleted Items" confirm="Empty folder" danger onConfirm={emptyDeleted} onClose={() => setConfirmEmpty(false)}>
           Permanently delete {scope.length} message{scope.length === 1 ? '' : 's'} in {accountList.find((x) => x.id === accountId)?.name}? This cannot be undone.

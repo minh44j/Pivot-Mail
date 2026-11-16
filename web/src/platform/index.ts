@@ -118,4 +118,26 @@ async function copyBlob(blob: Blob): Promise<'copied' | 'unsupported' | 'blocked
   }
 }
 
-export const platform = { storage, copyText, setBadge, notificationState, requestNotifications, notify, saveBlob, copyBlob, copyRich }
+/** Print a document (also the way to Save as PDF). The desktop wrapper can use a native print call instead. */
+function printHtml(html: string): void {
+  const f = document.createElement('iframe')
+  f.setAttribute('aria-hidden', 'true')
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+  f.srcdoc = html
+  f.onload = () => {
+    f.contentWindow?.focus()
+    f.contentWindow?.print()
+    window.setTimeout(() => f.remove(), 60_000)
+  }
+  document.body.appendChild(f)
+}
+
+/** Open a read-only document in a separate window. Returns false when the browser blocked the popup. */
+function openWindow(html: string): boolean {
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }))
+  const w = window.open(url, '_blank', 'popup=yes,width=900,height=760')
+  window.setTimeout(() => URL.revokeObjectURL(url), 120_000)
+  return w !== null
+}
+
+export const platform = { printHtml, openWindow, storage, copyText, setBadge, notificationState, requestNotifications, notify, saveBlob, copyBlob, copyRich }

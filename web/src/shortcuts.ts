@@ -70,6 +70,8 @@ export const SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Ctrl+R'], desc: 'Reply' },
       { keys: ['Ctrl+Shift+R'], desc: 'Reply all' },
       { keys: ['Ctrl+J'], desc: 'Forward (Ctrl+F is search here)' },
+      { keys: ['Ctrl+P'], desc: 'Print, or Save as PDF' },
+      { keys: ['Double-click'], desc: 'Open the message in its own window (drafts open for editing)' },
     ],
   },
   {

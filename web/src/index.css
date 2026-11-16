@@ -3588,3 +3588,19 @@ li.slot-end.slot {
 .head-actions .link.danger {
   color: var(--ic-red);
 }
+
+/* Show original */
+.modal.wide {
+  width: min(760px, calc(100vw - 32px));
+}
+.original {
+  max-height: 60dvh;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  border-radius: var(--r-md);
+  background: var(--fill);
+  font: 12px/1.5 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
