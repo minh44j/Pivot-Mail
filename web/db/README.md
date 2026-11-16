@@ -10,3 +10,7 @@ Migrations are plain SQL in `migrations/`, applied in order. They are already ap
 | `0002_harden_functions.sql` | Fixes from the security advisor. |
 
 Only the server (Vercel functions) reads or writes these tables, using the project's secret key. Never put that key in the browser or the repo. No message bodies are stored here.
+
+| File | What it does |
+|---|---|
+| `0003_cases.sql` | Shared cases (reference, client, details, notes, status) and the atomic provisional number counter (`next_case_ref`, starts at 90001 each year, PS and PT series). |
