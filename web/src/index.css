@@ -4623,3 +4623,9 @@ button.ref-chip:hover { background: #cdeee1; }
   .wl-orbit { grid-template-columns: repeat(4, auto); gap: 10px; align-content: center; }
   .wl-ring { display: none; }
 }
+
+/* job number (and client) shown in the message list */
+.ref-tag { display: inline-flex; align-items: center; gap: 5px; max-width: 60%; margin-right: 6px; padding: 0 7px; border-radius: 999px; background: var(--brand-green-tint); color: #0a5a43; font-size: 11.5px; line-height: 18px; vertical-align: middle; white-space: nowrap; }
+.ref-tag b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ref-tag em { overflow: hidden; text-overflow: ellipsis; font-style: normal; font-weight: 500; opacity: 0.85; }
+.row .preview .ref-tag { margin-right: 6px; }

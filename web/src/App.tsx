@@ -1257,6 +1257,19 @@ export default function App() {
       if (rows.length > 0) setOsFacts((p) => ({ ...p, ...Object.fromEntries(rows.map((x) => [x.ref, x])) }))
     })
   }, [osLinked, threadRefs])
+  // When linked, ask Pivot OS who the client is for the job numbers in the visible list (once per number, 20 at a time).
+  const listRefs = useMemo(() => [...new Set(rows.slice(0, 60).flatMap((r) => r.msg.subject.match(/\bP[ST]\d{7}\b/g) ?? []))], [rows])
+  useEffect(() => {
+    if (!osLinked) return
+    const todo = listRefs.filter((r) => !askedFacts.current.has(r))
+    for (let i = 0; i < todo.length; i += 20) {
+      const part = todo.slice(i, i + 20)
+      part.forEach((r) => askedFacts.current.add(r))
+      void fetchOsFacts(part).then((found) => {
+        if (found.length > 0) setOsFacts((p) => ({ ...p, ...Object.fromEntries(found.map((x) => [x.ref, x])) }))
+      })
+    }
+  }, [osLinked, listRefs])
   const selCase = realMode && sel.kind === 'case' ? casesDb?.find((c) => c.ref === sel.id) : undefined
 
   const sentLabel = (m: Message): string => {
@@ -2143,6 +2156,7 @@ export default function App() {
           ]}
           error={sim === 'listerror' ? { onRetry: retry, busy: retrying } : undefined}
           sync={{ state: !online ? 'offline' : syncing ? 'syncing' : 'synced', last: lastSync }}
+          refClient={(ref) => osFacts[ref]?.client ?? caseNames?.[ref]}
           onSync={syncNow}
         />
         {showReader && multi && (

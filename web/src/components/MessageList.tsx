@@ -28,6 +28,8 @@ interface Props {
   onRowAction: (id: string, action: 'delete' | 'archive' | 'flag' | 'unread') => void
   emptyText: string
   accountNames?: Record<string, string>
+  /** Client name for a reference number, when known (shown next to the number in the row) */
+  refClient?: (ref: string) => string | undefined
   /** false for a real mailbox: the footer must not say "sample data" */
   sample?: boolean
   onOpen: (id: string) => void
@@ -37,10 +39,23 @@ interface Props {
   onSync: () => void
 }
 
+/** A small tag with the job number found in the subject, and the client when it is known. */
+function refTag(subject: string, client?: (ref: string) => string | undefined) {
+  const ref = subject.match(/\bP[ST]\d{7}\b/)?.[0]
+  if (!ref) return null
+  const who = client?.(ref)
+  return (
+    <span className="ref-tag" title={who ? `${ref} · ${who}` : ref}>
+      <b>{ref}</b>
+      {who && <em>{who}</em>}
+    </span>
+  )
+}
+
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, sample = true, onOpen, actions, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, refClient, sample = true, onOpen, actions, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -238,6 +253,7 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
                     </div>
                     <div className="row-sub">
                       <span className="subject">{msg.subject}</span>
+                      {density === 'compact' && refTag(msg.subject, refClient)}
                       {accountNames && <span className="pill acc">{accountNames[msg.accountId]}</span>}
                       {(msg.attachments.length > 0 || msg.hasAttachments) && (
                         <span className="icon-inline" role="img" aria-label="Has attachments">
@@ -261,7 +277,12 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
                         <span className={`dot c-${msg.colour}`} role="img" aria-label={`Category: ${colours.find((c) => c.id === msg.colour)?.label ?? ''}`} />
                       )}
                     </div>
-                    {density === 'comfortable' && <div className="preview">{msg.body.replace(/\s+/g, ' ')}</div>}
+                    {density === 'comfortable' && (
+                      <div className="preview">
+                        {refTag(msg.subject, refClient)}
+                        {msg.body.replace(/\s+/g, ' ')}
+                      </div>
+                    )}
                   </div>
                 </div>
               )
