@@ -164,6 +164,8 @@ export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   /** False until the server has said whether someone is signed in, so the sign-in page does not flash first. */
   const [sessionChecked, setSessionChecked] = useState(false)
+  /** False until the first list of mailboxes has arrived (or failed), so the app opens ready instead of empty. */
+  const [accountsTried, setAccountsTried] = useState(false)
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null)
   const [authError, setAuthError] = useState<string | null>(() => new URLSearchParams(window.location.search).get('auth_error'))
   // A signed-in person's role comes from the server. Only administrators may preview the staff view.
@@ -386,6 +388,7 @@ export default function App() {
 
   const loadAccounts = useCallback(async () => {
     const list = await fetchAccounts()
+    setAccountsTried(true)
     if (list === null) return
     realAccountsRef.current = list
     setRealAccounts(list)
@@ -1799,7 +1802,14 @@ export default function App() {
   const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? 'All inboxes' : sel.id
   const showReader = pane !== 'off'
 
-  if (!sessionChecked && !entered) return <div className="splash" role="status" aria-label="Loading Pivot Mail"><img src={logoLockup} alt="" /></div>
+  if ((!sessionChecked || (authUser && !accountsTried)) && !entered)
+    return (
+      <div className="splash" role="status" aria-live="polite">
+        <img src={logoLockup} alt="Pivot Mail" />
+        <p>{authUser ? 'Setting up your account' : 'Loading'}</p>
+        <div className="splash-bar" aria-hidden="true"><span /></div>
+      </div>
+    )
   if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
 
   if (sim === 'expired' || sim === 'denied') {
