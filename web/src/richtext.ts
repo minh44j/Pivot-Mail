@@ -1,3 +1,5 @@
+import { sanitizeEmailHtml } from './mailhtml'
+
 /** Small, dependency-free helpers for the rich-text composer. */
 
 export function escapeHtml(s: string): string {
@@ -45,6 +47,13 @@ export function sanitizeHtml(html: string): string {
       const el = child as HTMLElement
       if (DROP.has(el.tagName.toUpperCase())) {
         el.remove()
+        continue
+      }
+      if (el.tagName === 'DIV' && el.hasAttribute('data-quote')) {
+        // The quoted message keeps its own layout (tables, images, colours), cleaned by the same rules as the reading pane.
+        const inner = sanitizeEmailHtml(el.innerHTML, true).html
+        for (const attr of Array.from(el.attributes)) if (attr.name !== 'data-quote') el.removeAttribute(attr.name)
+        el.innerHTML = inner
         continue
       }
       if (!ALLOWED.has(el.tagName)) {

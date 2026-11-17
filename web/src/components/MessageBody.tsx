@@ -66,30 +66,21 @@ export function MessageBody({ msg }: { msg: Message }) {
 }
 
 function FullBody({ msg }: { msg: Message }) {
-  const [images, setImages] = useState(false)
   const [showQuote, setShowQuote] = useState(false)
 
   const view = useMemo(() => {
     if (msg.html) {
-      const clean = sanitizeEmailHtml(msg.html, images)
+      const clean = sanitizeEmailHtml(msg.html, true)
       return { kind: 'html' as const, blocked: clean.blocked, ...splitQuotedHtml(clean.html) }
     }
     return { kind: 'text' as const, blocked: 0, ...splitQuotedText(msg.body) }
-  }, [msg.html, msg.body, images])
+  }, [msg.html, msg.body])
 
   const hasQuote = view.quoted !== ''
   const full = view.kind === 'html' ? view.main + (showQuote ? view.quoted : '') : ''
 
   return (
     <div className="msg-content">
-      {view.blocked > 0 && (
-        <div className="img-banner" role="status">
-          <span className="grow">Remote images are hidden to protect your privacy.</span>
-          <button type="button" className="link" onClick={() => setImages(true)}>
-            Load images
-          </button>
-        </div>
-      )}
       {view.kind === 'html' ? (
         <HtmlFrame html={full} />
       ) : (

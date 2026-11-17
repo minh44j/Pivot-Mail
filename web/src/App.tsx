@@ -36,6 +36,7 @@ import { FolderDialog } from './components/FolderDialog'
 import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
+import { sanitizeEmailHtml } from './mailhtml'
 import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
 import { bareAddress, displayName } from './data/contacts'
 import { WhenDialog } from './components/WhenDialog'
@@ -1205,7 +1206,7 @@ export default function App() {
   const quote = (m: Message): string => {
     const who = (p: Person): string => `${escapeHtml(p.name)} &lt;${escapeHtml(p.email)}&gt;`
     const cc = m.cc && m.cc.length > 0 ? `<br><b>Cc:</b> ${m.cc.map(who).join('; ')}` : ''
-    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sentLabel(m))}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${textToHtml(m.body)}</div></div>`
+    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sentLabel(m))}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${m.html && m.loaded !== false ? sanitizeEmailHtml(m.html, true).html : textToHtml(m.body)}</div></div>`
   }
   const plainEmail = (m: Message): string => {
     const who = (p: Person): string => `${p.name} <${p.email}>`

@@ -4045,3 +4045,7 @@ a.btn.google.real:hover {
 @media (prefers-reduced-motion: reduce) {
   .splash-bar span { animation: none; width: 100%; opacity: 0.5; }
 }
+
+/* Quoted HTML mail inside the composer keeps its layout but never overflows the window */
+.editor [data-quote] img { max-width: 100%; height: auto; }
+.editor [data-quote] table { max-width: 100%; }

@@ -3,7 +3,7 @@
  *
  * Layers (all of them, because email HTML is hostile by default):
  * 1. Parse with DOMParser, which never runs scripts, then rebuild from an allow-list of tags and attributes.
- * 2. Remote images are blocked until the reader allows them (tracking pixels). Only https images load.
+ * 2. Remote https images load automatically (no button). Only https images load.
  * 3. Links open only http(s), mailto and tel, always in a new tab with noopener/noreferrer.
  * 4. Inline styles are cut down to harmless properties (no positioning, no url()).
  * 5. The result is shown inside a sandboxed iframe with a CSP that blocks scripts, forms and network except https images.
