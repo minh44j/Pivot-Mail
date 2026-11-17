@@ -1915,6 +1915,7 @@ export default function App() {
           }}
           notifications={notif}
           onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
+          signedIn={Boolean(authUser)}
           title={authUser ? (authUser.title ?? '') : undefined}
           onTitle={async (t) => {
             const saved = await saveTitle(t)

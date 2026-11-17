@@ -7,6 +7,7 @@ import { mergeColours } from '../settings'
 import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
+import { RealUsers } from './RealUsers'
 import { UsersPanel } from './UsersPanel'
 import { PROBLEMS } from '../problems'
 import type { Problem } from '../problems'
@@ -33,6 +34,8 @@ interface Props {
   onShowSmart: (v: boolean) => void
   notifications: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
+  /** Real sign-in is used (not the preview): the Users section shows the real people */
+  signedIn?: boolean
   /** Signed-in use only: the person's own job title */
   title?: string
   onTitle: (t: string) => Promise<boolean>
@@ -223,7 +226,15 @@ export function SettingsPage(p: Props) {
 
         <div className="settings-content">
           <p className="notice" role="note">
-            <strong>Preview.</strong> Settings are saved in this browser only. In the real app they sync with your account.
+            {p.signedIn ? (
+              <>
+                <strong>Saved in this browser.</strong> Your job title and the Users list are saved on the server; the other settings stay on this device for now.
+              </>
+            ) : (
+              <>
+                <strong>Preview.</strong> Settings are saved in this browser only. In the real app they sync with your account.
+              </>
+            )}
           </p>
 
           {section === 'general' && (
@@ -289,7 +300,7 @@ export function SettingsPage(p: Props) {
             </section>
           )}
 
-          {section === 'users' && isAdmin && <UsersPanel onToast={p.onToast} />}
+          {section === 'users' && isAdmin && (p.signedIn ? <RealUsers onToast={p.onToast} /> : <UsersPanel onToast={p.onToast} />)}
 
           {section === 'problems' && (
             <section className="card" aria-labelledby="h-prob">
