@@ -4422,3 +4422,22 @@ button.ref-chip:hover { background: #cdeee1; }
 .modal-backdrop.panel-mode .modal.ref-panel { z-index: 1; }
 .cb[aria-expanded='true'][data-ref-anchor] { background: var(--brand-green-tint); }
 .title-edit { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+
+/* ---- Reference number panel: wide, two columns ---- */
+.opt { white-space: normal; text-align: center; line-height: 1.2; }
+.ref-panel .modal-head { padding: 16px 24px 4px; }
+.ref-panel .notice { margin: 8px 24px 0; }
+.ref-panel .co-tabs { margin: 12px 24px 0; }
+.ref-panel .modal-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px; padding: 18px 24px 24px; align-items: start; }
+.ref-panel .modal-body > * { grid-column: 1 / -1; }
+.ref-panel .modal-body > .half { grid-column: auto; }
+.ref-panel .modal-body > button.half { align-self: end; }
+.ref-panel .modal-body > .last { grid-column: 1 / -1; }
+.ref-panel .opt { min-height: 42px; font-size: 14px; }
+.ref-panel .fld input { min-height: 42px; }
+.ref-panel .sp-row { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.ref-panel .modal-actions { flex-wrap: wrap; }
+@media (max-width: 1099px) {
+  .ref-panel .modal-body { grid-template-columns: minmax(0, 1fr); }
+  .ref-panel .modal-body > .half { grid-column: 1 / -1; }
+}

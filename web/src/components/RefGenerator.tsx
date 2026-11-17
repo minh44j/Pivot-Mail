@@ -60,7 +60,7 @@ function readLast(): { ref: string; by: string } | null {
 
 export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Props) {
   const panel = Boolean(anchor) && window.innerWidth >= 900
-  const PANEL_W = 440
+  const PANEL_W = Math.min(780, window.innerWidth - 16)
   const [company, setCompany] = useState<Company>(real ? (real.company === 'tmc' ? 'travel' : 'shipping') : 'shipping')
   const [existing, setExisting] = useState('')
   const [busy, setBusy] = useState(false)
@@ -277,12 +277,12 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
                 ))}
               </div>
             </div>
-            <label className="fld">
+            <label className="fld half">
               <span>Notes</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the team should know" />
             </label>
             {real && (
-              <label className="fld">
+              <label className="fld half">
                 <span>Existing number (optional)</span>
                 <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like PT2600123`} autoComplete="off" />
               </label>
@@ -378,11 +378,12 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
               </datalist>
             </div>
 
-            <label className="fld">
-              <span>Cargo and notes (optional)</span>
+            <label className="fld half">
+              <span>Cargo (optional)</span>
               <input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="e.g. 2×40HQ machinery, ~46 CBM" />
             </label>
-            <label className="fld">
+            <label className="fld half">
+              <span>Notes for operations (optional)</span>
               <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything ops should know" aria-label="Notes for operations" />
             </label>
 
@@ -402,7 +403,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
             </div>
 
             {real && (
-              <label className="fld">
+              <label className="fld half">
                 <span>Existing number (optional)</span>
                 <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like PS2600123`} autoComplete="off" />
               </label>
@@ -412,7 +413,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
                 {errors.form}
               </p>
             )}
-            <button type="submit" className="btn primary wide" disabled={busy}>
+            <button type="submit" className="btn primary wide half" disabled={busy}>
               {busy ? 'Saving…' : existing.trim() ? 'Register case' : 'Generate number'}
             </button>
             {!real && last && (
