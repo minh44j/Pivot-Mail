@@ -242,6 +242,7 @@ export default function App() {
     messagesRef.current = messages
   }, [messages])
 
+
   // Optimistic update helper: UI changes instantly; the sync layer will reconcile later.
   // Each tracked change keeps a snapshot so Ctrl+Z can undo it.
   const patch = useCallback((ids: string[], change: Partial<Message>, track = true) => {
@@ -286,6 +287,28 @@ export default function App() {
   const [removedIds, setRemovedIds] = useStored<string[]>('pm.accounts.removed', [], isStrings)
   // Real mailboxes come from the server once someone has signed in; the preview keeps its sample mailboxes.
   const realMode = authUser !== null
+
+  // Every change made here (delete, move, read, flag...) is also written to this device's copy, so the next visit
+  // starts from what you left, not from an older picture. Compared one second after the last change.
+  const persisted = useRef<Map<string, Message> | null>(null)
+  useEffect(() => {
+    if (!realMode) {
+      persisted.current = null
+      return
+    }
+    const t = window.setTimeout(() => {
+      const prev = persisted.current
+      const cur = new Map(messagesRef.current.map((m) => [m.id, m]))
+      persisted.current = cur
+      if (!prev) return
+      const changed = [...cur.values()].filter((m) => prev.get(m.id) !== m)
+      const gone = [...prev.keys()].filter((id) => !cur.has(id))
+      if (changed.length > 0) void platform.cache.save(changed)
+      if (gone.length > 0) void platform.cache.remove(gone)
+    }, 1000)
+    return () => window.clearTimeout(t)
+  }, [messages, realMode])
+
   const [realAccounts, setRealAccounts] = useState<AuthAccount[] | null>(null)
   const [gmailInfo, setGmailInfo] = useState<Record<string, { total: number } | 'error'>>({})
   const [connectDlg, setConnectDlg] = useState<{ company: CompanyId; kind: 'personal' | 'shared' } | 'new' | null>(null)
@@ -348,8 +371,24 @@ export default function App() {
 
   /** Everything fetched from Gmail goes through here: into the list and into this device's local copy. */
   const mergeIn = useCallback((msgs: Message[]) => {
-    setMessages((prev) => mergeMessages(prev, msgs))
+    setMessages((prev) => {
+      // What Gmail sends back a moment after a change made here may still be the old picture: keep what the person just did.
+      const now = stamp()
+      const guarded = msgs.map((x) => {
+        if (now - (recentlyChanged.current.get(x.id) ?? 0) >= 8000) return x
+        const mine = prev.find((y) => y.id === x.id)
+        return mine ? { ...x, folder: mine.folder, labels: mine.labels, unread: mine.unread, flagged: mine.flagged, important: mine.important } : x
+      })
+      return mergeMessages(prev, guarded)
+    })
     void platform.cache.save(msgs)
+  }, [])
+
+  /** Messages that are gone for good: out of the list and out of this device's copy. */
+  const dropGone = useCallback((ids: string[]) => {
+    const gone = new Set(ids)
+    setMessages((prev) => prev.filter((m) => !gone.has(m.id)))
+    void platform.cache.remove(ids)
   }, [])
 
   const ensureLabels = useCallback(async (accountId: string): Promise<GLabel[]> => {
@@ -397,7 +436,17 @@ export default function App() {
           const query = queryFor(t, acc.syncWindowDays, labels)
           if (!query) continue
           const known = new Map(messagesRef.current.filter((m) => m.accountId === accountId).map((m) => [m.id, m]))
-          await syncQuery({ accountId, query, known, labelNames: Object.fromEntries(labels.map((l) => [l.id, l.name])), isCancelled: () => runId.current !== my, onBatch: mergeIn })
+          await syncQuery({
+            accountId,
+            query,
+            known,
+            labelNames: Object.fromEntries(labels.map((l) => [l.id, l.name])),
+            isCancelled: () => runId.current !== my,
+            onBatch: mergeIn,
+            // A folder view also checks that nothing is listed here which Gmail has moved or deleted.
+            reconcile: t.kind === 'folder' && ['inbox', 'sent', 'drafts', 'deleted', 'archive'].includes(t.id) ? { folder: t.id as Message['folder'], windowDays: t.id === 'drafts' ? 0 : acc.syncWindowDays } : undefined,
+            onGone: dropGone,
+          })
           if (runId.current === my) lastSynced.current.set(key, stamp())
         }
         if (runId.current === my) {
@@ -416,7 +465,7 @@ export default function App() {
         if (runId.current === my) setSyncing(false)
       }
     },
-    [ensureLabels, mergeIn, markReconnect],
+    [ensureLabels, mergeIn, markReconnect, dropGone],
   )
 
   /** Fetch the whole conversation (bodies, attachments) when it is opened. */

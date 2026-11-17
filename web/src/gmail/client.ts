@@ -59,7 +59,10 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
     const headers: Record<string, string> = { authorization: `Bearer ${token}` }
     if (o.body !== undefined) headers['content-type'] = 'application/json'
     if (o.raw) headers['content-type'] = o.raw.type
-    const res = await fetch(url, { method: o.method ?? 'GET', headers, body: o.raw ? o.raw.data : o.body !== undefined ? JSON.stringify(o.body) : undefined })
+    const payload = o.raw ? o.raw.data : o.body !== undefined ? JSON.stringify(o.body) : undefined
+    // A small change (delete, move, read) must still reach Gmail if the tab is closed a moment later.
+    const keepalive = (o.method ?? 'GET') !== 'GET' && typeof payload === 'string' && payload.length < 60_000
+    const res = await fetch(url, { method: o.method ?? 'GET', headers, body: payload, keepalive })
     if (res.ok) {
       const text = await res.text()
       return (text ? JSON.parse(text) : {}) as T

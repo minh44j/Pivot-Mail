@@ -1,5 +1,5 @@
 import type { Message } from '../types'
-import { listMessageIds, getMetadata, pool } from './client'
+import { GmailError, listMessageIds, getMetadata, pool } from './client'
 import type { GLabel } from './client'
 import { toMessage } from './map'
 
@@ -60,6 +60,14 @@ export async function syncQuery(p: {
   refreshNewest?: number
   isCancelled?: () => boolean
   onBatch: (msgs: Message[]) => void
+  /**
+   * Folder views only. Mail this device still lists in the folder but Gmail no longer does (deleted, archived or moved on
+   * another device, or by an older version of the app) is looked up again, so it moves to where it really is or is dropped.
+   * Skipped when the folder has more mail than the list can hold, because then absence proves nothing.
+   */
+  reconcile?: { folder: Message['folder']; windowDays: number }
+  /** Messages that no longer exist (or are spam, which is never shown): remove them from the list and the local copy */
+  onGone?: (ids: string[]) => void
 }): Promise<number> {
   const cap = p.cap ?? 500
   const ids = await pageIds(p.accountId, p.query, cap)
@@ -74,6 +82,26 @@ export async function syncQuery(p: {
     const msgs = got.map((g) => toMessage(p.accountId, g, p.labelNames)).filter((m): m is Message => m !== null)
     for (const m of msgs) m.hasAttachments = withAtt.has(m.id.split(':')[1] ?? '')
     p.onBatch(msgs)
+  }
+
+  if (p.reconcile && ids.length < cap && !p.isCancelled?.()) {
+    const live = new Set(ids.map((x) => `${p.accountId}:${x.id}`))
+    const since = p.reconcile.windowDays > 0 ? Date.now() - p.reconcile.windowDays * 86_400_000 : 0
+    const stale = [...p.known.values()].filter((m) => m.accountId === p.accountId && m.folder === p.reconcile?.folder && !live.has(m.id) && Date.parse(m.date) >= since).slice(0, 60)
+    const gone: string[] = []
+    const fresh: Message[] = []
+    await pool(stale, 4, async (m) => {
+      try {
+        const g = await getMetadata(p.accountId, m.id.split(':')[1] ?? '')
+        const next = toMessage(p.accountId, g, p.labelNames)
+        if (next) fresh.push(next)
+        else gone.push(m.id)
+      } catch (e) {
+        if (e instanceof GmailError && e.status === 404) gone.push(m.id)
+      }
+    })
+    if (fresh.length > 0) p.onBatch(fresh)
+    if (gone.length > 0) p.onGone?.(gone)
   }
   return ids.length
 }
