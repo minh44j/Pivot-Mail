@@ -4054,14 +4054,23 @@ a.btn.google.real:hover {
 .notices {
   position: fixed;
   z-index: 60;
+  top: 72px;
   left: 50%;
-  bottom: calc(24px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   gap: 8px;
   width: min(420px, calc(100vw - 32px));
   pointer-events: none;
+}
+/* Wide screens: in the toolbar, in the gap between the search box and the buttons */
+@media (min-width: 1300px) {
+  .notices {
+    top: 10px;
+    left: 656px;
+    transform: none;
+    width: min(420px, calc(100vw - 1010px));
+  }
 }
 .notice {
   pointer-events: auto;
@@ -4087,6 +4096,6 @@ a.btn.google.real:hover {
 .notice-x { color: #c7ccd1; display: grid; place-items: center; font-weight: 400; }
 .notice-action:hover, .notice-x:hover { background: rgba(255, 255, 255, 0.12); }
 .spinner { width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; border-radius: 50%; animation: notice-spin 0.8s linear infinite; }
-@keyframes notice-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes notice-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 @keyframes notice-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .notice { animation: none; } .spinner { animation-duration: 2.4s; } }
