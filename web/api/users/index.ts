@@ -1,5 +1,5 @@
 import { adminEmails } from '../_lib/config.js'
-import { dbConfigured, eq, insert, select, update } from '../_lib/db.js'
+import { dbConfigured, eq, insert, remove, select, update } from '../_lib/db.js'
 import { hostOf, json, originOf } from '../_lib/http.js'
 import { roleFor } from '../_lib/users.js'
 import { currentUser } from '../_lib/session.js'
@@ -12,7 +12,7 @@ import type { Me } from '../_lib/session.js'
  *
  * Rules the server keeps whatever the screen does:
  *  - only an administrator may call either (checked against the database on every call);
- *  - nobody changes their own role or status (ask another administrator);
+ *  - nobody changes their own role or status (ask another administrator); an administrator may give themselves a shared mailbox;
  *  - the last active administrator can be neither demoted nor disabled;
  *  - an address in ADMIN_EMAILS stays an administrator (that list is the safety net, set in Vercel);
  *  - a disabled person is refused at once: every request re-reads their status (see currentUser).
@@ -29,7 +29,13 @@ interface Row {
 }
 interface Access {
   user_id: string
-  mail_accounts: { email: string; kind: 'personal' | 'shared' } | null
+  mail_accounts: { id: string; email: string; kind: 'personal' | 'shared' } | null
+}
+interface SharedBox {
+  id: string
+  email: string
+  display_name: string
+  company: 'scl' | 'tmc'
 }
 
 const err = (code: string, status: number) => json({ error: code }, status)
@@ -54,8 +60,9 @@ export async function GET(req: Request): Promise<Response> {
   if (g instanceof Response) return g
   try {
     const rows = await select<Row>('app_users', 'select=id,email,name,company,role,status,last_seen_at,created_at&order=created_at.asc&limit=500')
-    const access = await select<Access>('mailbox_access', 'select=user_id,mail_accounts(email,kind)&limit=5000')
-    const boxes = new Map<string, { email: string; kind: string }[]>()
+    const access = await select<Access>('mailbox_access', 'select=user_id,mail_accounts(id,email,kind)&limit=5000')
+    const sharedBoxes = await select<SharedBox>('mail_accounts', 'kind=eq.shared&select=id,email,display_name,company&order=email.asc&limit=200')
+    const boxes = new Map<string, { id: string; email: string; kind: string }[]>()
     for (const a of access) {
       if (!a.mail_accounts) continue
       const list = boxes.get(a.user_id) ?? []
@@ -75,6 +82,7 @@ export async function GET(req: Request): Promise<Response> {
         createdAt: r.created_at,
         mailboxes: boxes.get(r.id) ?? [],
       })),
+      shared: sharedBoxes.map((b) => ({ id: b.id, email: b.email, name: b.display_name || b.email, company: b.company })),
       you: g.me.id,
     })
   } catch {
@@ -90,8 +98,10 @@ export async function PATCH(req: Request): Promise<Response> {
   const id = typeof b.id === 'string' ? b.id : ''
   const role = b.role === 'admin' || b.role === 'staff' ? b.role : undefined
   const status = b.status === 'active' || b.status === 'disabled' ? b.status : undefined
-  if (!/^[0-9a-f-]{36}$/i.test(id) || (role === undefined && status === undefined) || (b.role !== undefined && role === undefined) || (b.status !== undefined && status === undefined)) return err('invalid', 400)
-  if (id === me.id) return err('self', 409)
+  const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v)
+  const shared = Array.isArray(b.shared) && b.shared.length <= 100 && b.shared.every(uuid) ? [...new Set(b.shared as string[])] : undefined
+  if (!uuid(id) || (role === undefined && status === undefined && shared === undefined) || (b.role !== undefined && role === undefined) || (b.status !== undefined && status === undefined) || (b.shared !== undefined && shared === undefined)) return err('invalid', 400)
+  if (id === me.id && (role !== undefined || status !== undefined)) return err('self', 409)
 
   try {
     const [target] = await select<Row>('app_users', `id=${eq(id)}&select=id,email,name,company,role,status,last_seen_at,created_at`)
@@ -116,6 +126,21 @@ export async function PATCH(req: Request): Promise<Response> {
     if (Object.keys(patch).length > 0) {
       await update('app_users', `id=${eq(id)}`, patch)
       await insert('audit_log', { actor_email: me.email, action: patch.role !== undefined ? 'user.role' : 'user.status', detail: { target: target.email, ...patch } })
+    }
+    if (shared !== undefined) {
+      // Only real shared mailboxes can be given out; anything else is refused before anything changes.
+      const real = new Set((await select<{ id: string }>('mail_accounts', 'kind=eq.shared&select=id&limit=200')).map((x) => x.id))
+      if (!shared.every((x) => real.has(x))) return err('invalid', 400)
+      const have = await select<{ account_id: string; mail_accounts: { kind: string } | null }>('mailbox_access', `user_id=${eq(id)}&select=account_id,mail_accounts(kind)`)
+      const now = new Set(have.filter((h) => h.mail_accounts?.kind === 'shared').map((h) => h.account_id))
+      for (const acc of shared.filter((x) => !now.has(x))) {
+        await insert('mailbox_access', { user_id: id, account_id: acc, granted_by: me.id }, 'user_id,account_id')
+        await insert('audit_log', { actor_email: me.email, action: 'mailbox.grant', account_id: acc, detail: { person: target.email } })
+      }
+      for (const acc of [...now].filter((x) => !shared.includes(x))) {
+        await remove('mailbox_access', `user_id=${eq(id)}&account_id=${eq(acc)}`)
+        await insert('audit_log', { actor_email: me.email, action: 'mailbox.revoke', account_id: acc, detail: { person: target.email } })
+      }
     }
     return json({ ok: true })
   } catch {

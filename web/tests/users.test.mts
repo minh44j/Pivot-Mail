@@ -19,9 +19,14 @@ const T: Record<string, Row[]> = {
     { id: id(3), email: 'ann@pivotscl.com', name: 'Ann', company: 'scl', role: 'staff', status: 'active', last_seen_at: '2026-11-16T08:00:00Z', created_at: '2026-11-03T00:00:00Z' },
     { id: id(4), email: 'maya@pivottmc.com', name: 'Maya', company: 'tmc', role: 'staff', status: 'active', last_seen_at: null, created_at: '2026-11-04T00:00:00Z' },
   ],
+  mail_accounts: [
+    { id: id(21), email: 'ann@pivotscl.com', display_name: 'Ann', company: 'scl', kind: 'personal' },
+    { id: id(22), email: 'sales@pivotscl.com', display_name: 'Sales', company: 'scl', kind: 'shared' },
+    { id: id(23), email: 'pricing@pivotscl.com', display_name: 'Pricing', company: 'scl', kind: 'shared' },
+  ],
   mailbox_access: [
-    { user_id: id(3), mail_accounts: { email: 'ann@pivotscl.com', kind: 'personal' } },
-    { user_id: id(3), mail_accounts: { email: 'sales@pivotscl.com', kind: 'shared' } },
+    { user_id: id(3), account_id: id(21), mail_accounts: { id: id(21), email: 'ann@pivotscl.com', kind: 'personal' } },
+    { user_id: id(3), account_id: id(22), mail_accounts: { id: id(22), email: 'sales@pivotscl.com', kind: 'shared' } },
   ],
   audit_log: [],
 }
@@ -32,9 +37,13 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const filters = [...url.searchParams.entries()].filter(([, v]) => v.startsWith('eq.'))
   const match = (r: Row) => filters.every(([k, v]) => String(r[k]) === decodeURIComponent(v.slice(3)))
   const method = init?.method ?? 'GET'
-  if (method === 'GET') return new Response(JSON.stringify(rows.filter(match)))
+  if (method === 'GET') { const kind = url.searchParams.get('kind'); return new Response(JSON.stringify(rows.filter(match).filter((r) => !kind || r.kind === kind.replace('eq.', '')))) }
+  if (method === 'DELETE') { const hit = rows.filter(match); hit.forEach((r) => rows.splice(rows.indexOf(r), 1)); return new Response(JSON.stringify(hit)) }
   const body = init?.body ? JSON.parse(String(init.body)) : {}
-  if (method === 'POST') { rows.push(body); return new Response(JSON.stringify([body]), { status: 201 }) }
+  if (method === 'POST') {
+    if (table === 'mailbox_access') { if (rows.some((r) => r.user_id === body.user_id && r.account_id === body.account_id)) return new Response(JSON.stringify([body]), { status: 201 }); const acc = T.mail_accounts!.find((a) => a.id === body.account_id); rows.push({ ...body, mail_accounts: acc ? { id: acc.id, email: acc.email, kind: acc.kind } : null }); return new Response(JSON.stringify([body]), { status: 201 }) }
+    rows.push(body); return new Response(JSON.stringify([body]), { status: 201 })
+  }
   if (method === 'PATCH') { const hit = rows.filter(match); hit.forEach((r) => Object.assign(r, body)); return new Response(JSON.stringify(hit)) }
   return new Response('[]', { status: 405 })
 }) as typeof fetch
@@ -79,6 +88,33 @@ ok('but cannot demote themselves, so one administrator always remains', r.status
 row(2).status = 'disabled'
 ok('a disabled administrator can no longer act at all', (await patch(who('adm@pivotscl.com'), { id: id(3), role: 'admin' })).status === 401 && (await get(who('adm@pivotscl.com'))).status === 401)
 row(2).status = 'active'
+
+
+// ---- shared mailboxes (start again from a clean state)
+process.env.ADMIN_EMAILS = 'boss@pivotscl.com'
+row(1).role = 'admin'; row(1).status = 'active'; row(2).role = 'admin'; row(2).status = 'active'; row(3).role = 'staff'; row(3).status = 'active'; row(4).status = 'active'
+r = await get(who('boss@pivotscl.com'))
+j = await r.json()
+ok('the list names every shared mailbox so a person can be given one', j.shared.length === 2 && j.shared.some((b: any) => b.email === 'pricing@pivotscl.com') && j.shared.some((b: any) => b.name === 'Sales'))
+ok('each person lists their mailboxes with ids', j.users.find((u: any) => u.email === 'ann@pivotscl.com').mailboxes.some((m: any) => m.id === id(22) && m.kind === 'shared'))
+const sharedOf = (uid: string) => T.mailbox_access!.filter((a) => a.user_id === uid && a.mail_accounts?.kind === 'shared').map((a) => a.account_id)
+r = await patch(who('boss@pivotscl.com'), { id: id(3), shared: [id(22), id(23)] })
+ok('an administrator gives a person another shared mailbox', r.status === 200 && sharedOf(id(3)).sort().join() === [id(22), id(23)].join() && T.audit_log!.some((a) => a.action === 'mailbox.grant' && a.account_id === id(23)))
+r = await patch(who('boss@pivotscl.com'), { id: id(3), shared: [id(23)] })
+ok('and takes one away', r.status === 200 && sharedOf(id(3)).join() === id(23) && T.audit_log!.some((a) => a.action === 'mailbox.revoke' && a.account_id === id(22)))
+ok('their own mailbox is never touched', T.mailbox_access!.some((a) => a.user_id === id(3) && a.account_id === id(21)))
+r = await patch(who('boss@pivotscl.com'), { id: id(3), shared: [] })
+ok('an empty list removes every shared mailbox but not their own', r.status === 200 && sharedOf(id(3)).length === 0 && T.mailbox_access!.some((a) => a.user_id === id(3) && a.account_id === id(21)))
+const n = T.audit_log!.length
+r = await patch(who('boss@pivotscl.com'), { id: id(3), shared: [id(23)] })
+r = await patch(who('boss@pivotscl.com'), { id: id(3), shared: [id(23)] })
+ok('saving the same list again changes nothing and logs nothing more', T.audit_log!.length === n + 1)
+ok('a personal mailbox cannot be handed out as a shared one', (await patch(who('boss@pivotscl.com'), { id: id(4), shared: [id(21)] })).status === 400 && sharedOf(id(4)).length === 0 && !T.mailbox_access!.some((a) => a.user_id === id(4)))
+ok('an unknown mailbox is refused and nothing changes', (await patch(who('boss@pivotscl.com'), { id: id(4), shared: [id(22), id(99)] })).status === 400 && sharedOf(id(4)).length === 0)
+ok('a list that is not ids is refused', (await patch(who('boss@pivotscl.com'), { id: id(4), shared: ['x'] })).status === 400 && (await patch(who('boss@pivotscl.com'), { id: id(4), shared: 'all' })).status === 400)
+ok('an administrator may give themselves a shared mailbox', (await patch(who('boss@pivotscl.com'), { id: id(1), shared: [id(22)] })).status === 200 && sharedOf(id(1)).join() === id(22))
+ok('but still cannot change their own role in the same call', (await patch(who('boss@pivotscl.com'), { id: id(1), role: 'staff', shared: [] })).status === 409 && sharedOf(id(1)).join() === id(22))
+ok('staff cannot give out mailboxes', (await patch(who('ann@pivotscl.com'), { id: id(4), shared: [id(22)] })).status === 403 && sharedOf(id(4)).length === 0)
 
 // bad input and origin
 ok('a bad id is refused', (await patch(who('adm@pivotscl.com'), { id: 'x', role: 'admin' })).status === 400)

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PEOPLE_ERRORS, changePerson, fetchPeople } from '../users'
-import type { PersonRow } from '../users'
+import type { PersonRow, SharedBox } from '../users'
+import { Icon } from './Icon'
 import { ConfirmDialog } from './ConfirmDialog'
 
 const CO = { scl: 'Shipping', tmc: 'Travel' } as const
@@ -10,6 +11,8 @@ const day = (iso: string): string => new Date(iso).toLocaleDateString('en-GB', {
 export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
   const [people, setPeople] = useState<PersonRow[] | null>(null)
   const [you, setYou] = useState('')
+  const [sharedBoxes, setSharedBoxes] = useState<SharedBox[]>([])
+  const [access, setAccess] = useState<PersonRow | null>(null)
   const [failed, setFailed] = useState<string | null>(null)
   const [q, setQ] = useState('')
   const [confirm, setConfirm] = useState<{ p: PersonRow; to: 'disabled' | 'active' } | null>(null)
@@ -20,6 +23,7 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
       if (r.ok) {
         setPeople(r.data.users)
         setYou(r.data.you)
+        setSharedBoxes(r.data.shared ?? [])
         setFailed(null)
       } else setFailed(PEOPLE_ERRORS[r.error] ?? PEOPLE_ERRORS.unavailable ?? 'Could not load the people.')
     })
@@ -36,7 +40,7 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
     return { active: l.filter((p) => p.status !== 'disabled').length, off: l.filter((p) => p.status === 'disabled').length, admins: l.filter((p) => p.role === 'admin' && p.status !== 'disabled').length }
   }, [people])
 
-  const apply = async (p: PersonRow, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled' }, done: string) => {
+  const apply = async (p: PersonRow, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled'; shared?: string[] }, done: string) => {
     setBusy(p.id)
     const r = await changePerson(p.id, change)
     setBusy(null)
@@ -106,9 +110,9 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
                       Admin
                     </button>
                   </div>
-                  <span className="user-access muted">
-                    {own === 0 && shared.length === 0 ? 'No mailbox connected yet' : `${own} own${shared.length > 0 ? ` · shared: ${shared.map((s) => s.email.split('@')[0]).join(', ')}` : ''}`}
-                  </span>
+                  <button type="button" className="link user-access" onClick={() => setAccess(u)} aria-label={`Shared mailboxes for ${u.name || u.email}`} disabled={off}>
+                    {own === 0 && shared.length === 0 ? 'No mailbox connected yet' : `${own} own${shared.length > 0 ? ` · shared: ${shared.map((s) => s.email.split('@')[0]).join(', ')}` : ' · no shared mailbox'}`}
+                  </button>
                   <span className={`status-chip ${off ? 'disabled' : 'active'}`}>{off ? 'Turned off' : u.lastSeenAt ? `Active · ${day(u.lastSeenAt)}` : 'Never signed in'}</span>
                   <button type="button" className="btn" disabled={me || busy === u.id} onClick={() => (off ? void apply(u, { status: 'active' }, `${u.name || u.email} can sign in again`) : setConfirm({ p: u, to: 'disabled' }))}>
                     {off ? 'Turn on' : 'Turn off'}
@@ -121,6 +125,18 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
         </>
       )}
 
+      {access && (
+        <SharedDialog
+          person={access}
+          boxes={sharedBoxes}
+          onClose={() => setAccess(null)}
+          onSave={(ids) => {
+            const p = access
+            setAccess(null)
+            void apply(p, { shared: ids }, `Shared mailboxes updated for ${p.name || p.email}`)
+          }}
+        />
+      )}
       {confirm && (
         <ConfirmDialog
           title="Turn off access"
@@ -137,5 +153,66 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
         </ConfirmDialog>
       )}
     </section>
+  )
+}
+
+/** Tick the shared mailboxes a person may open. Their own mailbox is always theirs and is not listed. */
+function SharedDialog({ person, boxes, onSave, onClose }: { person: PersonRow; boxes: SharedBox[]; onSave: (ids: string[]) => void; onClose: () => void }) {
+  const [picked, setPicked] = useState<string[]>(person.mailboxes.filter((m) => m.kind === 'shared').map((m) => m.id))
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form
+        className="modal small"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sh-title"
+        onSubmit={(e) => {
+          e.preventDefault()
+          onSave(picked)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.stopPropagation()
+            onClose()
+          }
+        }}
+      >
+        <div className="modal-head">
+          <h2 id="sh-title">Shared mailboxes · {person.name || person.email}</h2>
+          <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
+            <Icon name="close" />
+          </button>
+        </div>
+        <div className="modal-body">
+          <p className="muted">Their own mailbox is always theirs. Choose which shared mailboxes they can also open and work in.</p>
+          {boxes.length === 0 ? (
+            <p className="notice" role="note">
+              There is no shared mailbox yet. Add one from the folder list: <strong>Add account</strong>, then choose <strong>Shared mailbox</strong> and sign in as that mailbox.
+            </p>
+          ) : (
+            <fieldset className="checks">
+              <legend>Shared mailboxes</legend>
+              {boxes.map((b) => (
+                <label key={b.id} className="check">
+                  <input type="checkbox" checked={picked.includes(b.id)} onChange={() => toggle(b.id)} />
+                  <span>
+                    {b.name} <small>{b.email}</small>
+                  </span>
+                </label>
+              ))}
+            </fieldset>
+          )}
+          <div className="modal-actions">
+            <button type="button" className="btn" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="btn primary" autoFocus disabled={boxes.length === 0}>
+              Save
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
   )
 }

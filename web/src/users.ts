@@ -10,7 +10,15 @@ export interface PersonRow {
   status: 'invited' | 'active' | 'disabled'
   lastSeenAt: string | null
   createdAt: string
-  mailboxes: { email: string; kind: 'personal' | 'shared' }[]
+  mailboxes: { id: string; email: string; kind: 'personal' | 'shared' }[]
+}
+
+/** A shared mailbox an administrator can give people access to. */
+export interface SharedBox {
+  id: string
+  email: string
+  name: string
+  company: 'scl' | 'tmc'
 }
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -26,8 +34,8 @@ async function call<T>(method: string, body?: unknown): Promise<Result<T>> {
   }
 }
 
-export const fetchPeople = () => call<{ users: PersonRow[]; you: string }>('GET')
-export const changePerson = (id: string, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled' }) => call<{ ok: true }>('PATCH', { id, ...change })
+export const fetchPeople = () => call<{ users: PersonRow[]; shared: SharedBox[]; you: string }>('GET')
+export const changePerson = (id: string, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled'; shared?: string[] }) => call<{ ok: true }>('PATCH', { id, ...change })
 
 export const PEOPLE_ERRORS: Record<string, string> = {
   self: 'You cannot change your own role or access. Ask another administrator.',
