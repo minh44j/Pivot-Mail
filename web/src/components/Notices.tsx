@@ -24,15 +24,15 @@ export function Notices({ notices, onDismiss, lead }: Props) {
     <div className="notices" aria-live="polite">
       {lead}
       {notices.map((n) => (
-        <div key={n.id} className={`notice ${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}>
-          <span className="notice-icon" aria-hidden="true">
+        <div key={n.id} className={`status-card ${n.kind}`} role={n.kind === 'error' ? 'alert' : 'status'}>
+          <span className="status-card-icon" aria-hidden="true">
             {n.kind === 'progress' ? <span className="spinner" /> : <Icon name={n.kind === 'success' ? 'check' : n.kind === 'error' ? 'important' : 'bell'} size={16} />}
           </span>
-          <span className="notice-text">{n.text}</span>
+          <span className="status-card-text">{n.text}</span>
           {n.action && (
             <button
               type="button"
-              className="notice-action"
+              className="status-card-action"
               onClick={() => {
                 n.action?.onClick()
                 onDismiss(n.id)
@@ -42,7 +42,7 @@ export function Notices({ notices, onDismiss, lead }: Props) {
             </button>
           )}
           {n.kind !== 'progress' && (
-            <button type="button" className="notice-x" aria-label="Dismiss" onClick={() => onDismiss(n.id)}>
+            <button type="button" className="status-card-x" aria-label="Dismiss" onClick={() => onDismiss(n.id)}>
               <Icon name="close" size={14} />
             </button>
           )}

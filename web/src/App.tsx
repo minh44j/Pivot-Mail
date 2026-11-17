@@ -2166,12 +2166,12 @@ export default function App() {
       )}
       <Notices notices={notices} onDismiss={dismissNotice} lead={
             pendingSend ? (
-              <div className="notice progress" role="status">
-                <span className="notice-icon" aria-hidden="true">
+              <div className="status-card progress" role="status">
+                <span className="status-card-icon" aria-hidden="true">
                   <span className="spinner" />
                 </span>
-                <span className="notice-text">Sending…</span>
-                <button type="button" className="notice-action" onClick={undoSend}>
+                <span className="status-card-text">Sending…</span>
+                <button type="button" className="status-card-action" onClick={undoSend}>
                   Undo
                 </button>
               </div>

@@ -4066,36 +4066,35 @@ a.btn.google.real:hover {
 /* Wide screens: in the toolbar, in the gap between the search box and the buttons */
 @media (min-width: 1300px) {
   .notices {
-    top: 10px;
+    top: 15px;
     left: 656px;
     transform: none;
     width: min(420px, calc(100vw - 1010px));
   }
 }
-.notice {
+.status-card {
   pointer-events: auto;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  box-sizing: border-box;
+  height: 34px;
+  padding: 0 6px 0 10px;
   border-radius: var(--r-md);
   background: #1f2328;
   color: #fff;
   box-shadow: var(--shadow);
-  border-left: 4px solid #8a8f98;
-  animation: notice-in 0.18s ease-out;
+  animation: status-card-in 0.18s ease-out;
 }
-.notice.success { border-left-color: #1fa971; }
-.notice.error { border-left-color: #e5484d; background: #3a1a1c; }
-.notice.progress { border-left-color: #3b82f6; }
-.notice-icon { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; }
-.notice.success .notice-icon { background: #1fa971; }
-.notice.error .notice-icon { background: #e5484d; }
-.notice-text { flex: 1; min-width: 0; font-size: 14px; line-height: 1.35; }
-.notice-action, .notice-x { border: 0; background: none; color: #9ecbff; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
-.notice-x { color: #c7ccd1; display: grid; place-items: center; font-weight: 400; }
-.notice-action:hover, .notice-x:hover { background: rgba(255, 255, 255, 0.12); }
-.spinner { width: 16px; height: 16px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; border-radius: 50%; animation: notice-spin 0.8s linear infinite; }
-@keyframes notice-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
-@keyframes notice-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .notice { animation: none; } .spinner { animation-duration: 2.4s; } }
+.status-card.error { background: #3a1a1c; }
+.status-card-icon { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; }
+.status-card.success .status-card-icon { background: #1fa971; }
+.status-card.error .status-card-icon { background: #e5484d; }
+.status-card-text { flex: 1; text-align: left; min-width: 0; font-size: 14px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status-card-action, .status-card-x { border: 0; background: none; color: #9ecbff; font-weight: 600; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.status-card-x { color: #c7ccd1; display: grid; place-items: center; font-weight: 400; }
+.status-card-action:hover, .status-card-x:hover { background: rgba(255, 255, 255, 0.12); }
+.spinner { width: 14px; height: 14px; border: 2px solid rgba(255, 255, 255, 0.3); border-top-color: #fff; border-radius: 50%; animation: status-card-spin 0.8s linear infinite; }
+@keyframes status-card-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
+@keyframes status-card-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .status-card { animation: none; } .spinner { animation-duration: 2.4s; } }
