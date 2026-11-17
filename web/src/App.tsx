@@ -1884,30 +1884,6 @@ export default function App() {
       </div>
     )
   if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
-  // Signed in, but no mailbox connected yet: a welcome screen with one clear next step.
-  if (authUser && accountsTried && realAccounts !== null && realAccounts.length === 0 && screen === 'mail') {
-    return (
-      <>
-        <Welcome
-          name={authUser.name || authUser.email.split('@')[0] || ''}
-          email={authUser.email}
-          company={authUser.company === 'tmc' ? 'tmc' : 'scl'}
-          onOther={() => setConnectDlg('new')}
-          onSignOut={() => {
-            void platform.cache.clearAll().then(() => signOut()).then(() => {
-              setAuthUser(null)
-              setAuthError(null)
-              setMessages([])
-              setRealAccounts(null)
-              setEntered(false)
-            })
-          }}
-        />
-        {connectDlg && <ConnectDialog isAdmin={role === 'admin'} initial={connectDlg === 'new' ? undefined : connectDlg} onClose={() => setConnectDlg(null)} />}
-        <Notices notices={notices} onDismiss={dismissNotice} />
-      </>
-    )
-  }
 
   if (sim === 'expired' || sim === 'denied') {
     return <StatusScreen kind={sim} account={accountList[0]?.email ?? ''} onAction={() => setSim(null)} />
@@ -1986,12 +1962,17 @@ export default function App() {
           : `Nothing here from the last ${windowDays} days.${gi && gi !== 'error' ? ` Search to look further back: Gmail holds ${gi.total.toLocaleString()} messages in total.` : ''}`
   const emptyText = realMode && (!query.trim() || syncing) ? realEmpty : query.trim() ? `No results for “${query.trim()}”` : smart.length > 0 ? 'No messages match these filters' : 'Nothing in this folder'
 
+  /** Signed in, but no mailbox connected yet: the usual screen, with a welcome in place of the mail. */
+  const noMailbox = Boolean(authUser) && accountsTried && realAccounts !== null && realAccounts.length === 0
+
   return (
     <SettingsContext.Provider value={settingsValue}>
     <>
-    <a className="skip-link" href="#message-list" onClick={(e) => { e.preventDefault(); document.getElementById('message-list')?.focus() }}>
+    {!noMailbox && (
+        <a className="skip-link" href="#message-list" onClick={(e) => { e.preventDefault(); document.getElementById('message-list')?.focus() }}>
       Skip to message list
     </a>
+    )}
     <div className={`app${sim === 'offline' || !netOnline || sim === 'syncfail' || sim === 'ratelimit' ? ' has-banner' : ''}`} data-density={density}>
       <Toolbar
         query={query}
@@ -2066,7 +2047,7 @@ export default function App() {
       {(!online || sim === 'syncfail' || sim === 'ratelimit') && (
         <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} detail={syncDetail} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
       )}
-      <main className="workspace" data-pane={pane} data-view={view} data-folders={foldersOpen ? "on" : "off"}>
+      <main className="workspace" data-pane={pane} data-view={noMailbox ? 'welcome' : view} data-folders={foldersOpen ? "on" : "off"}>
         <FolderPane
           accounts={accountList}
           sample={!realMode}
@@ -2103,6 +2084,15 @@ export default function App() {
           }}
           onDropMessage={dropMessages}
         />
+        {noMailbox && authUser ? (
+          <Welcome
+            name={authUser.name || authUser.email.split('@')[0] || ''}
+            email={authUser.email}
+            company={authUser.company === 'tmc' ? 'tmc' : 'scl'}
+            onOther={() => setConnectDlg('new')}
+          />
+        ) : (
+          <>
         <MessageList
           chips={queryChips}
           onRemoveChip={removeChip}
@@ -2188,6 +2178,8 @@ export default function App() {
             flagged={Boolean(selectedRow?.msg.flagged)}
             unread={Boolean(selectedRow?.unread)}
           />
+        )}
+          </>
         )}
       </main>
       {compose && (
