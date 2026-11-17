@@ -37,6 +37,8 @@ import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
 import { DetailsPanel } from './components/DetailsPanel'
+import { fetchWeather } from './weather'
+import type { Weather } from './weather'
 import { Notices } from './components/Notices'
 import type { HistoryItem } from './components/Toolbar'
 import type { Notice, NoticeKind } from './components/Notices'
@@ -158,6 +160,8 @@ export default function App() {
   /** The last notices, kept for the bell in the top bar */
   const [noticeLog, setNoticeLog] = useState<HistoryItem[]>([])
   const [seenLog, setSeenLog] = useState(0)
+  const [city, setCity] = usePersisted<string>('pm.city', 'Manama', (v) => v.length <= 60)
+  const [weather, setWeather] = useState<Weather | null>(null)
   const [detailsOpen, setDetailsOpen] = usePersisted<boolean>('pm.details', true, (v) => v === 'true' || v === 'false')
   const [foldersOpen, setFoldersOpen] = usePersisted<boolean>('pm.folders', true, (v) => v === 'true' || v === 'false')
   const [notif, setNotif] = useState(platform.notificationState())
@@ -206,6 +210,16 @@ export default function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let alive = true
+    const load = () => void fetchWeather(city).then((w) => alive && setWeather(w))
+    load()
+    const t = window.setInterval(load, 30 * 60_000)
+    return () => {
+      alive = false
+      window.clearInterval(t)
+    }
+  }, [city])
   const dismissNotice = useCallback((id: number) => setNotices((l) => l.filter((n) => n.id !== id)), [])
   /** One status card. Wording that says something went wrong is shown as an error without every caller having to say so. */
   const showToast = useCallback(
@@ -1874,6 +1888,8 @@ export default function App() {
           }}
           notifications={notif}
           onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
+          city={city}
+          onCity={setCity}
           undoDelay={undoDelay}
           onUndoDelay={setUndoDelay}
           onBack={() => setScreen('mail')}
@@ -1955,6 +1971,11 @@ export default function App() {
         onSettings={() => setScreen('settings')}
         onHelp={() => setHelp(true)}
         registerSearch={setSearchEl}
+        weather={weather}
+        subtitle={[authUser ? (role === 'admin' ? 'Administrator' : 'Staff') : 'Preview', authUser ? (authUser.company === 'tmc' ? 'Pivot Travel Management' : 'Pivot Shipping') : ''].filter(Boolean).join(' · ')}
+        refs={(cases[accountId] ?? []).slice(0, 8).map((r) => ({ ref: r, client: caseNames?.[r] }))}
+        onOpenRef={(ref) => goTo({ accountId, kind: 'case', id: ref })}
+        onCopyRef={(ref) => void platform.copyText(ref).then((ok) => showToast(ok ? `${ref} copied` : 'Copy was blocked by the browser'))}
         userName={authUser?.name?.trim() || (authUser ? authUser.email.split('@')[0] ?? '' : 'Staff')}
         history={noticeLog}
         unseen={noticeLog.filter((h) => h.id > seenLog).length}

@@ -4394,3 +4394,23 @@ button.ref-chip:hover { background: #cdeee1; }
   .cb:not(.cb-more) .cb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .cb { padding: 0 9px; }
 }
+
+/* ---- avatar pill with weather, greeting and role ---- */
+.tp-avatar { gap: 12px; height: 48px; padding: 0 10px 0 14px; border: 1px solid var(--separator); border-radius: 999px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+.tp-avatar:hover, .tp-avatar[aria-expanded='true'] { background: #fff; border-color: #c4c8cf; }
+.tp-weather { display: none; align-items: center; gap: 6px; padding-right: 12px; border-right: 1px solid var(--separator); color: var(--label-2); font-size: 14px; font-variant-numeric: tabular-nums; }
+.tp-who { display: none; flex-direction: column; align-items: flex-start; line-height: 1.2; text-align: left; }
+.tp-greet { display: block; font-size: 15px; font-weight: 400; }
+.tp-greet strong { font-weight: 700; }
+.tp-sub { font-size: 11px; font-weight: 500; letter-spacing: 0.05em; text-transform: uppercase; color: var(--label-2); }
+.tp-avatar-icon { width: 38px; height: 38px; background: var(--brand-navy); color: #fff; font-size: 13px; }
+@media (min-width: 1180px) { .tp-weather { display: inline-flex; } .tp-who { display: flex; } .tp-greet { display: block; } }
+@media (max-width: 1179px) { .tp-avatar { height: 40px; padding: 0 6px 0 4px; gap: 6px; border-color: transparent; background: none; box-shadow: none; } .tp-avatar-icon { width: 30px; height: 30px; } }
+.ref-item { display: flex; align-items: center; }
+.ref-item .menu-item { flex: 1; min-width: 0; }
+.ref-item-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.ref-item-text small { color: var(--label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ref-copy { display: grid; place-items: center; flex: none; width: 30px; height: 30px; margin-right: 2px; border: 0; border-radius: var(--r-sm); background: none; color: var(--label-2); }
+.ref-copy:hover { background: var(--fill); color: var(--label); }
+.settings .input { width: 220px; max-width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid var(--separator); border-radius: var(--r-md); background: #fff; color: var(--label); }
+.settings .input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }

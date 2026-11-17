@@ -9,6 +9,7 @@ import { Icon } from './Icon'
 import { SearchBox } from './SearchBox'
 import type { IconName, Tone } from './Icon'
 import type { Notice } from './Notices'
+import type { Weather } from '../weather'
 
 export interface HistoryItem {
   id: number
@@ -72,9 +73,16 @@ interface Props {
   onClearHistory: () => void
   onToggleFolders: () => void
   foldersOpen: boolean
+  weather: Weather | null
+  /** Line under the name: role and company */
+  subtitle: string
+  /** Reference numbers of the current company, newest first (the Ref No. menu) */
+  refs: { ref: string; client?: string }[]
+  onOpenRef: (ref: string) => void
+  onCopyRef: (ref: string) => void
 }
 
-const greeting = (d = new Date()): string => (d.getHours() < 12 ? 'Morning' : d.getHours() < 17 ? 'Afternoon' : 'Evening')
+const greeting = (d = new Date()): string => (d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening')
 
 function Menu(props: { label: string; className?: string; trigger: (open: boolean) => ReactNode; onOpen?: () => void; align?: 'left' | 'right'; children: (close: () => void) => ReactNode }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
@@ -314,11 +322,20 @@ export function Toolbar(p: Props) {
             align="right"
             trigger={() => (
               <>
+                {p.weather && (
+                  <span className="tp-weather" title="Current weather">
+                    <Icon name={p.weather.kind} size={17} />
+                    <span>{p.weather.temp}°</span>
+                  </span>
+                )}
+                <span className="tp-who">
+                  <span className="tp-greet">
+                    <strong>{greeting()},</strong> {first}
+                  </span>
+                  <span className="tp-sub">{p.subtitle}</span>
+                </span>
                 <span className="tp-avatar-icon" aria-hidden="true">
                   {p.userName.trim() ? initials(p.userName) : <Icon name="user" size={16} />}
-                </span>
-                <span className="tp-greet">
-                  {greeting()}, {first}
                 </span>
                 <Icon name="chevron" size={12} />
               </>
@@ -447,7 +464,57 @@ export function Toolbar(p: Props) {
           </button>
         </div>
         <div className="cb-tools">
-          <Cmd icon="hash" tone="teal" label="Ref No." onClick={p.onRef} />
+          <Menu label="Ref No." className="cb" trigger={() => (
+            <>
+              <Icon name="hash" size={17} tone="teal" />
+              <span className="cb-label">Ref No.</span>
+              <Icon name="chevron" size={12} />
+            </>
+          )}>
+            {(close) => (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onRef()
+                    close()
+                  }}
+                >
+                  <span className="ph">
+                    <Icon name="plus" size={14} />
+                  </span>
+                  New reference number…
+                </button>
+                <div className="menu-sep" role="separator" />
+                <div className="menu-head">Recent reference numbers</div>
+                {p.refs.length === 0 && <div className="menu-note">None yet. Create one above.</div>}
+                {p.refs.map((r) => (
+                  <div key={r.ref} className="ref-item">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item"
+                      onClick={() => {
+                        p.onOpenRef(r.ref)
+                        close()
+                      }}
+                    >
+                      <span className="ph" />
+                      <span className="ref-item-text">
+                        <strong>{r.ref}</strong>
+                        {r.client && <small>{r.client}</small>}
+                      </span>
+                    </button>
+                    <button type="button" className="ref-copy" aria-label={`Copy ${r.ref}`} onClick={() => p.onCopyRef(r.ref)}>
+                      <Icon name="copy" size={14} />
+                    </button>
+                  </div>
+                ))}
+              </>
+            )}
+          </Menu>
           <Menu label="Templates" className="cb" trigger={() => (
             <>
               <Icon name="template" size={17} tone="purple" />

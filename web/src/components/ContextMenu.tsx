@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { Colour } from '../types'
 import { useSettings } from '../settings'
 import { Icon } from './Icon'
@@ -21,6 +21,16 @@ interface Props {
 export function ContextMenu({ x, y, entries, onClose }: Props) {
   const { colours } = useSettings()
   const ref = useRef<HTMLDivElement>(null)
+
+  // Keep the whole menu on screen whatever its height (measured after it is drawn).
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    el.style.maxHeight = `${window.innerHeight - 16}px`
+    el.style.overflowY = 'auto'
+    const h = el.getBoundingClientRect().height
+    el.style.top = `${Math.max(8, Math.min(y, window.innerHeight - h - 8))}px`
+  }, [y, entries.length])
 
   useEffect(() => {
     const el = ref.current

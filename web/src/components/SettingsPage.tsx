@@ -33,6 +33,8 @@ interface Props {
   onShowSmart: (v: boolean) => void
   notifications: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
+  city: string
+  onCity: (v: string) => void
   undoDelay: string
   onUndoDelay: (v: string) => void
   onBack: () => void
@@ -236,6 +238,9 @@ export function SettingsPage(p: Props) {
                     { id: 'compact', label: 'Compact' },
                   ]}
                 />
+              </Row>
+              <Row title="Weather city" hint="Shown next to your name. Only the city name is sent to the weather service. Leave empty to hide it.">
+                <input className="input" value={p.city} maxLength={60} onChange={(e) => p.onCity(e.target.value)} aria-label="Weather city" placeholder="e.g. Manama" />
               </Row>
               <Row title="Undo send" hint="Hold a sent message for a moment so you can take it back.">
                 <Segmented
