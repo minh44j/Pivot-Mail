@@ -4002,3 +4002,15 @@ a.btn.google.real:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Shown while the server confirms who is signed in */
+.splash {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: #fff;
+}
+.splash img {
+  width: min(220px, 60vw);
+  height: auto;
+}

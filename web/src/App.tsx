@@ -6,6 +6,7 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
+import logoLockup from './assets/brand/logo-lockup.png'
 import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
@@ -161,6 +162,8 @@ export default function App() {
   const [colourNames, setColourNames] = useStored<Record<string, string>>('pm.colours', {}, isRecord)
   const [roleState, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  /** False until the server has said whether someone is signed in, so the sign-in page does not flash first. */
+  const [sessionChecked, setSessionChecked] = useState(false)
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null)
   const [authError, setAuthError] = useState<string | null>(() => new URLSearchParams(window.location.search).get('auth_error'))
   // A signed-in person's role comes from the server. Only administrators may preview the staff view.
@@ -406,6 +409,7 @@ export default function App() {
     void fetchAuthConfig().then(setAuthConfig)
     void fetchSession().then((u) => {
       setAuthUser(u)
+      setSessionChecked(true)
       if (!u) return
       setMessages([]) // a real person never sees the sample mail
       void loadCases()
@@ -1795,6 +1799,7 @@ export default function App() {
   const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? 'All inboxes' : sel.id
   const showReader = pane !== 'off'
 
+  if (!sessionChecked && !entered) return <div className="splash" role="status" aria-label="Loading Pivot Mail"><img src={logoLockup} alt="" /></div>
   if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
 
   if (sim === 'expired' || sim === 'denied') {
