@@ -38,6 +38,7 @@ import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
 import { DetailsPanel } from './components/DetailsPanel'
+import { Welcome } from './components/Welcome'
 import { fetchWeather } from './weather'
 import type { Weather } from './weather'
 import { Notices } from './components/Notices'
@@ -1883,6 +1884,30 @@ export default function App() {
       </div>
     )
   if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
+  // Signed in, but no mailbox connected yet: a welcome screen with one clear next step.
+  if (authUser && accountsTried && realAccounts !== null && realAccounts.length === 0 && screen === 'mail') {
+    return (
+      <>
+        <Welcome
+          name={authUser.name || authUser.email.split('@')[0] || ''}
+          email={authUser.email}
+          company={authUser.company === 'tmc' ? 'tmc' : 'scl'}
+          onOther={() => setConnectDlg('new')}
+          onSignOut={() => {
+            void platform.cache.clearAll().then(() => signOut()).then(() => {
+              setAuthUser(null)
+              setAuthError(null)
+              setMessages([])
+              setRealAccounts(null)
+              setEntered(false)
+            })
+          }}
+        />
+        {connectDlg && <ConnectDialog isAdmin={role === 'admin'} initial={connectDlg === 'new' ? undefined : connectDlg} onClose={() => setConnectDlg(null)} />}
+        <Notices notices={notices} onDismiss={dismissNotice} />
+      </>
+    )
+  }
 
   if (sim === 'expired' || sim === 'denied') {
     return <StatusScreen kind={sim} account={accountList[0]?.email ?? ''} onAction={() => setSim(null)} />
