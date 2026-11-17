@@ -13,6 +13,13 @@ export interface OutAttachment {
   bytes: Uint8Array
 }
 
+export interface OutInline {
+  /** Content-ID without brackets, used in the HTML as cid:<cid> */
+  cid: string
+  mime: string
+  bytes: Uint8Array
+}
+
 export interface OutMessage {
   from: Addr
   to: Addr[]
@@ -22,6 +29,8 @@ export interface OutMessage {
   html: string
   text: string
   attachments: OutAttachment[]
+  /** Images shown inside the body (the HTML refers to them as cid:...) */
+  inline?: OutInline[]
   inReplyTo?: string
   references?: string
   date?: Date
@@ -100,6 +109,28 @@ export function outgoingHtml(html: string): string {
   return `<!doctype html><html><body>${body}</body></html>`
 }
 
+/**
+ * Images pasted or quoted into the composer arrive as data: addresses, which Gmail and most mail apps do not
+ * show. They are moved out of the HTML into real inline parts, and the HTML points to them as cid:...
+ */
+export function extractInlineImages(html: string): { html: string; images: OutInline[] } {
+  const images: OutInline[] = []
+  const out = html.replace(/(<img\b[^>]*?\ssrc\s*=\s*["'])data:image\/(png|jpe?g|gif|webp);base64,([a-z0-9+/=\s]+)(["'])/gi, (_all, pre: string, kind: string, data: string, q: string) => {
+    let bin: string
+    try {
+      bin = atob(data.replace(/\s+/g, ''))
+    } catch {
+      return `${pre}${q}`
+    }
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    const cid = `pm-img-${images.length + 1}-${Math.random().toString(36).slice(2, 8)}@pivotmail`
+    images.push({ cid, mime: `image/${kind.toLowerCase() === 'jpg' ? 'jpeg' : kind.toLowerCase()}`, bytes })
+    return `${pre}cid:${cid}${q}`
+  })
+  return { html: out, images }
+}
+
 function part(type: string, body: string): string {
   return [`Content-Type: ${type}; charset=UTF-8`, 'Content-Transfer-Encoding: base64', '', wrap64(b64(utf8(body)))].join(CRLF)
 }
@@ -118,7 +149,17 @@ export function buildMime(m: OutMessage): string {
   if (m.references) headers.push(`References: ${clean(m.references).split(/\s+/).join(`${CRLF} `)}`)
 
   const altB = boundary()
-  const alternative = [`--${altB}`, part('text/plain', m.text), `--${altB}`, part('text/html', m.html), `--${altB}--`].join(CRLF)
+  const inline = m.inline ?? []
+  // With inline images the HTML and its pictures travel together in multipart/related.
+  let htmlPart = part('text/html', m.html)
+  if (inline.length > 0) {
+    const relB = boundary()
+    const pics = inline.map((i) =>
+      [`--${relB}`, `Content-Type: ${clean(i.mime)}`, 'Content-Transfer-Encoding: base64', `Content-ID: <${clean(i.cid)}>`, 'Content-Disposition: inline', '', wrap64(b64(i.bytes))].join(CRLF),
+    )
+    htmlPart = [`Content-Type: multipart/related; boundary="${relB}"`, '', `--${relB}`, part('text/html', m.html), ...pics, `--${relB}--`].join(CRLF)
+  }
+  const alternative = [`--${altB}`, part('text/plain', m.text), `--${altB}`, htmlPart, `--${altB}--`].join(CRLF)
 
   if (m.attachments.length === 0) return [...headers, `Content-Type: multipart/alternative; boundary="${altB}"`, '', alternative, ''].join(CRLF)
 

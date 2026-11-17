@@ -1,4 +1,4 @@
-import { buildMime, encodeHeaderText, formatAddress, outgoingHtml, parseRecipients, toRaw } from '../src/gmail/compose'
+import { buildMime, encodeHeaderText, extractInlineImages, formatAddress, outgoingHtml, parseRecipients, toRaw } from '../src/gmail/compose'
 import { decodeWords, parseAddresses } from '../src/gmail/mime'
 
 let pass = 0, fail = 0
@@ -82,6 +82,25 @@ ok('composer markers are stripped before sending', !/data-sig|data-quote|content
 const r = toRaw('Subject: Hello?\r\n\r\n>>>???')
 ok('raw is URL-safe base64 without padding', !/[+/=]/.test(r) && Buffer.from(r, 'base64url').toString() === 'Subject: Hello?\r\n\r\n>>>???')
 ok('encodeHeaderText leaves short ASCII alone', encodeHeaderText('Plain subject') === 'Plain subject')
+
+
+// ---- images inside the message (inline, cid:)
+const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg=='
+const withImg = `<p>Hi</p><div><img alt="logo" src="data:image/png;base64,${PNG}" width="40"><img src="https://x.example/a.png"><img src='data:image/jpeg;base64,${PNG}'></div>`
+const ex = extractInlineImages(withImg)
+ok('pasted pictures become inline parts, https pictures stay as they are', ex.images.length === 2 && ex.images[0]!.mime === 'image/png' && ex.images[1]!.mime === 'image/jpeg' && ex.html.includes('https://x.example/a.png'))
+ok('the HTML no longer carries the picture bytes', !ex.html.includes('data:image') && ex.html.includes(`src="cid:${ex.images[0]!.cid}"`) && ex.html.includes(`src='cid:${ex.images[1]!.cid}'`))
+ok('the bytes are the original picture', Buffer.from(ex.images[0]!.bytes).toString('base64') === PNG)
+ok('broken base64 does not throw and drops the source', extractInlineImages('<img src="data:image/png;base64,@@@@">').images.length === 0)
+ok('other data: addresses are never turned into parts', extractInlineImages('<img src="data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=">').images.length === 0)
+raw = buildMime({ ...base, html: ex.html, inline: ex.images })
+ok('a message with pictures is multipart/alternative with a multipart/related HTML', /multipart\/alternative/.test(raw) && /Content-Type: multipart\/related; boundary="/.test(raw))
+ok('each picture has its Content-ID and is marked inline', ex.images.every((i) => raw.includes(`Content-ID: <${i.cid}>`)) && (raw.match(/Content-Disposition: inline/g) ?? []).length === 2)
+ok('the plain-text part comes first, then the related HTML', raw.indexOf('text/plain') < raw.indexOf('multipart/related'))
+ok('the picture data is in the message as base64', raw.includes(PNG.slice(0, 40)))
+raw = buildMime({ ...base, attachments: [{ name: 'a.pdf', mime: 'application/pdf', bytes: new Uint8Array([1, 2, 3]) }], html: ex.html, inline: ex.images })
+ok('with a file attached too: mixed outside, related inside', raw.indexOf('multipart/mixed') < raw.indexOf('multipart/related') && raw.includes('filename="a.pdf"'))
+ok('without pictures nothing changes', !buildMime({ ...base }).includes('multipart/related'))
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

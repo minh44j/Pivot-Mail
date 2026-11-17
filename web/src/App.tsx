@@ -24,7 +24,8 @@ import { fetchChanges } from './gmail/history'
 import type { Changes } from './gmail/history'
 import { applyLabelIds } from './gmail/map'
 import { createLabel, createDraft, deleteDraft, deleteLabel, listDrafts, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
-import { buildMime, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
+import { buildMime, extractInlineImages, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
+import { inlineImageUri } from './gmail/inline'
 import type { OutAttachment } from './gmail/compose'
 import { forThreads, gid, labelsOn, moveThread, threadsOf } from './gmail/ops'
 import { ensureBytes, mockBytes } from './data/mockfile'
@@ -982,6 +983,7 @@ export default function App() {
       files.push({ name: at.name, mime: at.mime, bytes })
     }
     if (total > 25 * 1024 * 1024) throw new Error('toolarge')
+    const inlineOut = extractInlineImages(outgoingHtml(d.body))
     return toRaw(
       buildMime({
         from: { name: acc.name, email: acc.email },
@@ -989,7 +991,8 @@ export default function App() {
         cc: parseRecipients(d.cc),
         bcc: parseRecipients(d.bcc),
         subject: d.subject.trim() || '(no subject)',
-        html: outgoingHtml(d.body),
+        html: inlineOut.html,
+        inline: inlineOut.images,
         text: htmlToPlain(d.body, true),
         attachments: files,
         inReplyTo: d.reply?.messageId || undefined,
@@ -1260,11 +1263,23 @@ export default function App() {
     const d = new Date(m.date)
     return `${d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} ${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
   }
+  /** Puts the pictures that belong inside a message (cid:) into its HTML so they survive in a reply or forward. */
+  const withPictures = (html: string, pictures?: Record<string, string>): string =>
+    pictures ? html.replace(/(\ssrc\s*=\s*["']?)cid:([^"'\s>]+)/gi, (all, pre: string, cid: string) => (pictures[cid.toLowerCase()] ? `${pre}${pictures[cid.toLowerCase()]}` : all)) : html
+  /** The quote with its inline pictures, waiting a few seconds at most for them. */
+  const quoteFull = async (m: Message): Promise<string> => {
+    const items = Object.entries(m.inline ?? {})
+    if (!m.html || m.loaded === false || items.length === 0) return quote(m)
+    const fetched = Promise.all(items.map(async ([cid, img]) => [cid, await inlineImageUri(img)] as const))
+    const got = await Promise.race([fetched, new Promise<null>((res) => window.setTimeout(() => res(null), 4000))])
+    const pictures = got ? Object.fromEntries(got.filter((x): x is readonly [string, string] => x[1] !== null)) : undefined
+    return quote(m, pictures)
+  }
   /** Outlook-style quoted message: a rule, a From/Sent/To/Cc/Subject block, then the original text. No side bar. */
-  const quote = (m: Message): string => {
+  const quote = (m: Message, pictures?: Record<string, string>): string => {
     const who = (p: Person): string => `${escapeHtml(p.name)} &lt;${escapeHtml(p.email)}&gt;`
     const cc = m.cc && m.cc.length > 0 ? `<br><b>Cc:</b> ${m.cc.map(who).join('; ')}` : ''
-    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sentLabel(m))}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${m.html && m.loaded !== false ? sanitizeEmailHtml(m.html, true).html : textToHtml(m.body)}</div></div>`
+    return `<div data-quote="1"><hr><div><b>From:</b> ${who(m.from)}<br><b>Sent:</b> ${escapeHtml(sentLabel(m))}<br><b>To:</b> ${m.to.map(who).join('; ')}${cc}<br><b>Subject:</b> ${escapeHtml(m.subject)}</div><br><div>${m.html && m.loaded !== false ? sanitizeEmailHtml(withPictures(m.html, pictures), true).html : textToHtml(m.body)}</div></div>`
   }
   const plainEmail = (m: Message): string => {
     const who = (p: Person): string => `${p.name} <${p.email}>`
@@ -1275,7 +1290,7 @@ export default function App() {
     const m = target ?? selectedRow?.msg
     if (!m) return
     const msgs = (threaded ? messages.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId) : [m]).sort((p, q) => p.date.localeCompare(q.date))
-    const html = `<div data-pm-email="1">${msgs.map(quote).join('')}</div>`
+    const html = `<div data-pm-email="1">${msgs.map((x) => quote(x)).join('')}</div>`
     const text = msgs.map(plainEmail).join('\n________________________________\n')
     rememberCopiedEmail(text, html)
     const ok = await platform.copyRich(html, text)
@@ -1283,7 +1298,7 @@ export default function App() {
   }
   const last = thread[thread.length - 1]
   /** Reply to a specific message (default: the last one in the open conversation). Replying to your own message writes to its recipients. */
-  const reply = (all: boolean, target?: Message) => {
+  const reply = async (all: boolean, target?: Message) => {
     const t = target ?? last
     if (!t) return
     const acc = accountList.find((a) => a.id === t.accountId)
@@ -1300,19 +1315,21 @@ export default function App() {
           })
           .join(', ')
       : ''
+    const body = await quoteFull(t)
     openCompose({
       accountId: t.accountId,
       to: toList.map((p) => p.email).join(', '),
       cc,
       subject: /^re:/i.test(t.subject) ? t.subject : `Re: ${t.subject}`,
-      body: quote(t),
+      body,
       reply: realMode && t.rfcId ? { threadId: t.threadId, messageId: t.rfcId, references: [t.rfcRefs, t.rfcId].filter(Boolean).join(' ') } : undefined,
     })
   }
-  const forward = (target?: Message) => {
+  const forward = async (target?: Message) => {
     const t = target ?? last
     if (!t) return
-    openCompose({ accountId: t.accountId, subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`, body: quote(t), attachments: t.attachments })
+    const body = await quoteFull(t)
+    openCompose({ accountId: t.accountId, subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`, body, attachments: t.attachments })
   }
 
   const retry = () => {
