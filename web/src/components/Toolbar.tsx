@@ -3,10 +3,19 @@ import type { ReactNode } from 'react'
 import type { Density, PaneLayout } from '../types'
 import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
+import { initials } from '../util'
 import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 import { SearchBox } from './SearchBox'
 import type { IconName, Tone } from './Icon'
+import type { Notice } from './Notices'
+
+export interface HistoryItem {
+  id: number
+  kind: Notice['kind']
+  text: string
+  at: Date
+}
 
 interface Props {
   threaded: boolean
@@ -25,6 +34,8 @@ interface Props {
   onSignOut: () => void
   /** Email of the signed-in person, when real sign-in is used */
   signedInAs?: string
+  /** Full name of the person (the preview uses a placeholder) */
+  userName: string
   /** Only administrators may preview the staff view */
   canSwitchRole: boolean
   role: 'admin' | 'staff'
@@ -40,19 +51,32 @@ interface Props {
   onCommit: (q: string) => void
   onSave: (q: string) => void
   onRemoveSaved: (q: string) => void
+  /** Command bar: acts on the open message or the selected messages */
+  bar: {
+    enabled: boolean
+    unread: boolean
+    flagged: boolean
+    onReply: () => void
+    onReplyAll: () => void
+    onForward: () => void
+    onArchive: () => void
+    onDelete: () => void
+    onToggleRead: () => void
+    onToggleFlag: () => void
+    onMove: () => void
+    onMore: (x: number, y: number) => void
+  }
+  history: HistoryItem[]
+  unseen: number
+  onSeen: () => void
+  onClearHistory: () => void
+  onToggleFolders: () => void
+  foldersOpen: boolean
 }
 
-/** Icon-only toolbar item. Label is exposed as tooltip and accessible name. */
-function Item(props: { icon: IconName; tone?: Tone; label: string; onClick?: () => void; disabled?: boolean }) {
-  return (
-    <button type="button" className="tb" onClick={props.onClick} disabled={props.disabled}>
-      <Icon name={props.icon} size={18} tone={props.tone} />
-      <span className="tb-label">{props.label}</span>
-    </button>
-  )
-}
+const greeting = (d = new Date()): string => (d.getHours() < 12 ? 'Morning' : d.getHours() < 17 ? 'Afternoon' : 'Evening')
 
-function Menu(props: { icon: IconName; tone?: Tone; label: string; disabled?: boolean; children: (close: () => void) => ReactNode }) {
+function Menu(props: { label: string; className?: string; trigger: (open: boolean) => ReactNode; onOpen?: () => void; align?: 'left' | 'right'; children: (close: () => void) => ReactNode }) {
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const btn = useRef<HTMLButtonElement>(null)
   const pop = useRef<HTMLDivElement>(null)
@@ -86,17 +110,15 @@ function Menu(props: { icon: IconName; tone?: Tone; label: string; disabled?: bo
     const r = btn.current?.getBoundingClientRect()
     if (!r) return
     const width = 264
-    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)) })
+    const left = props.align === 'right' ? r.right - width : r.left
+    setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(left, window.innerWidth - width - 8)) })
+    props.onOpen?.()
   }
 
   return (
     <>
-      <button ref={btn} type="button" className="tb tb-menu" onClick={toggle} disabled={props.disabled} aria-haspopup="menu" aria-expanded={open}>
-        <span className="tb-icons">
-          <Icon name={props.icon} size={18} tone={props.tone} />
-          <Icon name="chevron" size={10} />
-        </span>
-        <span className="tb-label">{props.label}</span>
+      <button ref={btn} type="button" className={props.className ?? 'cb'} onClick={toggle} aria-label={props.label} aria-haspopup="menu" aria-expanded={open}>
+        {props.trigger(open)}
       </button>
       {pos && (
         <div ref={pop} className="popover" role="menu" style={{ top: pos.top, left: pos.left }}>
@@ -116,55 +138,99 @@ function Check(props: { checked: boolean; label: string; role: 'menuitemcheckbox
   )
 }
 
+/** One command bar button: icon and label side by side. */
+function Cmd(props: { icon: IconName; tone?: Tone; label: string; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
+  return (
+    <button type="button" className="cb" onClick={props.onClick} disabled={props.disabled} aria-pressed={props.pressed}>
+      <Icon name={props.icon} size={17} tone={props.tone} />
+      <span className="cb-label">{props.label}</span>
+    </button>
+  )
+}
+
+const ago = (d: Date): string => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
 export function Toolbar(p: Props) {
   const { templates } = useSettings()
   const categories = Array.from(new Set(templates.map((t) => t.category)))
+  const b = p.bar
+  const first = p.userName.trim().split(/\s+/)[0] || 'there'
   const notifLabel =
     p.notifications === 'granted'
-      ? 'Notifications on'
+      ? 'Desktop notifications on'
       : p.notifications === 'denied'
         ? 'Notifications blocked in browser'
         : p.notifications === 'unsupported'
           ? 'Notifications unavailable'
-          : 'Turn on notifications'
+          : 'Turn on desktop notifications'
 
   return (
-    <header className="toolbar" aria-label="Mail toolbar">
-      <h1 className="logo-h1">
-        <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
-      </h1>
+    <header className="topbar" aria-label="Mail toolbar">
+      <div className="tp-brand">
+        <h1 className="logo-h1">
+          <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
+        </h1>
+      </div>
 
-      <div className="tb-scroll">
-        <div className="tb-group tb-extra" role="group" aria-label="More">
-          <Item icon="hash" tone="teal" label="Ref no." onClick={p.onRef} />
-          <Menu icon="template" tone="purple" label="Templates">
+      <div className="tp-main">
+        <SearchBox
+          query={p.query}
+          onQuery={p.onQuery}
+          recent={p.recent}
+          saved={p.saved}
+          searchAll={p.searchAll}
+          onSearchAll={p.onSearchAll}
+          onCommit={p.onCommit}
+          onSave={p.onSave}
+          onRemoveSaved={p.onRemoveSaved}
+          registerSearch={p.registerSearch}
+        />
+        <div className="tp-right">
+          <Menu
+            label={p.unseen > 0 ? `Notifications, ${p.unseen} new` : 'Notifications'}
+            className="tp-icon"
+            align="right"
+            onOpen={p.onSeen}
+            trigger={() => (
+              <>
+                <Icon name="bell" size={19} />
+                {p.unseen > 0 && <span className="tp-dot" aria-hidden="true" />}
+              </>
+            )}
+          >
             {(close) => (
               <>
-                {categories.map((cat, i) => (
-                  <div key={cat}>
-                    {i > 0 && <div className="menu-sep" role="separator" />}
-                    <div className="menu-head">{cat}</div>
-                    {templates.filter((t) => t.category === cat).map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        role="menuitem"
-                        className="menu-item"
-                        onClick={() => {
-                          p.onTemplate(t)
-                          close()
-                        }}
-                      >
-                        <span className="ph" />
-                        {t.name}
-                      </button>
-                    ))}
+                <div className="menu-head">Notifications</div>
+                {p.history.length === 0 && <div className="menu-note">Nothing yet. Sent mail, saved drafts and sync problems show here.</div>}
+                {p.history.map((h) => (
+                  <div key={h.id} className="menu-note hist">
+                    <span className={`hist-dot ${h.kind}`} aria-hidden="true" />
+                    <span className="grow">{h.text}</span>
+                    <small>{ago(h.at)}</small>
                   </div>
                 ))}
+                {p.history.length > 0 && (
+                  <>
+                    <div className="menu-sep" role="separator" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="menu-item"
+                      onClick={() => {
+                        p.onClearHistory()
+                        close()
+                      }}
+                    >
+                      <span className="ph" />
+                      Clear
+                    </button>
+                  </>
+                )}
               </>
             )}
           </Menu>
-          <Menu icon="settings" tone="gray" label="Settings">
+
+          <Menu label="Settings" className="tp-icon" align="right" trigger={() => <Icon name="settings" size={19} />}>
             {(close) => (
               <>
                 <button
@@ -193,22 +259,6 @@ export function Toolbar(p: Props) {
                   <span className="ph" />
                   Keyboard shortcuts
                 </button>
-                {p.role === 'admin' && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="menu-item"
-                    onClick={() => {
-                      p.onPerformance()
-                      close()
-                    }}
-                  >
-                    <span className="ph">
-                      <Icon name="layout" size={14} />
-                    </span>
-                    Staff performance (admin)
-                  </button>
-                )}
                 <div className="menu-sep" role="separator" />
                 <div className="menu-head">View</div>
                 <Check role="menuitemcheckbox" checked={p.threaded} label="Group by conversation" onSelect={() => p.onThreaded(!p.threaded)} />
@@ -254,6 +304,52 @@ export function Toolbar(p: Props) {
                   </span>
                   {notifLabel}
                 </button>
+              </>
+            )}
+          </Menu>
+
+          <Menu
+            label={`Account menu for ${p.userName}`}
+            className="tp-avatar"
+            align="right"
+            trigger={() => (
+              <>
+                <span className="tp-avatar-icon" aria-hidden="true">
+                  {p.userName.trim() ? initials(p.userName) : <Icon name="user" size={16} />}
+                </span>
+                <span className="tp-greet">
+                  {greeting()}, {first}
+                </span>
+                <Icon name="chevron" size={12} />
+              </>
+            )}
+          >
+            {(close) => (
+              <>
+                <div className="menu-note account-head">
+                  <strong>
+                    {greeting()}, {first}
+                  </strong>
+                  {p.signedInAs && <small className="block">{p.signedInAs}</small>}
+                  <small className="block">{p.role === 'admin' ? 'Administrator' : 'Staff'}</small>
+                </div>
+                <div className="menu-sep" role="separator" />
+                {p.role === 'admin' && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      p.onPerformance()
+                      close()
+                    }}
+                  >
+                    <span className="ph">
+                      <Icon name="layout" size={14} />
+                    </span>
+                    Staff performance (admin)
+                  </button>
+                )}
                 {p.canSwitchRole && (
                   <Check
                     role="menuitemcheckbox"
@@ -265,8 +361,6 @@ export function Toolbar(p: Props) {
                     }}
                   />
                 )}
-                <div className="menu-sep" role="separator" />
-                {p.signedInAs && <div className="menu-note">Signed in as {p.signedInAs}</div>}
                 <button
                   type="button"
                   role="menuitem"
@@ -285,23 +379,110 @@ export function Toolbar(p: Props) {
         </div>
       </div>
 
-      <button type="button" className="tb-new" onClick={p.onNew} aria-label="New mail">
-        <Icon name="compose" size={16} />
-        <span>New mail</span>
-      </button>
+      <div className="tp-new">
+        <button type="button" className="cb-hamburger" onClick={p.onToggleFolders} aria-label={p.foldersOpen ? 'Hide folders' : 'Show folders'} aria-pressed={p.foldersOpen}>
+          <Icon name="menu" size={20} />
+        </button>
+        <div className="newsplit">
+          <button type="button" className="nm-btn" onClick={p.onNew} aria-label="New mail">
+            <Icon name="plus" size={16} />
+            <span>New mail</span>
+          </button>
+          <Menu label="More ways to start a message" className="newsplit-more" trigger={() => <Icon name="chevron" size={14} />}>
+            {(close) => (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onNew()
+                    close()
+                  }}
+                >
+                  <span className="ph" />
+                  New mail
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onRef()
+                    close()
+                  }}
+                >
+                  <span className="ph" />
+                  New mail with a reference number
+                </button>
+              </>
+            )}
+          </Menu>
+        </div>
+      </div>
 
-      <SearchBox
-        query={p.query}
-        onQuery={p.onQuery}
-        recent={p.recent}
-        saved={p.saved}
-        searchAll={p.searchAll}
-        onSearchAll={p.onSearchAll}
-        onCommit={p.onCommit}
-        onSave={p.onSave}
-        onRemoveSaved={p.onRemoveSaved}
-        registerSearch={p.registerSearch}
-      />
+      <div className="cmdbar" role="toolbar" aria-label="Message actions">
+        <div className="cb-scroll">
+          <Cmd icon="reply" tone="blue" label="Reply" onClick={b.onReply} disabled={!b.enabled} />
+          <Cmd icon="replyAll" tone="blue" label="Reply all" onClick={b.onReplyAll} disabled={!b.enabled} />
+          <Cmd icon="forward" tone="blue" label="Forward" onClick={b.onForward} disabled={!b.enabled} />
+          <span className="cb-sep" aria-hidden="true" />
+          <Cmd icon="archive" tone="purple" label="Archive" onClick={b.onArchive} disabled={!b.enabled} />
+          <Cmd icon="trash" tone="red" label="Delete" onClick={b.onDelete} disabled={!b.enabled} />
+          <Cmd icon="eye" tone="blue" label={b.unread ? 'Mark as read' : 'Mark as unread'} onClick={b.onToggleRead} disabled={!b.enabled} />
+          <Cmd icon="flag" tone="orange" label={b.flagged ? 'Remove flag' : 'Flag'} onClick={b.onToggleFlag} disabled={!b.enabled} pressed={b.flagged} />
+          <Cmd icon="folder" tone="teal" label="Move to" onClick={b.onMove} disabled={!b.enabled} />
+          <button
+            type="button"
+            className="cb cb-more"
+            aria-label="More actions"
+            aria-haspopup="menu"
+            disabled={!b.enabled}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              b.onMore(Math.max(8, r.right - 230), r.bottom + 4)
+            }}
+          >
+            <Icon name="more" size={18} />
+          </button>
+        </div>
+        <div className="cb-tools">
+          <Cmd icon="hash" tone="teal" label="Ref No." onClick={p.onRef} />
+          <Menu label="Templates" className="cb" trigger={() => (
+            <>
+              <Icon name="template" size={17} tone="purple" />
+              <span className="cb-label">Templates</span>
+              <Icon name="chevron" size={12} />
+            </>
+          )}>
+            {(close) => (
+              <>
+                {categories.map((cat, i) => (
+                  <div key={cat}>
+                    {i > 0 && <div className="menu-sep" role="separator" />}
+                    <div className="menu-head">{cat}</div>
+                    {templates.filter((t) => t.category === cat).map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        role="menuitem"
+                        className="menu-item"
+                        onClick={() => {
+                          p.onTemplate(t)
+                          close()
+                        }}
+                      >
+                        <span className="ph" />
+                        {t.name}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+          </Menu>
+        </div>
+      </div>
     </header>
   )
 }

@@ -191,16 +191,17 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
   return (
     <div className="attbar" tabIndex={0} onKeyDown={onKeyDown} aria-label={`${attachments.length} attachments`}>
       <div className="attbar-head">
-        <Icon name="clip" size={14} /> {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
-        {files.length > 0 && <span className="muted"> · {files.length} selected</span>}
-        <span className="grow" />
+        <span className="sr-only">
+          {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
+          {files.length > 0 ? `, ${files.length} selected` : ''}
+        </span>
         {files.length > 0 && files.length < attachments.length && (
           <button type="button" className="att-btn" onClick={() => download(files)}>
             <Icon name="download" size={14} /> Download selected
           </button>
         )}
         <button type="button" className="att-btn" onClick={() => download(attachments)}>
-          <Icon name="download" size={14} /> Download all
+          <Icon name="download" size={16} /> Download all ({attachments.length})
         </button>
       </div>
       <div className="chips" ref={wrap} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
@@ -230,20 +231,23 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
               setMenu({ x: e.clientX, y: e.clientY })
             }}
           >
-            <FileIcon name={a.name} mime={a.mime} size={26} />
+            <FileIcon name={a.name} mime={a.mime} size={30} />
             <span className="att-meta">
               <span className="chip-name">{a.name}</span>
               <small>{formatSize(a.size)}</small>
             </span>
             <span className="att-actions" onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
-              <button type="button" data-tone="blue" aria-label={`Preview ${a.name}`} onClick={() => setPreview(i)}>
-                <Icon name="eye" size={16} />
-              </button>
-              <button type="button" data-tone="purple" aria-label={`Copy ${a.name}`} onClick={() => void copyFiles([a])}>
-                <Icon name="copy" size={16} />
-              </button>
-              <button type="button" data-tone="green" aria-label={`Download ${a.name}`} onClick={() => download([a])}>
-                <Icon name="download" size={16} />
+              <button
+                type="button"
+                aria-label={`Actions for ${a.name}`}
+                aria-haspopup="menu"
+                onClick={(e) => {
+                  const r = e.currentTarget.getBoundingClientRect()
+                  setSelected(new Set([a.id]))
+                  setMenu({ x: r.left, y: r.bottom + 4 })
+                }}
+              >
+                <Icon name="chevron" size={14} />
               </button>
             </span>
           </div>

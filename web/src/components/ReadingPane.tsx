@@ -26,9 +26,13 @@ interface Props {
   banner?: { text: string; actions: { label: string; onClick: () => void }[] }
   /** Shown instead of "Select a message to read" (for example the case page) */
   placeholder?: React.ReactNode
+  onPrint?: () => void
+  onPopout?: () => void
+  /** Side panel (details of the case), shown next to the conversation */
+  details?: React.ReactNode
 }
 
-export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore, onReplyTo, onForwardMsg, onMoreMsg, banner, placeholder }: Props) {
+export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, onToast, onForwardWith, onDelete, onFlag, onUnread, flagged, unread, onEditDraft, onMore, onReplyTo, onForwardMsg, onMoreMsg, banner, placeholder, onPrint, onPopout, details }: Props) {
   const lastId = messages[messages.length - 1]?.id ?? ''
   // Reset expansion when the conversation changes, derived during render (no effect).
   const [state, setState] = useState<{ key: string; open: Set<string> }>({ key: lastId, open: new Set([lastId]) })
@@ -54,42 +58,46 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </button>
         <h2>{subject}</h2>
         <div className="reader-actions">
-        {isDraft ? (
-          <button type="button" className="primary" onClick={onEditDraft}>
-            <Icon name="draft" size={16} /> Continue editing
-          </button>
-        ) : (<>
-        <button type="button" onClick={onReply}>
-          <Icon name="reply" size={16} /> Reply
-        </button>
-        <button type="button" onClick={onReplyAll}>
-          <Icon name="replyAll" size={16} /> Reply all
-        </button>
-        <button type="button" onClick={onForward}>
-          <Icon name="forward" size={16} /> Forward
-        </button>
-        <button
-          type="button"
-          aria-label="More actions"
-          aria-haspopup="menu"
-          onClick={(e) => {
-            const b = e.currentTarget.getBoundingClientRect()
-            onMore(Math.max(8, b.right - 230), b.bottom + 4)
-          }}
-        >
-          <Icon name="more" size={18} />
-        </button></>)}
-        <span className="reader-touch">
-          <button type="button" onClick={onDelete} aria-label="Delete">
-            <Icon name="trash" size={18} tone="red" />
-          </button>
-          <button type="button" onClick={onFlag} aria-label={flagged ? 'Remove flag' : 'Flag'} aria-pressed={flagged}>
-            <Icon name="flag" size={18} tone="orange" />
-          </button>
-          <button type="button" onClick={onUnread} aria-label={unread ? 'Mark as read' : 'Mark as unread'}>
-            <Icon name="eye" size={18} tone="blue" />
-          </button>
-        </span>
+          {isDraft && (
+            <button type="button" className="primary" onClick={onEditDraft}>
+              <Icon name="draft" size={16} /> Continue editing
+            </button>
+          )}
+          {onPopout && (
+            <button type="button" className="ra-icon" onClick={onPopout} aria-label="Open in a new window">
+              <Icon name="popout" size={18} />
+            </button>
+          )}
+          {onPrint && (
+            <button type="button" className="ra-icon" onClick={onPrint} aria-label="Print">
+              <Icon name="print" size={18} />
+            </button>
+          )}
+          {!isDraft && (
+            <button
+              type="button"
+              className="ra-icon"
+              aria-label="More actions"
+              aria-haspopup="menu"
+              onClick={(e) => {
+                const b = e.currentTarget.getBoundingClientRect()
+                onMore(Math.max(8, b.right - 230), b.bottom + 4)
+              }}
+            >
+              <Icon name="more" size={18} />
+            </button>
+          )}
+          <span className="reader-touch">
+            <button type="button" onClick={onDelete} aria-label="Delete">
+              <Icon name="trash" size={18} tone="red" />
+            </button>
+            <button type="button" onClick={onFlag} aria-label={flagged ? 'Remove flag' : 'Flag'} aria-pressed={flagged}>
+              <Icon name="flag" size={18} tone="orange" />
+            </button>
+            <button type="button" onClick={onUnread} aria-label={unread ? 'Mark as read' : 'Mark as unread'}>
+              <Icon name="eye" size={18} tone="blue" />
+            </button>
+          </span>
         </div>
       </header>
       {banner && (
@@ -102,6 +110,7 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
           ))}
         </div>
       )}
+      <div className="reader-body">
       <div className="reader-scroll" tabIndex={-1}>
         {messages.map((m) => {
           const expanded = open.has(m.id)
@@ -166,6 +175,21 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
             </article>
           )
         })}
+        {!isDraft && (
+          <div className="reply-row">
+            <button type="button" onClick={onReply}>
+              <Icon name="reply" size={16} /> Reply
+            </button>
+            <button type="button" onClick={onReplyAll}>
+              <Icon name="replyAll" size={16} /> Reply all
+            </button>
+            <button type="button" onClick={onForward}>
+              <Icon name="forward" size={16} /> Forward
+            </button>
+          </div>
+        )}
+      </div>
+      {details}
       </div>
     </section>
   )

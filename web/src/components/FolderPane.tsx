@@ -31,6 +31,7 @@ interface Props {
   cases: Record<string, string[]>
   /** Real mailboxes: client name per case reference */
   caseNames?: Record<string, string>
+  onRefNumbers?: () => void
   onFolderAction: (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) => void
   onReorder: (accountId: string, name: string, before: string | null) => void
   onSelect: (s: FolderSel) => void
@@ -38,7 +39,7 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, caseNames, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, caseNames, onRefNumbers, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
   const [accMenu, setAccMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
@@ -191,8 +192,14 @@ export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccou
                     <span className="grow">New folder</span>
                   </button>
                 </li>
-                <li className="case-head">Cases</li>
-                {(cases[a.id] ?? []).length === 0 && (
+                <li className="case-head">
+                  <button type="button" className="fold-head" aria-expanded={!collapsed[`cases:${a.id}`]} onClick={() => setCollapsed((c) => ({ ...c, [`cases:${a.id}`]: !c[`cases:${a.id}`] }))}>
+                    <Icon name="chevron" size={12} />
+                    Cases
+                    {(cases[a.id] ?? []).length > 0 && <span className="fold-count">{(cases[a.id] ?? []).length}</span>}
+                  </button>
+                </li>
+                {!collapsed[`cases:${a.id}`] && (cases[a.id] ?? []).length === 0 && (
                   <li>
                     <span className="folder disabled">
                       <Icon name="hash" size={15} tone="gray" />
@@ -200,7 +207,7 @@ export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccou
                     </span>
                   </li>
                 )}
-                {(cases[a.id] ?? []).slice(0, 12).map((c) => {
+                {!collapsed[`cases:${a.id}`] && (cases[a.id] ?? []).slice(0, 12).map((c) => {
                   const on = isActive(a.id, 'case', c)
                   const n = messages.filter((m) => m.accountId === a.id && m.unread && m.folder !== 'deleted' && m.subject.includes(c)).length
                   return (
@@ -221,6 +228,34 @@ export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccou
           </section>
         )
       })}
+      <section className="workspace-group" aria-label="Business Workspace">
+        <button type="button" className="fold-head wide" aria-expanded={!collapsed['biz']} onClick={() => setCollapsed((c) => ({ ...c, biz: !c.biz }))}>
+          <Icon name="chevron" size={12} />
+          Business Workspace
+        </button>
+        {!collapsed['biz'] && (
+          <ul className="folder-list">
+            {onRefNumbers && (
+              <li>
+                <button type="button" className="folder" onClick={onRefNumbers}>
+                  <Icon name="hash" size={15} tone="teal" />
+                  <span className="grow">Reference Numbers</span>
+                </button>
+              </li>
+            )}
+            {accounts
+              .filter((x) => x.shared)
+              .map((x) => (
+                <li key={x.id}>
+                  <button type="button" className="folder" onClick={() => onSelect({ accountId: x.id, kind: 'folder', id: 'inbox' })}>
+                    <Icon name="users" size={15} tone="blue" />
+                    <span className="grow">{x.name}</span>
+                  </button>
+                </li>
+              ))}
+          </ul>
+        )}
+      </section>
       <button type="button" className="folder add add-account" onClick={onAddAccount}>
         <Icon name="plus" size={15} tone="green" />
         <span className="grow">Add account</span>

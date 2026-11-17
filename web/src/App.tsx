@@ -36,7 +36,9 @@ import { FolderDialog } from './components/FolderDialog'
 import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
+import { DetailsPanel } from './components/DetailsPanel'
 import { Notices } from './components/Notices'
+import type { HistoryItem } from './components/Toolbar'
 import type { Notice, NoticeKind } from './components/Notices'
 import { sanitizeEmailHtml } from './mailhtml'
 import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
@@ -153,6 +155,11 @@ export default function App() {
   const [composeKey, setComposeKey] = useState(0)
   const [pendingTemplate, setPendingTemplate] = useState<Template | null>(null)
   const [notices, setNotices] = useState<Notice[]>([])
+  /** The last notices, kept for the bell in the top bar */
+  const [noticeLog, setNoticeLog] = useState<HistoryItem[]>([])
+  const [seenLog, setSeenLog] = useState(0)
+  const [detailsOpen, setDetailsOpen] = usePersisted<boolean>('pm.details', true, (v) => v === 'true' || v === 'false')
+  const [foldersOpen, setFoldersOpen] = usePersisted<boolean>('pm.folders', true, (v) => v === 'true' || v === 'false')
   const [notif, setNotif] = useState(platform.notificationState())
   const noticeSeq = useRef(0)
   const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
@@ -206,6 +213,7 @@ export default function App() {
       const kind = opts?.kind ?? (/\b(couldn'?t|could not|can'?t|cannot|failed|not sent|not allowed|error|refused|blocked|over gmail|please attach)/i.test(text) ? 'error' : 'success')
       const id = ++noticeSeq.current
       setNotices((l) => [...l.filter((n) => n.text !== text).slice(-2), { id, kind, text, action: opts?.action }])
+      setNoticeLog((l) => [{ id, kind, text, at: new Date() }, ...l].slice(0, 15))
       window.setTimeout(() => dismissNotice(id), kind === 'error' ? 9000 : opts?.action ? 7000 : 3500)
     },
     [dismissNotice],
@@ -1657,7 +1665,7 @@ export default function App() {
       if (help || jump || refOpen || ctx) return // dialogs and menus own the keyboard
 
       // ---- global: work even while typing ----
-      if (mod && !e.altKey && !e.shiftKey && (lk === 'f' || lk === 'e')) {
+      if (mod && !e.altKey && !e.shiftKey && (lk === 'f' || lk === 'e' || (lk === 'k' && !compose))) {
         e.preventDefault()
         focusSearch()
         return
@@ -1947,15 +1955,40 @@ export default function App() {
         onSettings={() => setScreen('settings')}
         onHelp={() => setHelp(true)}
         registerSearch={setSearchEl}
+        userName={authUser?.name?.trim() || (authUser ? authUser.email.split('@')[0] ?? '' : 'Staff')}
+        history={noticeLog}
+        unseen={noticeLog.filter((h) => h.id > seenLog).length}
+        onSeen={() => setSeenLog(noticeLog[0]?.id ?? seenLog)}
+        onClearHistory={() => setNoticeLog([])}
+        foldersOpen={foldersOpen}
+        onToggleFolders={() => setFoldersOpen(!foldersOpen)}
+        bar={{
+          enabled: Boolean(selectedRow) || multi,
+          unread: multi ? messages.some((m) => rowsToMids(pickedRows).includes(m.id) && m.unread) : Boolean(selectedRow?.unread),
+          flagged: multi ? messages.filter((m) => rowsToMids(pickedRows).includes(m.id)).every((m) => m.flagged) : Boolean(selectedRow?.msg.flagged),
+          onReply: () => reply(false),
+          onReplyAll: () => reply(true),
+          onForward: () => forward(),
+          onArchive: () => runOp(selRows(), { kind: 'archive' }),
+          onDelete: () => runOp(selRows(), { kind: 'delete' }),
+          onToggleRead: () => runOp(selRows(), { kind: 'toggleRead' }),
+          onToggleFlag: () => runOp(selRows(), { kind: 'toggleFlag' }),
+          onMove: () => setJump('move'),
+          onMore: (x, y) => {
+            const id = selectedRow?.msg.id ?? pickedRows[0]
+            if (id) setCtx({ id, x, y })
+          },
+        }}
       />
       {(!online || sim === 'syncfail' || sim === 'ratelimit') && (
         <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} detail={syncDetail} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
       )}
-      <main className="workspace" data-pane={pane} data-view={view}>
+      <main className="workspace" data-pane={pane} data-view={view} data-folders={foldersOpen ? "on" : "off"}>
         <FolderPane
           accounts={accountList}
           sample={!realMode}
           unreadOverride={realMode ? inboxUnread : undefined}
+          onRefNumbers={() => setRefOpen(true)}
           onAddAccount={() => (realMode ? setConnectDlg('new') : setAccDlg({ mode: 'add' }))}
           onReconnect={(id) => {
             const x = realAccounts?.find((y) => y.id === id)
@@ -2054,6 +2087,17 @@ export default function App() {
             banner={readerBanner}
             onEditDraft={() => selectedRow && openDraft(selectedRow.msg)}
             onMore={(x, y) => selectedRow && setCtx({ id: selectedRow.msg.id, x, y })}
+            onPrint={() => selectedRow && printThread(selectedRow.msg)}
+            onPopout={() => selectedRow && popOut(selectedRow.msg)}
+            details={
+              <DetailsPanel
+                open={detailsOpen}
+                onToggle={() => setDetailsOpen(!detailsOpen)}
+                thread={thread}
+                cases={realMode ? (casesDb ?? []) : undefined}
+                onOpenCase={(ref) => goTo({ accountId: (realMode ? accountList.find((x) => x.company === (ref.startsWith('PT') ? 'tmc' : 'scl'))?.id : undefined) ?? accountId, kind: 'case', id: ref })}
+              />
+            }
             flagged={Boolean(selectedRow?.msg.flagged)}
             unread={Boolean(selectedRow?.unread)}
           />

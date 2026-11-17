@@ -127,9 +127,10 @@ export function SearchBox(p: Props) {
             if (it) choose(it)
           }
         }}
-        placeholder={`Search  (${MOD}+F)`}
+        placeholder="Search mail, people, subjects, reference numbers (e.g. PS2600721)…"
         aria-label="Search mail. Try from:, to:, subject:, has:attachment, is:unread"
       />
+      <kbd className="tb-kbd" aria-hidden="true">{MOD === "Ctrl" ? "Ctrl K" : `${MOD}K`}</kbd>
       {open && (
         <div className="suggest" id="search-suggest" role="listbox" onMouseDown={(e) => e.preventDefault()}>
           {items.map((it, i) => {
