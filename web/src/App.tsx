@@ -13,7 +13,8 @@ import { ConnectDialog } from './components/ConnectDialog'
 import { CasePanel } from './components/CasePanel'
 import { fetchPerformance, reportMailStats, startHeartbeat } from './activity'
 import type { DayStat, StaffMember } from './data/performance'
-import { CASE_ERRORS, fetchCases, openCase, updateCase } from './cases'
+import { CASE_ERRORS, fetchCasesInfo, fetchOsFacts, fetchPicks, openCase, updateCase } from './cases'
+import type { OsFacts } from './cases'
 import type { CaseRecord, NewCase } from './cases'
 import { GmailError, getLabel, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
 import type { GLabel } from './gmail/client'
@@ -161,7 +162,7 @@ export default function App() {
   /** The last notices, kept for the bell in the top bar */
   const [noticeLog, setNoticeLog] = useState<HistoryItem[]>([])
   const [seenLog, setSeenLog] = useState(0)
-  const [city, setCity] = usePersisted<string>('pm.city', 'Manama', (v) => v.length <= 60)
+  const [city, setCity] = usePersisted<string>('pm.city', 'Riyadh', (v) => v.length <= 60)
   const [weather, setWeather] = useState<Weather | null>(null)
   const [detailsOpen, setDetailsOpen] = usePersisted<boolean>('pm.details', true, (v) => v === 'true' || v === 'false')
   const [foldersOpen, setFoldersOpen] = usePersisted<boolean>('pm.folders', true, (v) => v === 'true' || v === 'false')
@@ -324,11 +325,17 @@ export default function App() {
   /** Cases are stored on the server and shared by the company's staff. */
   const [casesDb, setCasesDb] = useState<CaseRecord[] | null>(null)
   const casesAt = useRef(0)
+  /** True when the server is connected to Pivot OS: numbers and pick-lists then come from there. */
+  const [osLinked, setOsLinked] = useState(false)
+  const [osFacts, setOsFacts] = useState<Record<string, OsFacts>>({})
   const [syncDetail, setSyncDetail] = useState('')
   const loadCases = useCallback(async () => {
     casesAt.current = Date.now()
-    const list = await fetchCases()
-    if (list) setCasesDb(list)
+    const info = await fetchCasesInfo()
+    if (info) {
+      setCasesDb(info.cases)
+      setOsLinked(info.linked)
+    }
   }, [])
   const [labelsByAccount, setLabelsByAccount] = useState<Record<string, GLabel[]>>({})
   const labelsRef = useRef<Record<string, GLabel[]>>({})
@@ -1218,17 +1225,34 @@ export default function App() {
           : undefined
 
   /** Open a case on the server (generated or registered number); the sidebar updates at once. */
-  const createCase = async (c: NewCase): Promise<{ ok: true; ref: string } | { ok: false; message: string }> => {
+  const createCase = async (c: NewCase): Promise<{ ok: true; ref: string; subject: string | null } | { ok: false; message: string }> => {
     const r = await openCase(c)
-    if (!r.ok) return { ok: false, message: CASE_ERRORS[r.error] ?? CASE_ERRORS.unavailable ?? 'Could not open the case.' }
+    if (!r.ok) {
+      // Pivot OS's own sentence (for example "Client name is required") is shown as it is.
+      if (r.error === 'os' && r.message) return { ok: false, message: r.message }
+      if (r.error === 'unavailable' && r.ref) return { ok: false, message: `Pivot OS issued ${r.ref}, but it could not be saved here. Use “I already have a number” with ${r.ref}.` }
+      return { ok: false, message: CASE_ERRORS[r.error] ?? CASE_ERRORS.unavailable ?? 'Could not open the case.' }
+    }
     setCasesDb((list) => [r.data.case, ...(list ?? []).filter((x) => x.ref !== r.data.case.ref)])
-    return { ok: true, ref: r.data.case.ref }
+    return { ok: true, ref: r.data.case.ref, subject: r.data.subject }
   }
   const saveCase = async (ref: string, change: { notes?: string; status?: 'open' | 'closed' }): Promise<boolean> => {
     const r = await updateCase(ref, change)
     if (r.ok) setCasesDb((list) => (list ?? []).map((x) => (x.ref === ref ? r.data.case : x)))
     return r.ok
   }
+  // When linked, ask Pivot OS about the reference numbers in the open conversation (once per number per visit).
+  const threadRefs = useMemo(() => [...new Set(thread.flatMap((m) => m.subject.match(/\bP[ST]\d{7}\b/g) ?? []))].slice(0, 10), [thread])
+  const askedFacts = useRef(new Set<string>())
+  useEffect(() => {
+    if (!osLinked) return
+    const todo = threadRefs.filter((r) => !askedFacts.current.has(r))
+    if (todo.length === 0) return
+    todo.forEach((r) => askedFacts.current.add(r))
+    void fetchOsFacts(todo).then((rows) => {
+      if (rows.length > 0) setOsFacts((p) => ({ ...p, ...Object.fromEntries(rows.map((x) => [x.ref, x])) }))
+    })
+  }, [osLinked, threadRefs])
   const selCase = realMode && sel.kind === 'case' ? casesDb?.find((c) => c.ref === sel.id) : undefined
 
   const sentLabel = (m: Message): string => {
@@ -2132,6 +2156,7 @@ export default function App() {
                 onToggle={() => setDetailsOpen(!detailsOpen)}
                 thread={thread}
                 cases={realMode ? (casesDb ?? []) : undefined}
+                facts={osFacts}
                 onOpenCase={(ref) => goTo({ accountId: (realMode ? accountList.find((x) => x.company === (ref.startsWith('PT') ? 'tmc' : 'scl'))?.id : undefined) ?? accountId, kind: 'case', id: ref })}
               />
             }
@@ -2243,7 +2268,7 @@ export default function App() {
           onClose={() => setRefOpen(false)}
           onToast={showToast}
           onNewMail={(subject) => openCompose({ subject })}
-          real={authUser ? { company: authUser.company === 'tmc' ? 'tmc' : 'scl', onCreate: createCase } : undefined}
+          real={authUser ? { company: authUser.company === 'tmc' ? 'tmc' : 'scl', linked: osLinked, onCreate: createCase, picks: fetchPicks } : undefined}
         />
       )}
       <Notices notices={notices} onDismiss={dismissNotice} lead={

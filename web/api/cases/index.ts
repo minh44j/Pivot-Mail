@@ -1,5 +1,6 @@
 import { dbConfigured, eq, insert, rpc, select, update } from '../_lib/db.js'
 import { hostOf, json, originOf } from '../_lib/http.js'
+import { callOs, osConfig } from '../_lib/pivotos.js'
 import { currentUser } from '../_lib/session.js'
 import type { Me } from '../_lib/session.js'
 
@@ -54,9 +55,11 @@ function cleanDetails(kind: 'shipping' | 'travel', d: unknown): Record<string, s
   const scope = short(o.scope, 30)
   const mode = short(o.mode, 10)
   if (!['freight-clearance', 'freight', 'clearance'].includes(scope) || !['sea', 'air', 'land'].includes(mode)) return null
-  const origin = short(o.origin, 80)
-  const destination = short(o.destination, 80)
-  return { scope, mode, origin, destination, cargo: short(o.cargo, 200), salesperson: short(o.salesperson, 60) }
+  if (scope === 'clearance' && !short(o.port, 120)) return null
+  const origin = short(o.origin, 120)
+  const destination = short(o.destination, 120)
+  const port = short(o.port, 120)
+  return { scope, mode, origin, destination, ...(port ? { port } : {}), cargo: short(o.cargo, 200), salesperson: short(o.salesperson, 60) }
 }
 
 const err = (code: string, status: number) => json({ error: code }, status)
@@ -73,16 +76,49 @@ async function guard(req: Request, needOrigin: boolean): Promise<{ me: Me } | Re
   }
 }
 
+const OS_SERVICE: Record<string, string> = { flight: 'FLIGHT', hotel: 'HOTEL', visa: 'VISA', chauffeur: 'CHAUFFEUR', other: 'OTHER', extra: 'OTHER' }
+const OS_SCOPE: Record<string, string> = { 'freight-clearance': 'FULL', freight: 'FREIGHT_ONLY', clearance: 'CLEARANCE_ONLY' }
+const OS_MODE: Record<string, string> = { sea: 'SEA', air: 'AIR', land: 'LND' }
+
+const id80 = (v: unknown): string | null => {
+  const t = short(v, 80)
+  return t || null
+}
+
 export async function GET(req: Request): Promise<Response> {
   const g = await guard(req, false)
   if (g instanceof Response) return g
+  const q = new URL(req.url).searchParams
+  const kind = me_kind(g.me.company)
   try {
+    // Pick-lists from Pivot OS (client, port, salesperson). Only when the link is on.
+    const dir = q.get('directory')
+    if (dir) {
+      if (!osConfig()) return err('not_linked', 404)
+      if (!['client', 'port', 'sales'].includes(dir) || (dir === 'port' && kind !== 'shipping')) return err('invalid', 400)
+      const query: Record<string, string> = { kind: dir, q: short(q.get('q'), 80) }
+      const cid = short(q.get('clientId'), 80)
+      if (cid) query.clientId = cid
+      const r = await callOs<{ results: unknown[] }>(g.me.company, g.me.email, 'GET', `/api/integrations/pivot-mail/${kind}/search`, { query })
+      return r.ok ? json({ results: r.data.results ?? [] }) : json({ error: 'os', message: r.message }, r.status === 403 ? 403 : 502)
+    }
+    // What Pivot OS knows about some numbers (for the Details panel).
+    const lookup = q.get('lookup')
+    if (lookup) {
+      if (!osConfig()) return err('not_linked', 404)
+      const refs = lookup.split(',').map((x) => x.trim().toUpperCase()).filter((x) => /^P[ST]\d{7}$/.test(x)).slice(0, 20)
+      if (refs.length === 0) return json({ results: [] })
+      const r = await callOs<{ results: unknown[] }>(g.me.company, g.me.email, 'POST', '/api/integrations/pivot-mail/lookup', { body: { refs } })
+      return r.ok ? json({ results: r.data.results ?? [] }) : json({ results: [], error: 'os' })
+    }
     const rows = await select<CaseRow>('cases', `company=${eq(g.me.company)}&select=${COLS}&order=created_at.desc&limit=1000`)
-    return json({ cases: rows.map(shape), company: g.me.company })
+    return json({ cases: rows.map(shape), company: g.me.company, linked: osConfig() !== null })
   } catch {
     return err('unavailable', 503)
   }
 }
+
+const me_kind = (company: string): 'shipping' | 'travel' => (company === 'scl' ? 'shipping' : 'travel')
 
 export async function POST(req: Request): Promise<Response> {
   const g = await guard(req, true)
@@ -98,18 +134,56 @@ export async function POST(req: Request): Promise<Response> {
   try {
     let ref = short(b.ref, 12).toUpperCase()
     let source = 'pivot_os'
+    let issued: { ref: string; subject?: string } | null = null
     if (ref) {
       // Registering a number that already exists (for example one issued in Pivot OS).
       if (!(me.company === 'scl' ? /^PS\d{7}$/ : /^PT\d{7}$/).test(ref)) return err('bad_ref', 400)
       if ((await select('cases', `ref=${eq(ref)}&select=id`)).length > 0) return err('exists', 409)
+    } else if (osConfig()) {
+      // Linked: the number is taken from Pivot OS's own counter, through Pivot OS's own functions.
+      const os = (typeof b.os === 'object' && b.os !== null ? b.os : {}) as Record<string, unknown>
+      const d = details
+      const r =
+        kind === 'shipping'
+          ? await callOs<{ minted: { ref: string; subject: string } }>(me.company, me.email, 'POST', '/api/integrations/pivot-mail/shipping/mint', {
+              body: {
+                clientName: client,
+                clientId: id80(os.clientId),
+                mode: OS_MODE[d.mode ?? ''] ?? 'SEA',
+                scope: OS_SCOPE[d.scope ?? ''] ?? 'FULL',
+                port: d.port || null,
+                origin: d.origin || null,
+                destination: d.destination || null,
+                originPortId: id80(os.originPortId),
+                destinationPortId: id80(os.destinationPortId),
+                notes,
+                salesEmployeeId: id80(os.salesEmployeeId),
+              },
+            })
+          : await callOs<{ ref: string }>(me.company, me.email, 'POST', '/api/integrations/pivot-mail/travel/mint', {
+              body: { clientName: client, clientId: id80(os.clientId), service: OS_SERVICE[d.category ?? ''] ?? '', note: notes, salesEmployeeId: id80(os.salesEmployeeId) },
+            })
+      if (!r.ok) return json({ error: 'os', message: r.message }, r.status === 403 ? 403 : r.status === 422 ? 422 : 502)
+      const data = r.data as { minted?: { ref: string; subject: string }; ref?: string }
+      ref = (data.minted?.ref ?? data.ref ?? '').toUpperCase()
+      if (!/^P[ST]\d{7}$/.test(ref)) return json({ error: 'os', message: 'Pivot OS answered with an unexpected number.' }, 502)
+      issued = { ref, subject: data.minted?.subject }
     } else {
       ref = await rpc<string>('next_case_ref', { p_company: me.company })
       source = 'provisional'
     }
-    const [row] = await insert<CaseRow>('cases', { ref, company: me.company, client, kind, details, notes, ref_source: source, opened_by: me.id })
-    if (!row) return err('unavailable', 503)
+    let row: CaseRow | undefined
+    try {
+      ;[row] = await insert<CaseRow>('cases', { ref, company: me.company, client, kind, details, notes, ref_source: source, opened_by: me.id })
+    } catch {
+      row = undefined
+    }
+    if (!row) {
+      // The number exists in Pivot OS but could not be saved here: say so, with the number, so nothing is lost.
+      return json({ error: 'unavailable', ref: issued?.ref }, 503)
+    }
     await insert('audit_log', { actor_email: me.email, action: 'case.opened', detail: { ref, company: me.company, source } })
-    return json({ case: shape({ ...row, opener: { name: me.name, email: me.email } }) }, 201)
+    return json({ case: shape({ ...row, opener: { name: me.name, email: me.email } }), subject: issued?.subject ?? null }, 201)
   } catch {
     return err('unavailable', 503)
   }

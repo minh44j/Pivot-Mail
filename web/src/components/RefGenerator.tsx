@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { CLIENTS, MODES, PLACES, SALESPEOPLE, SCOPES, TRAVEL_CATEGORIES, TRAVEL_CLIENTS } from '../data/refdata'
 import type { Mode, Scope, TravelCategory } from '../data/refdata'
 import { platform } from '../platform'
-import type { NewCase } from '../cases'
+import type { NewCase, OsPick } from '../cases'
 import { initials } from '../util'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
@@ -23,12 +23,24 @@ interface Props {
   onToast: (m: string) => void
   onNewMail: (subject: string) => void
   /** Signed-in use: numbers are issued by the server and the case is saved for the whole team */
-  real?: { company: 'scl' | 'tmc'; onCreate: (c: NewCase) => Promise<{ ok: true; ref: string } | { ok: false; message: string }> }
+  real?: {
+    company: 'scl' | 'tmc'
+    /** The server is connected to Pivot OS: numbers and pick-lists come from there */
+    linked: boolean
+    onCreate: (c: NewCase) => Promise<{ ok: true; ref: string; subject: string | null } | { ok: false; message: string }>
+    picks: (kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null) => Promise<OsPick[]>
+  }
 }
 
 interface Result {
   ref: string
   subject: string
+  client: string
+  entity: string
+  badge: string
+  subtitle: string
+  left: string
+  right: string | null
 }
 
 /*
@@ -75,6 +87,18 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const [to, setTo] = useState('')
   const [notes, setNotes] = useState('')
   const [sales, setSales] = useState('')
+  const linked = Boolean(real?.linked)
+  const picks = real?.picks
+  // Pivot OS pick-lists (only when linked): the exact records chosen are sent with the form.
+  const [clientId, setClientId] = useState<string | null>(null)
+  const [originId, setOriginId] = useState<string | null>(null)
+  const [destId, setDestId] = useState<string | null>(null)
+  const [clrPort, setClrPort] = useState('Jeddah')
+  const [osPeople, setOsPeople] = useState<OsPick[]>([])
+  const [clientHits, setClientHits] = useState<OsPick[]>([])
+  const [clientOpen, setClientOpen] = useState(false)
+  const [portHits, setPortHits] = useState<OsPick[]>([])
+  const [portFocus, setPortFocus] = useState<'from' | 'to' | null>(null)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [result, setResult] = useState<Result | null>(null)
   const [last, setLast] = useState(readLast)
@@ -98,6 +122,38 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
       window.removeEventListener('pointerdown', onDown)
     }
   }, [onClose, panel])
+  useEffect(() => {
+    if (!linked || !picks) return
+    let alive = true
+    void picks('sales', '', clientId).then((r) => {
+      if (!alive) return
+      setOsPeople(r)
+      const s = r.find((x) => x.suggested)
+      if (s) setSales(s.id)
+    })
+    return () => {
+      alive = false
+    }
+  }, [linked, picks, clientId])
+  useEffect(() => {
+    if (!linked || !picks || !clientOpen || clientId || client.trim().length < 2) return
+    let alive = true
+    const t = window.setTimeout(() => void picks('client', client.trim()).then((r) => alive && setClientHits(r)), 250)
+    return () => {
+      alive = false
+      window.clearTimeout(t)
+    }
+  }, [linked, picks, clientOpen, clientId, client])
+  useEffect(() => {
+    const q = portFocus === 'from' ? from : portFocus === 'to' ? to : ''
+    if (!linked || !picks || !portFocus || q.trim().length < 2) return
+    let alive = true
+    const t = window.setTimeout(() => void picks('port', q.trim()).then((r) => alive && setPortHits(r)), 250)
+    return () => {
+      alive = false
+      window.clearTimeout(t)
+    }
+  }, [linked, picks, portFocus, from, to])
   const left = anchor ? Math.max(8, Math.min(anchor.right - PANEL_W, window.innerWidth - PANEL_W - 8)) : 0
   const top = anchor ? anchor.bottom + 8 : 0
 
@@ -106,27 +162,59 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const travel = company === 'travel'
   const ready = client.trim().length >= 2
 
-  /** Only the client is required. A route is optional, but its two ends must differ. */
+  const portLabel = (p: OsPick): string => `${p.city ?? p.name} (${p.locode ?? ''})`
+  const people: { id: string; name: string; suggested?: boolean }[] = linked ? osPeople : SALESPEOPLE
+  const clearanceOnly = !travel && scope === 'clearance'
+
+  /** Only the client is required (and the customs port for a customs-only job). A route is optional, but its two ends must differ. */
   const generate = async () => {
     const e: Record<string, string> = {}
     if (!ready) e.client = 'Enter the client'
-    if (!travel && from.trim() && to.trim() && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
+    if (clearanceOnly && !clrPort.trim()) e.port = 'Enter the customs port'
+    if (!travel && !clearanceOnly && from.trim() && to.trim() && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
     setErrors(e)
     if (Object.keys(e).length > 0 || busy) return
-    const salesName = SALESPEOPLE.find((s) => s.id === sales)?.name ?? ''
+    const salesName = people.find((s) => s.id === sales)?.name ?? ''
     const catLabel = TRAVEL_CATEGORIES.find((c) => c.id === category)?.label ?? ''
-    const route = from.trim() && to.trim() ? ` – ${canon(from)} → ${canon(to)}` : ''
+    const route = !clearanceOnly && from.trim() && to.trim() ? ` – ${canon(from)} → ${canon(to)}` : ''
     const subjectFor = (ref: string, name: string) => (travel ? `[${ref}] ${name} – ${catLabel}` : `[${ref}] ${name}${route}`)
+    const show = (ref: string, subject: string, clientName: string) =>
+      setResult({
+        ref,
+        subject,
+        client: clientName,
+        entity: travel ? 'Pivot Travel Management · Reference' : 'Pivot Shipping · Job',
+        badge: travel ? 'Issued' : 'Open',
+        subtitle: !real
+          ? 'Preview only. This is not a Pivot OS number.'
+          : !linked
+            ? 'Provisional. Pivot OS does not know this number yet.'
+            : travel
+              ? 'Use it in the email subject or quote, and save the booking later.'
+              : 'Open as an enquiry. Move it on from the case when it progresses.',
+        left: travel ? `${catLabel}${notes.trim() ? ` · ${notes.trim().slice(0, 60)}` : ''}` : clearanceOnly ? `${clrPort.trim()} port` : from.trim() && to.trim() ? `${canon(from)} → ${canon(to)}` : 'route TBC',
+        right: travel ? salesName || null : clearanceOnly ? 'Customs-only job' : scope === 'freight' ? 'Freight only' : 'Full scope',
+      })
     if (real) {
       setBusy(true)
-      const details: Record<string, string> = travel ? { category, salesperson: salesName } : { scope, mode, origin: canon(from), destination: canon(to), salesperson: salesName }
-      const res = await real.onCreate({ client: client.trim(), details, notes: notes.trim(), ref: existing.trim() || undefined })
+      const details: Record<string, string> = travel
+        ? { category, salesperson: salesName }
+        : clearanceOnly
+          ? { scope, mode: 'sea', port: clrPort.trim(), salesperson: salesName }
+          : { scope, mode, origin: canon(from), destination: canon(to), salesperson: salesName }
+      const res = await real.onCreate({
+        client: client.trim(),
+        details,
+        notes: notes.trim(),
+        ref: existing.trim() || undefined,
+        os: linked ? { clientId, originPortId: originId, destinationPortId: destId, salesEmployeeId: sales || null } : undefined,
+      })
       setBusy(false)
       if (!res.ok) {
         setErrors({ form: res.message })
         return
       }
-      setResult({ ref: res.ref, subject: subjectFor(res.ref, client.trim()) })
+      show(res.ref, linked && res.subject ? res.subject : subjectFor(res.ref, client.trim()), client.trim())
       return
     }
     const clientList = travel ? TRAVEL_CLIENTS : CLIENTS
@@ -135,7 +223,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
     const by = travel ? catLabel : salesName
     platform.storage.set(LAST_KEY, JSON.stringify({ ref, by }))
     setLast({ ref, by })
-    setResult({ ref, subject: subjectFor(ref, clientName) })
+    show(ref, subjectFor(ref, clientName), clientName)
   }
 
   const copy = async (text: string, what: string) => {
@@ -146,6 +234,9 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const reset = () => {
     setResult(null)
     setClient('')
+    setClientId(null)
+    setOriginId(null)
+    setDestId(null)
     setFrom('')
     setTo('')
     setNotes('')
@@ -160,16 +251,17 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
         <Icon name="user" size={15} />
         <select value={sales} onChange={(e) => setSales(e.target.value)} aria-label="Salesperson">
           <option value="">Select a salesperson</option>
-          {SALESPEOPLE.map((s) => (
+          {people.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
+              {s.suggested ? ' ★' : ''}
             </option>
           ))}
         </select>
         <Icon name="chevron" size={14} />
       </div>
       <div className="rg-people" role="radiogroup" aria-label="Salesperson shortcuts">
-        {SALESPEOPLE.map((s) => (
+        {people.map((s) => (
           <button key={s.id} type="button" role="radio" aria-checked={sales === s.id} className={`rg-person${sales === s.id ? ' on' : ''}`} onClick={() => setSales(sales === s.id ? '' : s.id)}>
             <span className="avatar" data-tone={TONES[s.id.charCodeAt(0) % TONES.length]}>
               {initials(s.name)}
@@ -251,7 +343,15 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
 
         {real ? (
           <p className="notice" role="note">
-            <strong>Provisional numbers.</strong> Pivot Mail issues these and shares the case with your team. They are not Pivot OS numbers yet.
+            {linked ? (
+              <>
+                <strong>Connected to Pivot OS.</strong> The number and the job come from Pivot OS, and your team sees the case here too.
+              </>
+            ) : (
+              <>
+                <strong>Provisional numbers.</strong> Pivot Mail issues these and shares the case with your team. They are not Pivot OS numbers yet.
+              </>
+            )}
           </p>
         ) : (
           <p className="notice" role="note">
@@ -282,32 +382,46 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
         )}
 
         {result ? (
-          <div className="modal-body">
-            <p className="muted">Reference for {client.trim()}</p>
-            <div className="ref-out" aria-live="polite">
-              {result.ref}
+          <div className="modal-body rg-pass">
+            <svg viewBox="0 0 64 64" className="rg-tick-draw" aria-hidden="true">
+              <circle cx="32" cy="32" r="30" fill="none" stroke="#b08d3e" strokeWidth="2.4" />
+              <path d="M21 33l8 8 15-16" fill="none" stroke="#b08d3e" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <div className="rg-pass-title">Reference issued</div>
+            <div className="rg-pass-sub">{result.subtitle}</div>
+            <div className="rg-ticket">
+              <div className="rg-ticket-top">
+                <span>{result.entity}</span>
+                <span className="rg-badge">✓ {result.badge}</span>
+              </div>
+              <div className="ref-out" aria-live="polite">
+                {result.ref}
+              </div>
+              <div className="rg-ticket-client">{result.client}</div>
+              <div className="rg-ticket-foot">
+                <span>{result.left}</span>
+                {result.right && <span className="rg-gold">{result.right}</span>}
+              </div>
             </div>
             <p className="ref-subject">{result.subject}</p>
-            <div className="modal-actions">
-              <button type="button" className="btn primary" onClick={() => void copy(result.ref, 'Reference')}>
-                Copy reference
-              </button>
-              <button type="button" className="btn" onClick={() => void copy(result.subject, 'Subject')}>
-                Copy subject
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => {
-                  onNewMail(result.subject)
-                  onClose()
-                }}
-              >
-                New mail with subject
-              </button>
-            </div>
-            <button type="button" className="btn quiet" onClick={reset}>
-              Generate another
+            <button type="button" className="rg-go" onClick={() => void copy(result.ref, 'Reference')}>
+              Copy reference number
+            </button>
+            <button type="button" className="rg-alt" onClick={() => void copy(result.subject, 'Subject')}>
+              Copy email subject
+            </button>
+            <button
+              type="button"
+              className="rg-alt"
+              onClick={() => {
+                onNewMail(result.subject)
+                onClose()
+              }}
+            >
+              New mail with subject
+            </button>
+            <button type="button" className="rg-quiet" onClick={reset}>
+              {travel ? 'Generate another' : 'Open another job'}
             </button>
           </div>
         ) : (
@@ -320,22 +434,53 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
             noValidate
           >
             <Section icon="building" tone="blue" title="Client" hint={travel ? 'Pick from the directory, or just type a name.' : 'Who is this job for?'}>
-              <input
-                ref={first}
-                className="rg-input"
-                list={travel ? 'ref-clients-pt' : 'ref-clients'}
-                value={client}
-                onChange={(e) => setClient(e.target.value)}
-                placeholder={travel ? 'Start typing a company or person…' : 'Start typing a company…'}
-                aria-label="Client"
-                aria-invalid={Boolean(errors.client)}
-                autoComplete="off"
-              />
-              <datalist id={travel ? 'ref-clients-pt' : 'ref-clients'}>
-                {(travel ? TRAVEL_CLIENTS : CLIENTS).map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
+              <div className="rg-wrap">
+                <input
+                  ref={first}
+                  className="rg-input"
+                  list={linked ? undefined : travel ? 'ref-clients-pt' : 'ref-clients'}
+                  value={client}
+                  onChange={(e) => {
+                    setClient(e.target.value)
+                    setClientId(null)
+                    setClientOpen(true)
+                  }}
+                  onFocus={() => setClientOpen(true)}
+                  onBlur={() => window.setTimeout(() => setClientOpen(false), 160)}
+                  placeholder={travel ? 'Start typing a company or person…' : 'Start typing a company…'}
+                  aria-label="Client"
+                  aria-invalid={Boolean(errors.client)}
+                  autoComplete="off"
+                />
+                {linked && clientOpen && !clientId && clientHits.length > 0 && (
+                  <ul className="rg-suggest" role="listbox" aria-label="Clients in Pivot OS">
+                    {clientHits.map((c) => (
+                      <li key={c.id}>
+                        <button
+                          type="button"
+                          role="option"
+                          aria-selected={false}
+                          onMouseDown={() => {
+                            setClient(c.name)
+                            setClientId(c.id)
+                            setClientOpen(false)
+                          }}
+                        >
+                          {c.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {linked && clientId && <p className="rg-ok">✓ Matched in the client directory</p>}
+              {!linked && (
+                <datalist id={travel ? 'ref-clients-pt' : 'ref-clients'}>
+                  {(travel ? TRAVEL_CLIENTS : CLIENTS).map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              )}
               {errors.client && <em className="err">{errors.client}</em>}
             </Section>
 
@@ -357,29 +502,92 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
                   </div>
                 </Section>
 
-                <Section icon="boxes" tone="purple" title="Moves by" plain>
-                  <div className="rg-modes" role="radiogroup" aria-label="Moves by">
-                    {MODES.map((m) => (
-                      <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={`rg-mode${mode === m.id ? ' on' : ''}`} data-tone={m.tone} onClick={() => setMode(m.id)}>
-                        <Icon name={m.icon} size={16} />
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </Section>
-
-                <Section icon="pin" tone="green" title="Route" hint="Optional. Ports use standard names.">
-                  <div className="rg-route">
-                    <input className="rg-input" list="ref-places" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" aria-label="From" autoComplete="off" />
-                    <input className="rg-input" list="ref-places" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" aria-label="To" aria-invalid={Boolean(errors.to)} autoComplete="off" />
-                    <datalist id="ref-places">
-                      {places.map((p) => (
-                        <option key={p} value={p} />
+                {!clearanceOnly && (
+                  <Section icon="boxes" tone="purple" title="Moves by" plain>
+                    <div className="rg-modes" role="radiogroup" aria-label="Moves by">
+                      {MODES.map((m) => (
+                        <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={`rg-mode${mode === m.id ? ' on' : ''}`} data-tone={m.tone} onClick={() => setMode(m.id)}>
+                          <Icon name={m.icon} size={16} />
+                          {m.label}
+                        </button>
                       ))}
-                    </datalist>
-                  </div>
-                  {errors.to && <em className="err">{errors.to}</em>}
-                </Section>
+                    </div>
+                  </Section>
+                )}
+
+                {clearanceOnly ? (
+                  <Section icon="pin" tone="green" title="Clearance port">
+                    <input className="rg-input" value={clrPort} onChange={(e) => setClrPort(e.target.value)} placeholder="e.g. Jeddah" aria-label="Clearance port" aria-invalid={Boolean(errors.port)} autoComplete="off" />
+                    {errors.port && <em className="err">{errors.port}</em>}
+                  </Section>
+                ) : (
+                  <Section icon="pin" tone="green" title="Route" hint="Optional. Ports use standard names.">
+                    <div className="rg-route">
+                      {(['from', 'to'] as const).map((w) => {
+                        const val = w === 'from' ? from : to
+                        const open = linked && portFocus === w && val.trim().length >= 2 && portHits.length > 0
+                        return (
+                          <div className="rg-wrap" key={w}>
+                            <input
+                              className="rg-input"
+                              list={linked ? undefined : 'ref-places'}
+                              value={val}
+                              onChange={(e) => {
+                                if (w === 'from') {
+                                  setFrom(e.target.value)
+                                  setOriginId(null)
+                                } else {
+                                  setTo(e.target.value)
+                                  setDestId(null)
+                                }
+                                setPortFocus(w)
+                              }}
+                              onFocus={() => setPortFocus(w)}
+                              onBlur={() => window.setTimeout(() => setPortFocus((f) => (f === w ? null : f)), 160)}
+                              placeholder={w === 'from' ? 'From' : 'To'}
+                              aria-label={w === 'from' ? 'From' : 'To'}
+                              aria-invalid={w === 'to' && Boolean(errors.to)}
+                              autoComplete="off"
+                            />
+                            {open && (
+                              <ul className="rg-suggest" role="listbox" aria-label="Ports in Pivot OS">
+                                {portHits.map((p) => (
+                                  <li key={p.id}>
+                                    <button
+                                      type="button"
+                                      role="option"
+                                      aria-selected={false}
+                                      onMouseDown={() => {
+                                        if (w === 'from') {
+                                          setFrom(portLabel(p))
+                                          setOriginId(p.id)
+                                        } else {
+                                          setTo(portLabel(p))
+                                          setDestId(p.id)
+                                        }
+                                        setPortFocus(null)
+                                      }}
+                                    >
+                                      <span>{p.name}</span> <b>{p.locode}</b> <small>{p.country}</small>
+                                    </button>
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )
+                      })}
+                      {!linked && (
+                        <datalist id="ref-places">
+                          {places.map((p) => (
+                            <option key={p} value={p} />
+                          ))}
+                        </datalist>
+                      )}
+                    </div>
+                    {errors.to && <em className="err">{errors.to}</em>}
+                  </Section>
+                )}
               </>
             )}
 
