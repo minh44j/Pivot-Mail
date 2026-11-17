@@ -69,6 +69,13 @@ import { BulkPanel } from './components/BulkPanel'
 /** How often Gmail is asked for changes while the tab is visible (hidden tabs: 60 s). */
 const POLL_VISIBLE_MS = 5_000
 
+/** Short, plain reason shown in the sync banner (and logged) so a failure can be told apart from the next one. */
+function describeError(e: unknown): string {
+  console.warn('Pivot Mail sync problem', e)
+  if (e instanceof GmailError) return e.status === 429 ? 'Google is limiting requests (429)' : e.status === 403 ? 'Google refused the request (403)' : `Google answered with error ${e.status}`
+  return 'the connection to Google failed'
+}
+
 const stamp = (): number => Date.now()
 
 const EMPTY_PERF = { staff: [] as StaffMember[], days: new Map<string, DayStat[]>() }
@@ -284,6 +291,7 @@ export default function App() {
   /** Cases are stored on the server and shared by the company's staff. */
   const [casesDb, setCasesDb] = useState<CaseRecord[] | null>(null)
   const casesAt = useRef(0)
+  const [syncDetail, setSyncDetail] = useState('')
   const loadCases = useCallback(async () => {
     casesAt.current = Date.now()
     const list = await fetchCases()
@@ -357,7 +365,10 @@ export default function App() {
       } catch (e) {
         if (runId.current === my) {
           if (e instanceof GmailError && e.status === 401 && current) markReconnect(current)
-          else setSim('syncfail')
+          else {
+            setSyncDetail(describeError(e))
+            setSim('syncfail')
+          }
         }
       } finally {
         if (runId.current === my) setSyncing(false)
@@ -527,7 +538,10 @@ export default function App() {
       failStreak.current += 1
       if (e instanceof GmailError && e.status === 401) {
         /* the key is refreshed by the next call */
-      } else if (failStreak.current >= 3) setSim('syncfail')
+      } else if (failStreak.current >= 3) {
+        setSyncDetail(describeError(e))
+        setSim('syncfail')
+      }
     } finally {
       polling.current = false
     }
@@ -1933,7 +1947,7 @@ export default function App() {
         registerSearch={setSearchEl}
       />
       {(!online || sim === 'syncfail' || sim === 'ratelimit') && (
-        <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
+        <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} detail={syncDetail} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
       )}
       <main className="workspace" data-pane={pane} data-view={view}>
         <FolderPane

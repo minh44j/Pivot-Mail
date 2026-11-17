@@ -2,6 +2,7 @@ import { Icon } from './Icon'
 
 interface BannerProps {
   kind: 'offline' | 'syncfail' | 'ratelimit'
+  detail?: string
   last: Date
   seconds: number
   busy: boolean
@@ -9,13 +10,13 @@ interface BannerProps {
 }
 
 /** One slim banner under the toolbar. Polite live region so screen readers hear it once. */
-export function StatusBanner({ kind, last, seconds, busy, onRetry }: BannerProps) {
+export function StatusBanner({ kind, detail, last, seconds, busy, onRetry }: BannerProps) {
   const time = last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const text =
     kind === 'offline'
       ? 'You are offline. You can keep reading and organising. Changes sync when you reconnect, and sending waits until then.'
       : kind === 'syncfail'
-        ? `Couldn't sync with Google. Showing mail from ${time}.`
+        ? `Couldn't sync with Google${detail ? ` (${detail})` : ''}. Showing mail from ${time}.`
         : `Google is limiting requests. Sync is paused and retries automatically in ${seconds}s.`
   return (
     <div className={`status-banner ${kind}`} role="status" aria-live="polite">
