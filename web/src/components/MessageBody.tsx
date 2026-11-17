@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Message } from '../types'
 import { sanitizeEmailHtml, splitQuotedHtml, splitQuotedText } from '../mailhtml'
+import { inlineImageUri } from '../gmail/inline'
 
 const CSP = "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'"
 
@@ -62,19 +63,38 @@ export function MessageBody({ msg }: { msg: Message }) {
       </div>
     )
   }
-  return <FullBody msg={msg} />
+  return <FullBody key={msg.id} msg={msg} />
 }
 
 function FullBody({ msg }: { msg: Message }) {
   const [showQuote, setShowQuote] = useState(false)
 
+  // Images placed inside the message (cid:) are fetched from Gmail and drawn in place.
+  const [inline, setInline] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let alive = true
+    const todo = Object.entries(msg.inline ?? {})
+    for (const [cid, img] of todo) {
+      void inlineImageUri(img).then((uri) => {
+        if (alive && uri) setInline((p) => (p[cid] === uri ? p : { ...p, [cid]: uri }))
+      })
+    }
+    return () => {
+      alive = false
+    }
+  }, [msg.inline])
+
   const view = useMemo(() => {
     if (msg.html) {
-      const clean = sanitizeEmailHtml(msg.html, true)
+      const withImages = msg.html.replace(/(\ssrc\s*=\s*["']?)cid:([^"'\s>]+)/gi, (all, pre: string, cid: string) => {
+        const uri = inline[cid.toLowerCase()]
+        return uri ? `${pre}${uri}` : all
+      })
+      const clean = sanitizeEmailHtml(withImages, true)
       return { kind: 'html' as const, blocked: clean.blocked, ...splitQuotedHtml(clean.html) }
     }
     return { kind: 'text' as const, blocked: 0, ...splitQuotedText(msg.body) }
-  }, [msg.html, msg.body])
+  }, [msg.html, msg.body, inline])
 
   const hasQuote = view.quoted !== ''
   const full = view.kind === 'html' ? view.main + (showQuote ? view.quoted : '') : ''

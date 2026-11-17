@@ -47,6 +47,22 @@ ok('plain part decoded with its charset', e.text === 'Café plain')
 ok('html part read', e.html === '<p>Hello <b>html</b></p>')
 ok('attachment found with decoded name and size', e.attachments.length === 1 && e.attachments[0]?.name === 'report.pdf' && e.attachments[0]?.size === 1234)
 ok('inline part without a filename is not an attachment', !e.attachments.some((x) => x.attachmentId === 'INLINE'))
+// ---- inline images (cid:)
+const pngB64 = b64(Buffer.from('89504e470d0a1a0a', 'hex'))
+const related: GPart = {
+  mimeType: 'multipart/related',
+  parts: [
+    { mimeType: 'text/html', body: { data: b64('<p>Hi</p><img src="cid:logo@x"><img src="CID:big@x">') } },
+    { mimeType: 'image/png', filename: 'logo.png', headers: [{ name: 'Content-ID', value: '<logo@x>' }], body: { data: pngB64, size: 8 } },
+    { mimeType: 'image/jpeg', filename: 'big.jpg', headers: [{ name: 'Content-Id', value: '<BIG@x>' }], body: { attachmentId: 'ATT1', size: 90000 } },
+    { mimeType: 'image/png', filename: 'unused.png', headers: [{ name: 'Content-ID', value: '<unused@x>' }], body: { attachmentId: 'ATT2', size: 100 } },
+    { mimeType: 'application/pdf', filename: 'doc.pdf', body: { attachmentId: 'ATT3', size: 5 } },
+  ],
+}
+const rel = extractBodies(related)
+ok('images used in the body are inline, matched without case or brackets', Object.keys(rel.inline).sort().join() === 'big@x,logo@x')
+ok('a small inline image carries its data, a big one its attachment id', rel.inline['logo@x']?.data === pngB64 && rel.inline['big@x']?.attachmentId === 'ATT1')
+ok('inline images are not listed as attachments; unused ones and real files are', rel.attachments.map((x) => x.name).sort().join() === 'doc.pdf,unused.png')
 ok('empty payload is safe', extractBodies(undefined).text === '' && extractBodies({}).attachments.length === 0)
 const deep: GPart = { mimeType: 'multipart/mixed', parts: [] }
 let cur = deep

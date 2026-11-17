@@ -43,6 +43,8 @@ export interface Message {
   body: string
   /** Original HTML body, shown only after sanitising (see mailhtml.ts) */
   html?: string
+  /** Real mail: images placed inside the body, by Content-ID (lower case) */
+  inline?: Record<string, { mime: string; data?: string; source?: { accountId: string; messageId: string; attachmentId: string } }>
   date: string
   unread: boolean
   flagged: boolean

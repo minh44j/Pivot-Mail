@@ -106,18 +106,34 @@ export interface RealAttachment {
   size: number
 }
 
+/** An image placed inside the message body (referenced as cid:... in the HTML). */
+export interface InlineImage {
+  mime: string
+  /** Small images arrive with the message; larger ones are fetched by attachment id */
+  data?: string
+  attachmentId?: string
+}
+
 export interface Bodies {
   text: string
   html: string
   attachments: RealAttachment[]
+  inline: Record<string, InlineImage>
 }
 
 /** Walks the MIME tree: the readable bodies and the real attachments (not inline body parts). Depth-limited. */
 export function extractBodies(payload: GPart | undefined): Bodies {
-  const out: Bodies = { text: '', html: '', attachments: [] }
+  const out: Bodies = { text: '', html: '', attachments: [], inline: {} }
+  const all: { cid: string; att: RealAttachment }[] = []
   const walk = (p: GPart, depth: number): void => {
     if (depth > 12) return
     const mime = (p.mimeType ?? '').toLowerCase()
+    const cid = (p.headers ?? []).find((h) => h.name.toLowerCase() === 'content-id')?.value.replace(/^\s*<|>\s*$/g, '').trim()
+    if (cid && mime.startsWith('image/') && (p.body?.attachmentId || p.body?.data)) {
+      out.inline[cid.toLowerCase()] = { mime, data: p.body.data, attachmentId: p.body.attachmentId }
+      if (p.filename && p.body.attachmentId) all.push({ cid: cid.toLowerCase(), att: { attachmentId: p.body.attachmentId, name: decodeWords(p.filename), mime, size: p.body.size ?? 0 } })
+      return
+    }
     if (p.filename && p.body?.attachmentId) {
       out.attachments.push({ attachmentId: p.body.attachmentId, name: decodeWords(p.filename), mime: mime || 'application/octet-stream', size: p.body.size ?? 0 })
       return
@@ -134,6 +150,10 @@ export function extractBodies(payload: GPart | undefined): Bodies {
     }
   }
   if (payload) walk(payload, 0)
+  // An image the message does not show in its body is still a file the person may want: keep it as an attachment.
+  const shown = new Set([...out.html.matchAll(/cid:([^"'\s)>]+)/gi)].map((x) => (x[1] ?? '').toLowerCase()))
+  for (const { cid, att } of all) if (!shown.has(cid)) out.attachments.push(att)
+  for (const cid of Object.keys(out.inline)) if (!shown.has(cid)) delete out.inline[cid]
   return out
 }
 

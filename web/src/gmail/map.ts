@@ -61,6 +61,7 @@ export function toMessage(accountId: string, g: GMessage, labelNames: Record<str
     subject: decodeWords(header(p, 'subject') ?? '').trim() || '(no subject)',
     body: plain,
     html: bodies?.html || undefined,
+    inline: bodies && Object.keys(bodies.inline).length > 0 ? Object.fromEntries(Object.entries(bodies.inline).map(([cid, v]) => [cid, { mime: v.mime, data: v.data, source: v.attachmentId ? { accountId, messageId: g.id, attachmentId: v.attachmentId } : undefined }])) : undefined,
     date: new Date(Number.isFinite(ts) ? ts : Date.now()).toISOString(),
     unread: (g.labelIds ?? []).includes('UNREAD'),
     flagged: (g.labelIds ?? []).includes('STARRED'),
