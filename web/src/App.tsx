@@ -36,6 +36,8 @@ import { FolderDialog } from './components/FolderDialog'
 import type { FolderDialogState } from './components/FolderDialog'
 import { platform } from './platform'
 import { matchesQuery, parseQuery } from './util'
+import { Notices } from './components/Notices'
+import type { Notice, NoticeKind } from './components/Notices'
 import { sanitizeEmailHtml } from './mailhtml'
 import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
 import { bareAddress, displayName } from './data/contacts'
@@ -150,9 +152,9 @@ export default function App() {
   const [compose, setCompose] = useState<ComposeInit | null>(null)
   const [composeKey, setComposeKey] = useState(0)
   const [pendingTemplate, setPendingTemplate] = useState<Template | null>(null)
-  const [toast, setToast] = useState<string | null>(null)
+  const [notices, setNotices] = useState<Notice[]>([])
   const [notif, setNotif] = useState(platform.notificationState())
-  const toastTimer = useRef<number | undefined>(undefined)
+  const noticeSeq = useRef(0)
   const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
   const [refOpen, setRefOpen] = useState(false)
@@ -197,11 +199,17 @@ export default function App() {
     }
   }, [])
 
-  const showToast = useCallback((m: string) => {
-    setToast(m)
-    window.clearTimeout(toastTimer.current)
-    toastTimer.current = window.setTimeout(() => setToast(null), 2600)
-  }, [])
+  const dismissNotice = useCallback((id: number) => setNotices((l) => l.filter((n) => n.id !== id)), [])
+  /** One status card. Wording that says something went wrong is shown as an error without every caller having to say so. */
+  const showToast = useCallback(
+    (text: string, opts?: { kind?: NoticeKind; action?: Notice['action'] }) => {
+      const kind = opts?.kind ?? (/\b(couldn'?t|could not|can'?t|cannot|failed|not sent|not allowed|error|refused|blocked|over gmail|please attach)/i.test(text) ? 'error' : 'success')
+      const id = ++noticeSeq.current
+      setNotices((l) => [...l.filter((n) => n.text !== text).slice(-2), { id, kind, text, action: opts?.action }])
+      window.setTimeout(() => dismissNotice(id), kind === 'error' ? 9000 : opts?.action ? 7000 : 3500)
+    },
+    [dismissNotice],
+  )
 
   useEffect(() => {
     messagesRef.current = messages
@@ -1002,6 +1010,7 @@ export default function App() {
       return
     }
     upsert(fromCompose(d, id, 'sent'))
+    showToast('Message sent')
   }
   const finishRef = useRef(finishSend)
   useEffect(() => {
@@ -1289,14 +1298,14 @@ export default function App() {
   const syncNow = () => {
     if (!online || syncing) return
     if (realMode) {
-      void syncTarget(sel, true)
-      void pollAll()
+      void Promise.allSettled([syncTarget(sel, true), pollAll()]).then(() => showToast('Synced'))
       return
     }
     setSyncing(true)
     window.setTimeout(() => {
       setSyncing(false)
       setLastSync(new Date())
+      showToast('Synced')
     }, 900)
   }
 
@@ -1867,11 +1876,7 @@ export default function App() {
           }}
           onToast={showToast}
         />
-        {toast && (
-          <div className="toast" role="status">
-            {toast}
-          </div>
-        )}
+        <Notices notices={notices} onDismiss={dismissNotice} />
       </SettingsContext.Provider>
     )
   }
@@ -1880,11 +1885,7 @@ export default function App() {
     return (
       <>
         <PerformancePage role={role} onBack={() => setScreen('mail')} onToast={showToast} data={authUser ? (perf.data ?? EMPTY_PERF) : undefined} status={authUser ? perf.status : 'ready'} />
-        {toast && (
-          <div className="toast" role="status">
-            {toast}
-          </div>
-        )}
+        <Notices notices={notices} onDismiss={dismissNotice} />
       </>
     )
   }
@@ -2086,14 +2087,6 @@ export default function App() {
       {/* The entries only read state; the ref the linter sees is the undo stack used inside the actions, called on click. */}
       {/* oxlint-disable-next-line react/refs */}
       {ctx && <ContextMenu x={ctx.x} y={ctx.y} entries={ctxEntries()} onClose={() => setCtx(null)} />}
-      {pendingSend && (
-        <div className="toast with-action" role="status">
-          <span>Message sent</span>
-          <button type="button" onClick={undoSend}>
-            Undo
-          </button>
-        </div>
-      )}
       {when && (
         <WhenDialog
           mode={when.mode}
@@ -2171,11 +2164,19 @@ export default function App() {
           real={authUser ? { company: authUser.company === 'tmc' ? 'tmc' : 'scl', onCreate: createCase } : undefined}
         />
       )}
-      {toast && (
-        <div className="toast" role="status">
-          {toast}
-        </div>
-      )}
+      <Notices notices={notices} onDismiss={dismissNotice} lead={
+            pendingSend ? (
+              <div className="notice progress" role="status">
+                <span className="notice-icon" aria-hidden="true">
+                  <span className="spinner" />
+                </span>
+                <span className="notice-text">Sending…</span>
+                <button type="button" className="notice-action" onClick={undoSend}>
+                  Undo
+                </button>
+              </div>
+            ) : null
+          } />
     </div>
     </>
     </SettingsContext.Provider>
