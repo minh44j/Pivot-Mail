@@ -6,10 +6,10 @@
 export type Scope = 'freight-clearance' | 'freight' | 'clearance'
 export type Mode = 'sea' | 'air' | 'land'
 
-export const SCOPES: { id: Scope; label: string; icon: 'boxes' | 'package' | 'clearance'; tone: string }[] = [
-  { id: 'freight-clearance', label: 'Freight + clearance', icon: 'boxes', tone: 'purple' },
-  { id: 'freight', label: 'Freight only', icon: 'package', tone: 'green' },
-  { id: 'clearance', label: 'Clearance only', icon: 'clearance', tone: 'orange' },
+export const SCOPES: { id: Scope; label: string; text: string; icon: 'ship' | 'boxes' | 'clearance'; tone: string }[] = [
+  { id: 'freight-clearance', label: 'Freight + clearance', text: 'Shipping, customs and related operations', icon: 'ship', tone: 'blue' },
+  { id: 'freight', label: 'Freight only', text: 'Only freight operations', icon: 'boxes', tone: 'purple' },
+  { id: 'clearance', label: 'Clearance only', text: 'Only customs clearance', icon: 'clearance', tone: 'green' },
 ]
 
 export const MODES: { id: Mode; label: string; icon: 'ship' | 'plane' | 'truck'; tone: string }[] = [
@@ -48,14 +48,14 @@ export const SALESPEOPLE = [
 ]
 
 /** Pivot Travel Management case form (mock client list; real master comes from Pivot OS). */
-export type TravelCategory = 'flight' | 'visa' | 'hotel' | 'chauffeur' | 'extra'
+export type TravelCategory = 'flight' | 'hotel' | 'visa' | 'chauffeur' | 'other'
 
-export const TRAVEL_CATEGORIES: { id: TravelCategory; label: string; icon: 'plane' | 'passport' | 'hotel' | 'car' | 'plus'; tone: string }[] = [
-  { id: 'flight', label: 'Flight', icon: 'plane', tone: 'blue' },
-  { id: 'visa', label: 'Visa', icon: 'passport', tone: 'purple' },
-  { id: 'hotel', label: 'Hotel', icon: 'hotel', tone: 'orange' },
-  { id: 'chauffeur', label: 'Chauffeur', icon: 'car', tone: 'teal' },
-  { id: 'extra', label: 'Extra', icon: 'plus', tone: 'green' },
+export const TRAVEL_CATEGORIES: { id: TravelCategory; label: string; text: string; icon: 'plane' | 'passport' | 'hotel' | 'car' | 'sparkle'; tone: string }[] = [
+  { id: 'flight', label: 'Flight', text: 'Tickets and changes', icon: 'plane', tone: 'blue' },
+  { id: 'hotel', label: 'Hotel', text: 'Stays and rooms', icon: 'hotel', tone: 'purple' },
+  { id: 'visa', label: 'Visa', text: 'Applications', icon: 'passport', tone: 'green' },
+  { id: 'chauffeur', label: 'Chauffeur', text: 'Cars and drivers', icon: 'car', tone: 'orange' },
+  { id: 'other', label: 'Other', text: 'Anything else', icon: 'sparkle', tone: 'gray' },
 ]
 
 export const TRAVEL_CLIENTS = ['Horizon Corporate Travel', 'Meridian Holdings', 'Al Noor Family Office', 'Sunrise Events FZ-LLC', 'Pinnacle Consulting']

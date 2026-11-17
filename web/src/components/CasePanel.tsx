@@ -19,8 +19,10 @@ export function CasePanel({ c, onSave, onNewMail, onToast }: Props) {
   const title =
     c.kind === 'travel'
       ? (TRAVEL_CATEGORIES.find((x) => x.id === d.category)?.label ?? d.category ?? '')
-      : `${d.origin ?? ''} → ${d.destination ?? ''}`
-  const subject = `[${c.ref}] ${c.client} – ${title}`
+      : d.origin && d.destination
+        ? `${d.origin} → ${d.destination}`
+        : ''
+  const subject = title ? `[${c.ref}] ${c.client} – ${title}` : `[${c.ref}] ${c.client}`
   const when = new Date(c.openedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
   const copy = async (text: string, what: string) => onToast((await platform.copyText(text)) ? `${what} copied` : 'Copy was blocked by the browser')
   const save = async (change: { notes?: string; status?: 'open' | 'closed' }) => {
@@ -32,11 +34,11 @@ export function CasePanel({ c, onSave, onNewMail, onToast }: Props) {
 
   const rows: [string, string][] =
     c.kind === 'travel'
-      ? [['Category', String(title)]]
+      ? [['Category', String(title)], ...(d.salesperson ? ([['Salesperson', d.salesperson]] as [string, string][]) : [])]
       : [
           ['Handling', SCOPES.find((x) => x.id === d.scope)?.label ?? d.scope ?? ''],
           ['Moves by', MODES.find((x) => x.id === d.mode)?.label ?? d.mode ?? ''],
-          ['Route', `${d.origin ?? ''} → ${d.destination ?? ''}`],
+          ...(title ? ([['Route', title]] as [string, string][]) : []),
           ...(d.cargo ? ([['Cargo', d.cargo]] as [string, string][]) : []),
           ...(d.salesperson ? ([['Salesperson', d.salesperson]] as [string, string][]) : []),
         ]

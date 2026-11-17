@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { CLIENTS, MODES, PLACES, SALESPEOPLE, SCOPES, TRAVEL_CATEGORIES, TRAVEL_CLIENTS } from '../data/refdata'
 import type { Mode, Scope, TravelCategory } from '../data/refdata'
 import { platform } from '../platform'
 import type { NewCase } from '../cases'
 import { initials } from '../util'
 import { Icon } from './Icon'
+import type { IconName } from './Icon'
 
 const TONES = ['blue', 'purple', 'green', 'orange', 'teal', 'red']
 
@@ -60,9 +62,10 @@ function readLast(): { ref: string; by: string } | null {
 
 export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Props) {
   const panel = Boolean(anchor) && window.innerWidth >= 900
-  const PANEL_W = Math.min(780, window.innerWidth - 16)
+  const PANEL_W = Math.min(640, window.innerWidth - 16)
   const [company, setCompany] = useState<Company>(real ? (real.company === 'tmc' ? 'travel' : 'shipping') : 'shipping')
   const [existing, setExisting] = useState('')
+  const [showExisting, setShowExisting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [category, setCategory] = useState<TravelCategory>('flight')
   const [client, setClient] = useState('')
@@ -70,7 +73,6 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const [mode, setMode] = useState<Mode>('sea')
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [cargo, setCargo] = useState('')
   const [notes, setNotes] = useState('')
   const [sales, setSales] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -100,55 +102,40 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const top = anchor ? anchor.bottom + 8 : 0
 
   const places = PLACES[mode]
-  const valid = (v: string) => places.some((p) => p.toLowerCase() === v.trim().toLowerCase())
   const canon = (v: string) => places.find((p) => p.toLowerCase() === v.trim().toLowerCase()) ?? v.trim()
+  const travel = company === 'travel'
+  const ready = client.trim().length >= 2
 
+  /** Only the client is required. A route is optional, but its two ends must differ. */
   const generate = async () => {
     const e: Record<string, string> = {}
-    const travel = company === 'travel'
+    if (!ready) e.client = 'Enter the client'
+    if (!travel && from.trim() && to.trim() && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
+    setErrors(e)
+    if (Object.keys(e).length > 0 || busy) return
+    const salesName = SALESPEOPLE.find((s) => s.id === sales)?.name ?? ''
+    const catLabel = TRAVEL_CATEGORIES.find((c) => c.id === category)?.label ?? ''
+    const route = from.trim() && to.trim() ? ` – ${canon(from)} → ${canon(to)}` : ''
+    const subjectFor = (ref: string, name: string) => (travel ? `[${ref}] ${name} – ${catLabel}` : `[${ref}] ${name}${route}`)
     if (real) {
-      if (client.trim().length < 2) e.client = 'Enter the client'
-      if (!travel) {
-        if (from.trim().length < 2) e.from = 'Enter where it starts'
-        if (to.trim().length < 2) e.to = 'Enter where it goes'
-        if (!e.from && !e.to && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
-      }
-      setErrors(e)
-      if (Object.keys(e).length > 0 || busy) return
       setBusy(true)
-      const details: Record<string, string> = travel
-        ? { category }
-        : { scope, mode, origin: canon(from), destination: canon(to), cargo: cargo.trim(), salesperson: SALESPEOPLE.find((s) => s.id === sales)?.name ?? '' }
+      const details: Record<string, string> = travel ? { category, salesperson: salesName } : { scope, mode, origin: canon(from), destination: canon(to), salesperson: salesName }
       const res = await real.onCreate({ client: client.trim(), details, notes: notes.trim(), ref: existing.trim() || undefined })
       setBusy(false)
       if (!res.ok) {
         setErrors({ form: res.message })
         return
       }
-      const catLabel = TRAVEL_CATEGORIES.find((c) => c.id === category)?.label ?? ''
-      setResult({ ref: res.ref, subject: travel ? `[${res.ref}] ${client.trim()} – ${catLabel}` : `[${res.ref}] ${client.trim()} – ${canon(from)} → ${canon(to)}` })
+      setResult({ ref: res.ref, subject: subjectFor(res.ref, client.trim()) })
       return
     }
     const clientList = travel ? TRAVEL_CLIENTS : CLIENTS
-    if (!client.trim()) e.client = 'Enter the client'
-    else if (!clientList.some((c) => c.toLowerCase() === client.trim().toLowerCase())) e.client = 'Choose a client from the list'
-    if (!travel) {
-      if (!valid(from)) e.from = 'Choose a standard name from the list'
-      if (!valid(to)) e.to = 'Choose a standard name from the list'
-      if (!e.from && !e.to && from.trim().toLowerCase() === to.trim().toLowerCase()) e.to = 'Origin and destination must differ'
-      if (!sales) e.sales = 'Choose the salesperson'
-    }
-    setErrors(e)
-    if (Object.keys(e).length > 0) return
-
-    const ref = nextRef(company)
     const clientName = clientList.find((c) => c.toLowerCase() === client.trim().toLowerCase()) ?? client.trim()
-    const catLabel = TRAVEL_CATEGORIES.find((c) => c.id === category)?.label ?? ''
-    const subject = travel ? `[${ref}] ${clientName} – ${catLabel}` : `[${ref}] ${clientName} – ${canon(from)} → ${canon(to)}`
-    const by = travel ? catLabel : (SALESPEOPLE.find((s) => s.id === sales)?.name ?? '')
+    const ref = nextRef(company)
+    const by = travel ? catLabel : salesName
     platform.storage.set(LAST_KEY, JSON.stringify({ ref, by }))
     setLast({ ref, by })
-    setResult({ ref, subject })
+    setResult({ ref, subject: subjectFor(ref, clientName) })
   }
 
   const copy = async (text: string, what: string) => {
@@ -161,12 +148,88 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
     setClient('')
     setFrom('')
     setTo('')
-    setCargo('')
     setNotes('')
     setSales('')
     setExisting('')
     setErrors({})
   }
+
+  const salesBlock = (
+    <Section icon="user" tone="red" title="Salesperson" hint="Optional.">
+      <div className="rg-select">
+        <Icon name="user" size={15} />
+        <select value={sales} onChange={(e) => setSales(e.target.value)} aria-label="Salesperson">
+          <option value="">Select a salesperson</option>
+          {SALESPEOPLE.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <Icon name="chevron" size={14} />
+      </div>
+      <div className="rg-people" role="radiogroup" aria-label="Salesperson shortcuts">
+        {SALESPEOPLE.map((s) => (
+          <button key={s.id} type="button" role="radio" aria-checked={sales === s.id} className={`rg-person${sales === s.id ? ' on' : ''}`} onClick={() => setSales(sales === s.id ? '' : s.id)}>
+            <span className="avatar" data-tone={TONES[s.id.charCodeAt(0) % TONES.length]}>
+              {initials(s.name)}
+            </span>
+            <small>{s.name}</small>
+          </button>
+        ))}
+      </div>
+    </Section>
+  )
+
+  const detailsBlock = (
+    <Section icon="draft" tone="purple" title="Additional details" hint="Optional. Anything else we should know?">
+      <div className="rg-area">
+        <textarea
+          value={notes}
+          maxLength={500}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder={travel ? 'e.g. RUH–DXB, 3 pax, 12 Dec' : 'e.g. 2×40HQ machinery, urgent, anything ops should know'}
+          aria-label="Additional details"
+          rows={3}
+        />
+        <small aria-hidden="true">{notes.length}/500</small>
+      </div>
+    </Section>
+  )
+
+  const footer = (
+    <>
+      {real && (
+        <div className="rg-existing">
+          {showExisting ? (
+            <label className="fld">
+              <span>Existing number</span>
+              <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like ${travel ? 'PTF260123' : 'PS2600123'}`} autoComplete="off" />
+            </label>
+          ) : (
+            <button type="button" className="link" onClick={() => setShowExisting(true)}>
+              I already have a number
+            </button>
+          )}
+        </div>
+      )}
+      {errors.form && (
+        <p className="err" role="alert">
+          {errors.form}
+        </p>
+      )}
+      <button type="submit" className="rg-go" disabled={busy || !ready}>
+        <Icon name="sparkle" size={16} />
+        {busy ? 'Saving…' : existing.trim() ? 'Register case' : travel ? 'Generate number' : 'Open job & generate number'}
+        <Icon name="arrow" size={16} />
+      </button>
+      {!real && last && (
+        <p className="muted last">
+          Last issued (preview) <code>{last.ref}</code> · {last.by}
+        </p>
+      )}
+    </>
+  )
 
   return (
     <div className={`modal-backdrop${panel ? ' panel-mode' : ''}`} onMouseDown={(e) => !panel && e.target === e.currentTarget && onClose()}>
@@ -247,183 +310,119 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
               Generate another
             </button>
           </div>
-        ) : company === 'travel' ? (
-          <form
-            className="modal-body"
-            onSubmit={(e) => {
-              e.preventDefault()
-              void generate()
-            }}
-            noValidate
-          >
-            <label className="fld">
-              <span>Client</span>
-              <input ref={first} list="ref-clients-pt" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Start typing a company…" aria-invalid={Boolean(errors.client)} autoComplete="off" />
-              <datalist id="ref-clients-pt">
-                {TRAVEL_CLIENTS.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-              {errors.client && <em className="err">{errors.client}</em>}
-            </label>
-            <div className="fld">
-              <span id="lbl-cat">Category</span>
-              <div className="opts wrap" role="radiogroup" aria-labelledby="lbl-cat">
-                {TRAVEL_CATEGORIES.map((c) => (
-                  <button key={c.id} type="button" role="radio" aria-checked={category === c.id} className={`opt${category === c.id ? ' on' : ''}`} data-tone={c.tone} onClick={() => setCategory(c.id)}>
-                    <Icon name={c.icon} size={16} />
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <label className="fld half">
-              <span>Notes</span>
-              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the team should know" />
-            </label>
-            {real && (
-              <label className="fld half">
-                <span>Existing number (optional)</span>
-                <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like PT2600123`} autoComplete="off" />
-              </label>
-            )}
-            {errors.form && (
-              <p className="err" role="alert">
-                {errors.form}
-              </p>
-            )}
-            <button type="submit" className="btn primary wide" disabled={busy}>
-              {busy ? 'Saving…' : existing.trim() ? 'Register case' : 'Generate number'}
-            </button>
-            {!real && last && (
-              <p className="muted last">
-                Last issued (preview) <code>{last.ref}</code> · {last.by}
-              </p>
-            )}
-          </form>
         ) : (
           <form
-            className="modal-body"
+            className="modal-body rg-form"
             onSubmit={(e) => {
               e.preventDefault()
               void generate()
             }}
             noValidate
           >
-            <label className="fld">
-              <span>Client</span>
-              <input ref={first} list="ref-clients" value={client} onChange={(e) => setClient(e.target.value)} placeholder="Start typing a company…" aria-invalid={Boolean(errors.client)} autoComplete="off" />
-              <datalist id="ref-clients">
-                {CLIENTS.map((c) => (
+            <Section icon="building" tone="blue" title="Client" hint={travel ? 'Pick from the directory, or just type a name.' : 'Who is this job for?'}>
+              <input
+                ref={first}
+                className="rg-input"
+                list={travel ? 'ref-clients-pt' : 'ref-clients'}
+                value={client}
+                onChange={(e) => setClient(e.target.value)}
+                placeholder={travel ? 'Start typing a company or person…' : 'Start typing a company…'}
+                aria-label="Client"
+                aria-invalid={Boolean(errors.client)}
+                autoComplete="off"
+              />
+              <datalist id={travel ? 'ref-clients-pt' : 'ref-clients'}>
+                {(travel ? TRAVEL_CLIENTS : CLIENTS).map((c) => (
                   <option key={c} value={c} />
                 ))}
               </datalist>
               {errors.client && <em className="err">{errors.client}</em>}
-            </label>
+            </Section>
 
-            <div className="fld">
-              <span id="lbl-scope">What are we handling?</span>
-              <div className="opts" role="radiogroup" aria-labelledby="lbl-scope">
-                {SCOPES.map((s) => (
-                  <button key={s.id} type="button" role="radio" aria-checked={scope === s.id} className={`opt${scope === s.id ? ' on' : ''}`} data-tone={s.tone} onClick={() => setScope(s.id)}>
-                    <Icon name={s.icon} size={16} />
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {travel ? (
+              <Section icon="boxes" tone="blue" title="What is it for?" hint="Select the type of work to get started." plain>
+                <div className="rg-cards five" role="radiogroup" aria-label="What is it for?">
+                  {TRAVEL_CATEGORIES.map((c) => (
+                    <Card key={c.id} on={category === c.id} tone={c.tone} icon={c.icon} title={c.label} text={c.text} onPick={() => setCategory(c.id)} />
+                  ))}
+                </div>
+              </Section>
+            ) : (
+              <>
+                <Section icon="boxes" tone="blue" title="What are we handling?" hint="Select the type of operation to get started." plain>
+                  <div className="rg-cards three" role="radiogroup" aria-label="What are we handling?">
+                    {SCOPES.map((s) => (
+                      <Card key={s.id} on={scope === s.id} tone={s.tone} icon={s.icon} title={s.label} text={s.text} onPick={() => setScope(s.id)} />
+                    ))}
+                  </div>
+                </Section>
 
-            <div className="fld">
-              <span id="lbl-mode">Moves by</span>
-              <div className="opts" role="radiogroup" aria-labelledby="lbl-mode">
-                {MODES.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === m.id}
-                    className={`opt${mode === m.id ? ' on' : ''}`}
-                    data-tone={m.tone}
-                    onClick={() => {
-                      setMode(m.id)
-                      // Sample place lists differ per mode, so they restart; with free text nothing is lost.
-                      if (!real) {
-                        setFrom('')
-                        setTo('')
-                      }
-                    }}
-                  >
-                    <Icon name={m.icon} size={16} />
-                    {m.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+                <Section icon="boxes" tone="purple" title="Moves by" plain>
+                  <div className="rg-modes" role="radiogroup" aria-label="Moves by">
+                    {MODES.map((m) => (
+                      <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={`rg-mode${mode === m.id ? ' on' : ''}`} data-tone={m.tone} onClick={() => setMode(m.id)}>
+                        <Icon name={m.icon} size={16} />
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+                </Section>
 
-            <div className="fld-row">
-              <label className="fld">
-                <span>From</span>
-                <input list="ref-places" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="Port or place" aria-invalid={Boolean(errors.from)} autoComplete="off" />
-                {errors.from && <em className="err">{errors.from}</em>}
-              </label>
-              <label className="fld">
-                <span>To</span>
-                <input list="ref-places" value={to} onChange={(e) => setTo(e.target.value)} placeholder="Port or place" aria-invalid={Boolean(errors.to)} autoComplete="off" />
-                {errors.to && <em className="err">{errors.to}</em>}
-              </label>
-              <datalist id="ref-places">
-                {places.map((p) => (
-                  <option key={p} value={p} />
-                ))}
-              </datalist>
-            </div>
-
-            <label className="fld half">
-              <span>Cargo (optional)</span>
-              <input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="e.g. 2×40HQ machinery, ~46 CBM" />
-            </label>
-            <label className="fld half">
-              <span>Notes for operations (optional)</span>
-              <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything ops should know" aria-label="Notes for operations" />
-            </label>
-
-            <div className="fld">
-              <span id="lbl-sales">Salesperson</span>
-              <div className="sp-row" role="radiogroup" aria-labelledby="lbl-sales">
-                {SALESPEOPLE.map((s) => (
-                  <button key={s.id} type="button" role="radio" aria-checked={sales === s.id} className={`sp${sales === s.id ? ' on' : ''}`} onClick={() => setSales(s.id)}>
-                    <span className="avatar" data-tone={TONES[s.id.charCodeAt(0) % TONES.length]}>
-                      {initials(s.name)}
-                    </span>
-                    <small>{s.name}</small>
-                  </button>
-                ))}
-              </div>
-              {errors.sales && <em className="err">{errors.sales}</em>}
-            </div>
-
-            {real && (
-              <label className="fld half">
-                <span>Existing number (optional)</span>
-                <input value={existing} onChange={(e) => setExisting(e.target.value)} placeholder={`Already have one from Pivot OS? Type it here, like PS2600123`} autoComplete="off" />
-              </label>
+                <Section icon="pin" tone="green" title="Route" hint="Optional. Ports use standard names.">
+                  <div className="rg-route">
+                    <input className="rg-input" list="ref-places" value={from} onChange={(e) => setFrom(e.target.value)} placeholder="From" aria-label="From" autoComplete="off" />
+                    <input className="rg-input" list="ref-places" value={to} onChange={(e) => setTo(e.target.value)} placeholder="To" aria-label="To" aria-invalid={Boolean(errors.to)} autoComplete="off" />
+                    <datalist id="ref-places">
+                      {places.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                  </div>
+                  {errors.to && <em className="err">{errors.to}</em>}
+                </Section>
+              </>
             )}
-            {errors.form && (
-              <p className="err" role="alert">
-                {errors.form}
-              </p>
-            )}
-            <button type="submit" className="btn primary wide half" disabled={busy}>
-              {busy ? 'Saving…' : existing.trim() ? 'Register case' : 'Generate number'}
-            </button>
-            {!real && last && (
-              <p className="muted last">
-                Last issued (preview) <code>{last.ref}</code> · {last.by}
-              </p>
-            )}
+
+            {detailsBlock}
+            {salesBlock}
+            {footer}
           </form>
         )}
       </div>
     </div>
+  )
+}
+
+/** One headed block of the form: icon, title, a line of help, then the control. */
+function Section(props: { icon: IconName; tone: string; title: string; hint?: string; plain?: boolean; children: ReactNode }) {
+  return (
+    <div className="rg-sec">
+      <div className="rg-h">
+        <span className="rg-hi" data-tone={props.tone} aria-hidden="true">
+          <Icon name={props.icon} size={15} />
+        </span>
+        <strong>{props.title}</strong>
+      </div>
+      {props.hint && <p className="rg-hint">{props.hint}</p>}
+      {props.children}
+    </div>
+  )
+}
+
+/** A choice shown as a card: coloured icon, title and a short description. A tick marks the chosen one. */
+function Card(props: { on: boolean; tone: string; icon: IconName; title: string; text: string; onPick: () => void }) {
+  return (
+    <button type="button" role="radio" aria-checked={props.on} className={`rg-card${props.on ? ' on' : ''}`} data-tone={props.tone} onClick={props.onPick}>
+      {props.on && (
+        <span className="rg-tick" aria-hidden="true">
+          <Icon name="check" size={12} />
+        </span>
+      )}
+      <span className="rg-ci" aria-hidden="true">
+        <Icon name={props.icon} size={20} />
+      </span>
+      <strong>{props.title}</strong>
+      <small>{props.text}</small>
+    </button>
   )
 }

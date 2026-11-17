@@ -48,15 +48,14 @@ function cleanDetails(kind: 'shipping' | 'travel', d: unknown): Record<string, s
   const o = (typeof d === 'object' && d !== null ? d : {}) as Record<string, unknown>
   if (kind === 'travel') {
     const category = short(o.category, 20)
-    if (!['flight', 'visa', 'hotel', 'chauffeur', 'extra'].includes(category)) return null
-    return { category }
+    if (!['flight', 'hotel', 'visa', 'chauffeur', 'other', 'extra'].includes(category)) return null
+    return { category, salesperson: short(o.salesperson, 60) }
   }
   const scope = short(o.scope, 30)
   const mode = short(o.mode, 10)
   if (!['freight-clearance', 'freight', 'clearance'].includes(scope) || !['sea', 'air', 'land'].includes(mode)) return null
   const origin = short(o.origin, 80)
   const destination = short(o.destination, 80)
-  if (!origin || !destination) return null
   return { scope, mode, origin, destination, cargo: short(o.cargo, 200), salesperson: short(o.salesperson, 60) }
 }
 

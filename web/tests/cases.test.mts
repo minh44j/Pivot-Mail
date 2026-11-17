@@ -67,7 +67,8 @@ ok('a travel case uses the PT series and the travel form', j.case.ref === 'PT269
 
 ok('missing client refused', (await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), { ...ship, client: '  ' })).status === 400)
 ok('unknown travel category refused', (await call(POST, TMC, 'POST', who('maya@pivottmc.com', 'tmc'), { client: 'X', details: { category: 'rocket' } })).status === 400)
-ok('shipping needs origin and destination', (await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), { client: 'X', details: { ...ship.details, origin: '' } })).status === 400)
+ok('a route is optional (as in Pivot OS)', (await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), { client: 'No route yet', details: { scope: 'freight', mode: 'air' } })).status === 201)
+ok('Other is a travel category and the salesperson is kept', await (async () => { const x = await (await call(POST, TMC, 'POST', who('maya@pivottmc.com', 'tmc'), { client: 'Z', details: { category: 'other', salesperson: 'Amir' } })).json(); return x.case?.details.category === 'other' && x.case.details.salesperson === 'Amir' })())
 ok('shipping form fields cannot be smuggled into a travel case', (await (await call(POST, TMC, 'POST', who('maya@pivottmc.com', 'tmc'), { client: 'Y', details: { category: 'visa', origin: 'x', evil: 'y' } })).json()).case.details.origin === undefined)
 ok('oversized text is cut, not stored whole', (await (await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), { ...ship, client: 'A'.repeat(500) })).json()).case.client.length === 160)
 
@@ -84,7 +85,7 @@ j = await (await call(GET, H, 'GET', who('bob@pivotscl.com', 'scl'))).json()
 ok('colleagues of the same company see the case', j.cases.some((c: any) => c.ref === 'PS2690001') && j.cases.every((c: any) => c.company === 'scl'))
 ok('newest first', j.cases[0].createdAt === undefined && j.cases[0].openedAt >= j.cases[j.cases.length - 1].openedAt)
 j = await (await call(GET, TMC, 'GET', who('maya@pivottmc.com', 'tmc'))).json()
-ok('the other company sees only its own cases', j.cases.length === 2 && j.cases.every((c: any) => c.ref.startsWith('PT')))
+ok('the other company sees only its own cases', j.cases.length === 3 && j.cases.every((c: any) => c.ref.startsWith('PT')))
 ok('listing needs sign-in', (await call(GET, H, 'GET', {})).status === 401)
 
 // updates
