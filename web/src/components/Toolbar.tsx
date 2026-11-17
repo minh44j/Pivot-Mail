@@ -10,6 +10,7 @@ import { SearchBox } from './SearchBox'
 import type { IconName, Tone } from './Icon'
 import type { Notice } from './Notices'
 import type { Weather } from '../weather'
+import type { RefAnchor } from './RefGenerator'
 
 export interface HistoryItem {
   id: number
@@ -31,7 +32,8 @@ interface Props {
   onPane: (p: PaneLayout) => void
   onDensity: (d: Density) => void
   onEnableNotifications: () => void
-  onRef: () => void
+  onRef: (anchor?: RefAnchor) => void
+  refOpen: boolean
   onSignOut: () => void
   /** Email of the signed-in person, when real sign-in is used */
   signedInAs?: string
@@ -76,10 +78,6 @@ interface Props {
   weather: Weather | null
   /** Line under the name: role and company */
   subtitle: string
-  /** Reference numbers of the current company, newest first (the Ref No. menu) */
-  refs: { ref: string; client?: string }[]
-  onOpenRef: (ref: string) => void
-  onCopyRef: (ref: string) => void
 }
 
 const greeting = (d = new Date()): string => (d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening')
@@ -464,57 +462,20 @@ export function Toolbar(p: Props) {
           </button>
         </div>
         <div className="cb-tools">
-          <Menu label="Ref No." className="cb" trigger={() => (
-            <>
-              <Icon name="hash" size={17} tone="teal" />
-              <span className="cb-label">Ref No.</span>
-              <Icon name="chevron" size={12} />
-            </>
-          )}>
-            {(close) => (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onRef()
-                    close()
-                  }}
-                >
-                  <span className="ph">
-                    <Icon name="plus" size={14} />
-                  </span>
-                  New reference number…
-                </button>
-                <div className="menu-sep" role="separator" />
-                <div className="menu-head">Recent reference numbers</div>
-                {p.refs.length === 0 && <div className="menu-note">None yet. Create one above.</div>}
-                {p.refs.map((r) => (
-                  <div key={r.ref} className="ref-item">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="menu-item"
-                      onClick={() => {
-                        p.onOpenRef(r.ref)
-                        close()
-                      }}
-                    >
-                      <span className="ph" />
-                      <span className="ref-item-text">
-                        <strong>{r.ref}</strong>
-                        {r.client && <small>{r.client}</small>}
-                      </span>
-                    </button>
-                    <button type="button" className="ref-copy" aria-label={`Copy ${r.ref}`} onClick={() => p.onCopyRef(r.ref)}>
-                      <Icon name="copy" size={14} />
-                    </button>
-                  </div>
-                ))}
-              </>
-            )}
-          </Menu>
+          <button
+            type="button"
+            className="cb"
+            data-ref-anchor
+            aria-haspopup="dialog"
+            aria-expanded={p.refOpen}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect()
+              p.onRef({ left: r.left, right: r.right, bottom: r.bottom })
+            }}
+          >
+            <Icon name="hash" size={17} tone="teal" />
+            <span className="cb-label">Ref No.</span>
+          </button>
           <Menu label="Templates" className="cb" trigger={() => (
             <>
               <Icon name="template" size={17} tone="purple" />

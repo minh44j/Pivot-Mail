@@ -60,6 +60,7 @@ import { Composer } from './components/Composer'
 import { ContextMenu } from './components/ContextMenu'
 import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
+import type { RefAnchor } from './components/RefGenerator'
 import { SignIn } from './components/SignIn'
 import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
@@ -169,6 +170,7 @@ export default function App() {
   const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
   const [refOpen, setRefOpen] = useState(false)
+  const [refAnchor, setRefAnchor] = useState<RefAnchor | null>(null)
   const [help, setHelp] = useState(false)
   const [jump, setJump] = useState<null | 'go' | 'move'>(null)
   const searchEl = useRef<HTMLInputElement | null>(null)
@@ -1958,7 +1960,14 @@ export default function App() {
         onPane={setPane}
         onDensity={setDensity}
         onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
-        onRef={() => setRefOpen(true)}
+        refOpen={refOpen}
+        onRef={(anchor) => {
+          if (refOpen && anchor) setRefOpen(false)
+          else {
+            setRefAnchor(anchor ?? null)
+            setRefOpen(true)
+          }
+        }}
         signedInAs={authUser?.email}
         canSwitchRole={!authUser || authUser.role === 'admin'}
         onSignOut={() => {
@@ -1973,9 +1982,6 @@ export default function App() {
         registerSearch={setSearchEl}
         weather={weather}
         subtitle={[authUser ? (role === 'admin' ? 'Administrator' : 'Staff') : 'Preview', authUser ? (authUser.company === 'tmc' ? 'Pivot Travel Management' : 'Pivot Shipping') : ''].filter(Boolean).join(' · ')}
-        refs={(cases[accountId] ?? []).slice(0, 8).map((r) => ({ ref: r, client: caseNames?.[r] }))}
-        onOpenRef={(ref) => goTo({ accountId, kind: 'case', id: ref })}
-        onCopyRef={(ref) => void platform.copyText(ref).then((ok) => showToast(ok ? `${ref} copied` : 'Copy was blocked by the browser'))}
         userName={authUser?.name?.trim() || (authUser ? authUser.email.split('@')[0] ?? '' : 'Staff')}
         history={noticeLog}
         unseen={noticeLog.filter((h) => h.id > seenLog).length}
@@ -2009,7 +2015,10 @@ export default function App() {
           accounts={accountList}
           sample={!realMode}
           unreadOverride={realMode ? inboxUnread : undefined}
-          onRefNumbers={() => setRefOpen(true)}
+          onRefNumbers={() => {
+            setRefAnchor(null)
+            setRefOpen(true)
+          }}
           onAddAccount={() => (realMode ? setConnectDlg('new') : setAccDlg({ mode: 'add' }))}
           onReconnect={(id) => {
             const x = realAccounts?.find((y) => y.id === id)
@@ -2223,6 +2232,7 @@ export default function App() {
       )}
       {refOpen && (
         <RefGenerator
+          anchor={refAnchor}
           onClose={() => setRefOpen(false)}
           onToast={showToast}
           onNewMail={(subject) => openCompose({ subject })}

@@ -4414,3 +4414,10 @@ button.ref-chip:hover { background: #cdeee1; }
 .ref-copy:hover { background: var(--fill); color: var(--label); }
 .settings .input { width: 220px; max-width: 100%; min-height: 38px; padding: 0 10px; border: 1px solid var(--separator); border-radius: var(--r-md); background: #fff; color: var(--label); }
 .settings .input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- Reference number panel hanging from the Ref No. button ---- */
+.modal-backdrop.panel-mode { background: transparent; pointer-events: none; place-items: start; }
+.modal-backdrop.panel-mode .modal { pointer-events: auto; position: fixed; height: auto; border: 1px solid var(--separator); border-radius: var(--r-lg); box-shadow: 0 14px 40px rgba(0, 0, 0, 0.2); }
+.ref-caret { position: fixed; z-index: 2; width: 16px; height: 16px; background: var(--content); border-left: 1px solid var(--separator); border-top: 1px solid var(--separator); transform: translateY(2px) rotate(45deg); pointer-events: none; }
+.modal-backdrop.panel-mode .modal.ref-panel { z-index: 1; }
+.cb[aria-expanded='true'][data-ref-anchor] { background: var(--brand-green-tint); }

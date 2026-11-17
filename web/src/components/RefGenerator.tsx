@@ -8,8 +8,16 @@ import { Icon } from './Icon'
 
 const TONES = ['blue', 'purple', 'green', 'orange', 'teal', 'red']
 
+export interface RefAnchor {
+  left: number
+  right: number
+  bottom: number
+}
+
 interface Props {
   onClose: () => void
+  /** Opens as a panel hanging from this button (wide screens); without it, as a dialog */
+  anchor?: RefAnchor | null
   onToast: (m: string) => void
   onNewMail: (subject: string) => void
   /** Signed-in use: numbers are issued by the server and the case is saved for the whole team */
@@ -50,7 +58,9 @@ function readLast(): { ref: string; by: string } | null {
   }
 }
 
-export function RefGenerator({ onClose, onToast, onNewMail, real }: Props) {
+export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Props) {
+  const panel = Boolean(anchor) && window.innerWidth >= 900
+  const PANEL_W = 440
   const [company, setCompany] = useState<Company>(real ? (real.company === 'tmc' ? 'travel' : 'shipping') : 'shipping')
   const [existing, setExisting] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,14 +78,26 @@ export function RefGenerator({ onClose, onToast, onNewMail, real }: Props) {
   const [last, setLast] = useState(readLast)
   const first = useRef<HTMLInputElement>(null)
 
+  const box = useRef<HTMLDivElement>(null)
   useEffect(() => {
     first.current?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
+    // As a panel there is no backdrop: a click anywhere else closes it (the Ref No. button toggles it itself).
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement
+      if (panel && !box.current?.contains(t) && !t.closest('[data-ref-anchor]')) onClose()
+    }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+    window.addEventListener('pointerdown', onDown)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('pointerdown', onDown)
+    }
+  }, [onClose, panel])
+  const left = anchor ? Math.max(8, Math.min(anchor.right - PANEL_W, window.innerWidth - PANEL_W - 8)) : 0
+  const top = anchor ? anchor.bottom + 8 : 0
 
   const places = PLACES[mode]
   const valid = (v: string) => places.some((p) => p.toLowerCase() === v.trim().toLowerCase())
@@ -147,8 +169,16 @@ export function RefGenerator({ onClose, onToast, onNewMail, real }: Props) {
   }
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="ref-title">
+    <div className={`modal-backdrop${panel ? ' panel-mode' : ''}`} onMouseDown={(e) => !panel && e.target === e.currentTarget && onClose()}>
+      {panel && anchor && <span className="ref-caret" aria-hidden="true" style={{ left: (anchor.left + anchor.right) / 2 - 8, top: anchor.bottom + 1 }} />}
+      <div
+        ref={box}
+        className={`modal${panel ? ' ref-panel' : ''}`}
+        role="dialog"
+        aria-modal={!panel}
+        aria-labelledby="ref-title"
+        style={panel ? { left, top, width: PANEL_W, maxHeight: `calc(100dvh - ${top + 12}px)` } : undefined}
+      >
         <div className="modal-head">
           <h2 id="ref-title">Reference number</h2>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
