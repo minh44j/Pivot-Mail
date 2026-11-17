@@ -7,7 +7,7 @@ import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
 import logoLockup from './assets/brand/logo-lockup.png'
-import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, signOut } from './auth'
+import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
 import { CasePanel } from './components/CasePanel'
@@ -1890,6 +1890,13 @@ export default function App() {
           }}
           notifications={notif}
           onEnableNotifications={() => void platform.requestNotifications().then(setNotif)}
+          title={authUser ? (authUser.title ?? '') : undefined}
+          onTitle={async (t) => {
+            const saved = await saveTitle(t)
+            if (saved === null) return false
+            setAuthUser((u) => (u ? { ...u, title: saved } : u))
+            return true
+          }}
           city={city}
           onCity={setCity}
           undoDelay={undoDelay}
@@ -1981,7 +1988,7 @@ export default function App() {
         onHelp={() => setHelp(true)}
         registerSearch={setSearchEl}
         weather={weather}
-        subtitle={[authUser ? (role === 'admin' ? 'Administrator' : 'Staff') : 'Preview', authUser ? (authUser.company === 'tmc' ? 'Pivot Travel Management' : 'Pivot Shipping') : ''].filter(Boolean).join(' · ')}
+        subtitle={authUser?.title?.trim() || [authUser ? (role === 'admin' ? 'Administrator' : 'Staff') : 'Preview', authUser ? (authUser.company === 'tmc' ? 'Pivot Travel Management' : 'Pivot Shipping') : ''].filter(Boolean).join(' · ')}
         userName={authUser?.name?.trim() || (authUser ? authUser.email.split('@')[0] ?? '' : 'Staff')}
         history={noticeLog}
         unseen={noticeLog.filter((h) => h.id > seenLog).length}

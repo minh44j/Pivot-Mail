@@ -15,6 +15,7 @@ export interface AuthUser {
   name: string
   company: string
   role: 'admin' | 'staff'
+  title?: string
 }
 
 /** The preview and local development have no server: anything that is not JSON counts as "no sign-in here". */
@@ -36,6 +37,17 @@ export async function fetchAuthConfig(): Promise<AuthConfig | null> {
 export async function fetchSession(): Promise<AuthUser | null> {
   const r = await getJson<{ user: AuthUser | null }>('/api/auth/session')
   return r && r.status === 200 ? r.data.user : null
+}
+
+/** Saves the person's own job title. Returns the saved text, or null when it could not be saved. */
+export async function saveTitle(title: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/auth/session', { method: 'PATCH', credentials: 'same-origin', headers: { 'content-type': 'application/json', accept: 'application/json' }, body: JSON.stringify({ title }) })
+    if (!res.ok || !(res.headers.get('content-type') ?? '').includes('application/json')) return null
+    return ((await res.json()) as { title?: string }).title ?? null
+  } catch {
+    return null
+  }
 }
 
 export async function signOut(): Promise<void> {

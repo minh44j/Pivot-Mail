@@ -4421,3 +4421,4 @@ button.ref-chip:hover { background: #cdeee1; }
 .ref-caret { position: fixed; z-index: 2; width: 16px; height: 16px; background: var(--content); border-left: 1px solid var(--separator); border-top: 1px solid var(--separator); transform: translateY(2px) rotate(45deg); pointer-events: none; }
 .modal-backdrop.panel-mode .modal.ref-panel { z-index: 1; }
 .cb[aria-expanded='true'][data-ref-anchor] { background: var(--brand-green-tint); }
+.title-edit { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px; }

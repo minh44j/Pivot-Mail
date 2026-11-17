@@ -33,6 +33,9 @@ interface Props {
   onShowSmart: (v: boolean) => void
   notifications: NotificationPermission | 'unsupported'
   onEnableNotifications: () => void
+  /** Signed-in use only: the person's own job title */
+  title?: string
+  onTitle: (t: string) => Promise<boolean>
   city: string
   onCity: (v: string) => void
   undoDelay: string
@@ -160,6 +163,24 @@ function TemplateEditor(props: { initial: Template; categories: string[]; isAdmi
   )
 }
 
+function TitleRow({ title, onSave }: { title: string; onSave: (t: string) => Promise<boolean> }) {
+  const [v, setV] = useState(title)
+  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const save = async () => {
+    if (v.trim() === title) return
+    setState('saving')
+    setState((await onSave(v)) ? 'saved' : 'error')
+  }
+  return (
+    <Row title="Job title" hint="Shown under your name in the top bar, for example Operations Associate. Only you can change it.">
+      <span className="title-edit">
+        <input className="input" value={v} maxLength={60} onChange={(e) => { setV(e.target.value); setState('idle') }} onBlur={() => void save()} onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} aria-label="Job title" placeholder="e.g. Operations Associate" />
+        <small role="status" className="muted">{state === 'saving' ? 'Saving…' : state === 'saved' ? 'Saved' : state === 'error' ? 'Could not save' : ''}</small>
+      </span>
+    </Row>
+  )
+}
+
 export function SettingsPage(p: Props) {
   const [section, setSection] = useState<Section>('general')
   const [editing, setEditing] = useState<Template | null>(null)
@@ -239,6 +260,7 @@ export function SettingsPage(p: Props) {
                   ]}
                 />
               </Row>
+              {p.title !== undefined && <TitleRow key={p.title} title={p.title} onSave={p.onTitle} />}
               <Row title="Weather city" hint="Shown next to your name. Only the city name is sent to the weather service. Leave empty to hide it.">
                 <input className="input" value={p.city} maxLength={60} onChange={(e) => p.onCity(e.target.value)} aria-label="Weather city" placeholder="e.g. Manama" />
               </Row>

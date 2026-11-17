@@ -9,6 +9,7 @@ export interface AppUser {
   company: CompanyId
   role: 'admin' | 'staff'
   status: 'invited' | 'active' | 'disabled'
+  title?: string
 }
 
 /** Administrator if the database says so, or the address is in ADMIN_EMAILS (the bootstrap list). */
