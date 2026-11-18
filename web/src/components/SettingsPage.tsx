@@ -333,7 +333,7 @@ export function SettingsPage(p: Props) {
               {p.accounts.map((a) => (
                 <SignatureEditor key={a.id} label={`${a.name} · ${a.email}`} value={a.signature} onChange={(v) => p.onSignature(a.id, v)} />
               ))}
-              <small>Saved automatically. Paste a picture (or a whole signature), drop one in, or use Add picture. Click a picture to resize it.</small>
+              <small>Saved automatically. Pictures go in at their real size. Click one and drag its corner to resize it, or press Delete to remove it.</small>
             </section>
           )}
 

@@ -4670,16 +4670,30 @@ button.ref-chip:hover { background: #cdeee1; }
 .ref-panel .rg-ok { font-size: 11.5px; }
 .ref-panel .rg-existing { font-size: 12.5px; }
 
-/* ---- Signature editor (text and pictures) ---- */
+/* ---- Signature editor (Outlook-style toolbar, text and pictures) ---- */
 .sig-rich { display: flex; flex-direction: column; gap: 6px; }
-.sig-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.sig-tool { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 1px solid var(--separator); border-radius: 999px; background: var(--content); color: var(--label); font-size: 13px; transition: background 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.sig-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; border: 1px solid var(--separator); border-radius: var(--r-md); background: var(--content); }
+.sig-tool { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 0; border-radius: 8px; background: none; color: var(--label); font-size: 13px; transition: background 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.sig-tool.icon { width: 30px; padding: 0; }
 .sig-tool:hover { background: var(--fill); }
-.sig-tool.danger { color: var(--c-red); }
-.sig-editor { position: relative; min-height: 96px; padding: 10px 12px; border-radius: var(--r-md); background: var(--fill); outline: none; line-height: 1.5; overflow-wrap: anywhere; }
+.sig-tool.on { background: var(--fill); box-shadow: inset 0 0 0 1px var(--separator); }
+.sig-sel { height: 30px; padding: 0 8px; border: 1px solid var(--separator); border-radius: 8px; background: var(--content); color: var(--label); font-size: 13px; }
+.sig-sel.narrow { width: 64px; }
+.sig-sep { width: 1px; height: 18px; margin: 0 4px; background: var(--separator); }
+.sig-color { position: relative; cursor: pointer; }
+.sig-color-a { display: inline-block; font-weight: 700; line-height: 1; border-bottom: 3px solid #1d1d1f; }
+.sig-color input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.sig-link { display: flex; gap: 6px; }
+.sig-link input { flex: 1; min-width: 0; height: 32px; padding: 0 12px; border: 1px solid var(--separator); border-radius: 8px; background: var(--content); }
+.sig-link .sig-tool { border: 1px solid var(--separator); }
+.sig-stage { position: relative; }
+.sig-editor { position: relative; min-height: 120px; padding: 10px 12px; border-radius: var(--r-md); background: var(--fill); outline: none; line-height: 1.5; overflow-wrap: anywhere; overflow-x: auto; }
 .sig-editor:focus { background: var(--content); box-shadow: 0 0 0 2px var(--accent); }
 .sig-editor.is-empty::before { content: attr(data-placeholder); color: var(--label-2); pointer-events: none; position: absolute; }
-.sig-editor img { max-width: 100%; height: auto; vertical-align: middle; border-radius: 4px; cursor: pointer; }
-.sig-editor img.sig-pic-on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sig-editor img { max-width: 100%; height: auto; vertical-align: middle; }
+.sig-editor img.sig-pic-on { outline: 2px solid var(--accent); outline-offset: 0; }
+.sig-editor ul, .sig-editor ol { margin: 4px 0; padding-left: 22px; }
+.sig-handle { position: absolute; z-index: 2; width: 12px; height: 12px; padding: 0; border: 2px solid var(--accent); border-radius: 3px; background: #fff; cursor: nwse-resize; touch-action: none; animation: sig-in 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes sig-in { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: none; } }
 .sig-note { color: var(--c-red); }
-@media (prefers-reduced-motion: reduce) { .sig-tool { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .sig-tool { transition: none; } .sig-handle { animation: none; } }

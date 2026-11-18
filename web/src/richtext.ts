@@ -34,6 +34,25 @@ export function safeUrl(raw: string): string | null {
   }
 }
 
+/** The few text styles a signature may carry (what an Outlook-style toolbar produces). Nothing else survives. */
+export function sigStyle(style: string): string {
+  const out: string[] = []
+  for (const decl of style.split(';')) {
+    const i = decl.indexOf(':')
+    if (i < 0) continue
+    const prop = decl.slice(0, i).trim().toLowerCase()
+    const v = decl.slice(i + 1).trim()
+    if (prop === 'color' && /^(#[0-9a-f]{3,8}|rgba?\([\d\s,.%]+\)|[a-z]{3,20})$/i.test(v)) out.push(`color: ${v}`)
+    else if (prop === 'font-family' && /^[\w\s,'"-]{1,120}$/.test(v)) out.push(`font-family: ${v}`)
+    else if (prop === 'font-size' && /^\d{1,2}(\.\d+)?(px|pt)$/.test(v) && parseFloat(v) >= 6 && parseFloat(v) <= 48) out.push(`font-size: ${v}`)
+    else if (prop === 'font-weight' && /^(bold|normal|[1-9]00)$/.test(v)) out.push(`font-weight: ${v}`)
+    else if (prop === 'font-style' && /^(italic|normal)$/.test(v)) out.push(`font-style: ${v}`)
+    else if (prop === 'text-decoration' && /^(underline|none|line-through)( solid)?$/.test(v)) out.push(`text-decoration: ${v}`)
+    else if (prop === 'text-align' && /^(left|right|center|justify)$/.test(v)) out.push(`text-align: ${v}`)
+  }
+  return out.join('; ')
+}
+
 /** Allow-list sanitiser for draft restore and any HTML we did not generate ourselves. */
 export function sanitizeHtml(html: string, opts: { images?: boolean } = {}): string {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
@@ -79,7 +98,14 @@ export function sanitizeHtml(html: string, opts: { images?: boolean } = {}): str
         clean(node)
         return
       }
+      const inSig = Boolean(opts.images) || Boolean(el.closest('[data-sig]'))
       for (const attr of Array.from(el.attributes)) {
+        if (attr.name === 'style' && inSig && el.tagName !== 'BR') {
+          const s = sigStyle(attr.value)
+          if (s) el.setAttribute('style', s)
+          else el.removeAttribute('style')
+          continue
+        }
         const keep =
           (el.tagName === 'A' && attr.name === 'href') ||
           (el.tagName === 'DIV' && (attr.name === 'data-sig' || attr.name === 'data-quote')) ||
