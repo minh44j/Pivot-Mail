@@ -114,3 +114,12 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 - Full review of sign-in, sessions, stored permissions, access rules, every server endpoint, the database and the email cleaner. Report: `SECURITY_REVIEW.md`.
 - **Fixed:** a hostile email could run a script when someone replied to it (critical); browser security policy added (no inline scripts, cannot be framed); shared mailboxes can no longer be taken over by reconnecting them; "Sign out of all devices" and remote sign-out by administrators; sign-in cookie types; append-only audit log; smaller items.
 - **Next:** backups for the Pivot Mail database, then the pilot (3 staff, 2 weeks).
+
+## Phase 7 status: Windows app (started early, 2026-11-18)
+- `desktop/`: Electron app showing the same Pivot Mail as the website, plus tray (keeps checking mail when closed), real Windows alerts,
+  unread number on the taskbar icon, dragging attachments out to the desktop or a folder, first-run company choice, Start with Windows.
+- Sign-in happens in the normal browser and is handed back to the app (`pivotmail://`, with the app's own secret).
+- **Local mail database** (0.2.0): SQLite with a word index in the Windows profile, up to 50,000 messages per mailbox. Search shows
+  stored mail of any age instantly while typing; Gmail's own search still runs and adds anything not stored.
+- Installer built on GitHub (Actions → "Desktop app (Windows)" → artifact `PivotMail-Windows`). Not code-signed yet, so Windows shows
+  "Windows protected your PC" (More info → Run anyway). **Next:** auto-update, code-signing certificate.

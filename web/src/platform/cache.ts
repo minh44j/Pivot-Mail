@@ -1,8 +1,11 @@
 import type { Message } from '../types'
+import { desktopStore } from '../desktop'
 
 /**
- * Local copy of fetched mail (IndexedDB), so the list opens instantly and survives a reload. Lives only on this device.
- * Cleared on sign-out and when a mailbox is removed. Every call fails soft: without IndexedDB the app simply fetches again.
+ * Local copy of fetched mail, so the list opens instantly and survives a reload. Lives only on this device.
+ * In a browser it is IndexedDB (up to 4,000 messages per mailbox); in the Windows app it is the app's own database
+ * (desktop/src/store.ts: up to 50,000 per mailbox, with instant word search).
+ * Cleared on sign-out and when a mailbox is removed. Every call fails soft: without it the app simply fetches again.
  */
 const DB = 'pivot-mail'
 const STORE = 'messages'
@@ -126,4 +129,57 @@ async function setMeta(key: string, value: string): Promise<void> {
   }
 }
 
-export const cache = { load, save, remove, getMeta, setMeta, clearAccount, clearAll }
+/** The same calls, answered by the desktop app's database. A failure there behaves like an empty copy, never an error. */
+const soft = async <T>(p: Promise<unknown>, fallback: T, ok: (v: unknown) => boolean): Promise<T> => {
+  try {
+    const v = await p
+    return ok(v) ? (v as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+const isList = (v: unknown) => Array.isArray(v)
+const isText = (v: unknown) => typeof v === 'string'
+const any = () => true
+
+export const cache = {
+  load: (accountId: string): Promise<Message[]> => {
+    const d = desktopStore()
+    return d ? soft(d.load(accountId), [], isList) : load(accountId)
+  },
+  save: async (msgs: Message[]): Promise<void> => {
+    const d = desktopStore()
+    if (!d) return save(msgs)
+    if (msgs.length > 0) await soft(d.save(msgs), null, any)
+  },
+  remove: async (ids: string[]): Promise<void> => {
+    const d = desktopStore()
+    if (!d) return remove(ids)
+    if (ids.length > 0) await soft(d.remove(ids), null, any)
+  },
+  getMeta: (key: string): Promise<string | null> => {
+    const d = desktopStore()
+    return d ? soft(d.getMeta(key), null, isText) : getMeta(key)
+  },
+  setMeta: async (key: string, value: string): Promise<void> => {
+    const d = desktopStore()
+    if (!d) return setMeta(key, value)
+    await soft(d.setMeta(key, value), null, any)
+  },
+  clearAccount: async (accountId: string): Promise<void> => {
+    const d = desktopStore()
+    // Also clear any browser copy left from before the desktop database existed.
+    await clearAccount(accountId)
+    if (d) await soft(d.clearAccount(accountId), null, any)
+  },
+  clearAll: async (): Promise<void> => {
+    const d = desktopStore()
+    await clearAll()
+    if (d) await soft(d.clearAll(), null, any)
+  },
+  /** Desktop app only: instant search of everything stored on this computer (null in a browser: there, Gmail's search does it). */
+  search: (accountIds: string[], query: string): Promise<Message[]> | null => {
+    const d = desktopStore()
+    return d ? soft(d.search(accountIds, query), [], isList) : null
+  },
+}

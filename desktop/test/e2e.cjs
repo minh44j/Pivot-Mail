@@ -44,7 +44,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const opened = () => app.evaluate(() => global.__opened)
 
   // ---- the page itself is locked down
-  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'setBadge', 'startDrag', 'version'])))
+  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'setBadge', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
@@ -93,6 +93,39 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D12 dragging hands Windows real files with the right content', files.length === 2 && fs.readFileSync(files[0], 'utf8') === 'hi' && fs.readFileSync(files[1]).subarray(0, 4).toString() === '%PDF')
   ok('D13 ...a hostile file name cannot escape the temporary folder', path.dirname(files[0]) === path.dirname(files[1]) && !files[0].includes('..') && path.basename(files[0]).includes('evil.exe') && files[0].startsWith(os.tmpdir()))
 
+  // ---- the local mail database
+  const mk = (id, acc, date, extra = {}) => ({ id, threadId: id, accountId: acc, folder: 'inbox', labels: [], from: { name: 'Maersk Line', email: 'notify@maersk.com' }, to: [{ name: 'Ann', email: 'ann@pivotscl.com' }], subject: 'Hello', body: '', date, unread: true, flagged: false, attachments: [], ...extra })
+  const st0 = await win.evaluate(async (msgs) => {
+    const s = window.pivotDesktop.store
+    await s.save(msgs)
+    return { load: (await s.load('acc1')).map((m) => m.id), other: (await s.load('acc2')).map((m) => m.id) }
+  }, [
+    mk('m1', 'acc1', '2026-11-01T08:00:00Z', { subject: 'Arrival notice', body: 'Container MSKU1234567 arrived at Jeddah Islamic Port.', loaded: true, attachments: [{ name: 'DO-4471.pdf' }] }),
+    mk('m2', 'acc1', '2026-11-10T08:00:00Z', { subject: 'Rate request Riyadh', snippet: 'please quote' }),
+    mk('m3', 'acc2', '2026-11-12T08:00:00Z', { subject: 'Jeddah booking', body: 'Jeddah' }),
+  ])
+  ok('D17 mail saved on this computer comes back per mailbox, newest first', JSON.stringify(st0.load) === '["m2","m1"]' && JSON.stringify(st0.other) === '["m3"]')
+  const q = (accs, text) => win.evaluate(async ([a, t]) => (await window.pivotDesktop.store.search(a, t)).map((m) => m.id), [accs, text])
+  ok('D18 instant search finds words in the body, by their beginning ("jedd" → Jeddah), only in the mailboxes asked', JSON.stringify(await q(['acc1'], 'jedd')) === '["m1"]' && JSON.stringify(await q(['acc1', 'acc2'], 'jeddah')) === '["m3","m1"]')
+  ok('D19 ...also container numbers, sender, attachment names; every word must match', JSON.stringify(await q(['acc1'], 'MSKU1234567')) === '["m1"]' && (await q(['acc1'], 'maersk')).length === 2 && JSON.stringify(await q(['acc1'], 'DO-4471')) === '["m1"]' && (await q(['acc1'], 'jeddah riyadh')).length === 0)
+  const odd = await win.evaluate(async () => { try { const s = window.pivotDesktop.store; return [await s.search(['acc1'], 'from:maersk'), await s.search(['acc1'], '"* NEAR( ^col: )'), await s.search(['acc1'], '')].map((r) => r.length) } catch (e) { return String(e) } })
+  ok('D20 Gmail-style operators and stray symbols never break search (left to Gmail)', JSON.stringify(odd) === '[0,0,0]')
+  await win.evaluate(async (m) => window.pivotDesktop.store.save([m]), mk('m1', 'acc1', '2026-11-01T08:00:00Z', { subject: 'Arrival notice', folder: 'archive', unread: false }))
+  const m1 = await win.evaluate(async () => (await window.pivotDesktop.store.load('acc1')).find((m) => m.id === 'm1'))
+  ok('D21 a quick list refresh updates read/folder but keeps the full message already stored (and still findable)', m1 && m1.folder === 'archive' && m1.unread === false && m1.body.includes('MSKU1234567') && JSON.stringify(await q(['acc1'], 'msku')) === '["m1"]')
+  const big = await win.evaluate(async () => {
+    const s = window.pivotDesktop.store
+    const words = ['invoice', 'container', 'booking', 'customs', 'clearance', 'freight', 'Dammam', 'Riyadh', 'quotation', 'manifest']
+    const msgs = Array.from({ length: 5000 }, (_, i) => ({ id: 'b' + i, threadId: 'b' + i, accountId: 'acc3', folder: 'inbox', labels: [], from: { name: 'Sender ' + i, email: `s${i}@example.com` }, to: [], subject: `${words[i % 10]} ${i}`, body: `${words[(i * 7) % 10]} reference PSC-${100000 + i} ${'lorem ipsum '.repeat(40)}`, date: new Date(Date.UTC(2026, 0, 1) + i * 3600_000).toISOString(), unread: false, flagged: false, attachments: [], loaded: true }))
+    const t0 = performance.now(); await s.save(msgs); const saveMs = performance.now() - t0
+    const t1 = performance.now(); const hits = await s.search(['acc3'], 'PSC-104321'); const searchMs = performance.now() - t1
+    const t2 = performance.now(); const many = await s.search(['acc3'], 'customs'); const manyMs = performance.now() - t2
+    return { saveMs, searchMs, manyMs, hits: hits.map((m) => m.id), many: many.length }
+  })
+  console.log('   5,000 messages: save %d ms, exact search %d ms, broad search %d ms', Math.round(big.saveMs), Math.round(big.searchMs), Math.round(big.manyMs))
+  ok('D22 5,000 messages: a reference number is found instantly (well under a quarter second)', JSON.stringify(big.hits) === '["b4321"]' && big.searchMs < 250 && big.many === 300 && big.manyMs < 500)
+  await win.evaluate(async () => { await window.pivotDesktop.store.clearAccount('acc3'); await window.pivotDesktop.store.setMeta('hist:acc1', '999') })
+
   // ---- closing keeps it in the tray
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await new Promise((r) => setTimeout(r, 500))
   const st = await app.evaluate(({ BrowserWindow }) => ({ n: BrowserWindow.getAllWindows().length, visible: BrowserWindow.getAllWindows()[0] && BrowserWindow.getAllWindows()[0].isVisible() }))
@@ -100,12 +133,25 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await app.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
   await app.close().catch(() => {})
 
+  // ---- the database survives a restart, and sign-out wipes it
+  const app3 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })
+  const w3 = await app3.firstWindow()
+  await w3.waitForLoadState('domcontentloaded'); await w3.waitForTimeout(1500)
+  const kept = await w3.evaluate(async () => { const s = window.pivotDesktop.store; return { ids: (await s.load('acc1')).map((m) => m.id), meta: await s.getMeta('hist:acc1'), gone: (await s.load('acc3')).length } })
+  ok('D23 stored mail and sync position are still there after quitting and reopening', JSON.stringify(kept.ids) === '["m2","m1"]' && kept.meta === '999' && kept.gone === 0)
+  const wiped = await w3.evaluate(async () => { const s = window.pivotDesktop.store; await s.clearAll(); return [(await s.load('acc1')).length, (await s.load('acc2')).length, await s.getMeta('hist:acc1'), (await s.search(['acc1', 'acc2'], 'jeddah')).length] })
+  ok('D24 "forget this device" (sign-out, another person) empties the whole database', JSON.stringify(wiped) === '[0,0,null,0]')
+  await app3.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
+  await app3.close().catch(() => {})
+
   // ---- first run without a company: the chooser
   const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-'))
   const app2 = await launch({ PIVOT_MAIL_URL: '', PIVOT_MAIL_USER_DATA: fresh })
   const w2 = await app2.firstWindow()
   await w2.waitForSelector('button[data-co]', { timeout: 15000 })
   ok('D15 first run asks which company (two choices)', (await w2.locator('button[data-co]').count()) === 2 && (await w2.locator('h1').innerText()).includes('Welcome to Pivot Mail'))
+  const fromChooser = await w2.evaluate(async () => [await window.pivotDesktop.store.load('acc1'), await window.pivotDesktop.store.search(['acc1'], 'jeddah')])
+  ok('D25 a page that is not Pivot Mail itself (here the first-run screen) gets nothing from the database', JSON.stringify(fromChooser) === '[null,null]')
   await app2.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.webContents.loadURL = (u) => { global.__loaded = u; return Promise.resolve() } })
   await w2.locator('button[data-co="tmc"]').click(); await w2.waitForTimeout(500)
   ok('D16 choosing Pivot Travel Management opens mail.pivottmc.com and remembers it', (await app2.evaluate(() => global.__loaded)) === 'https://mail.pivottmc.com' && JSON.parse(fs.readFileSync(path.join(fresh, 'settings.json'), 'utf8')).company === 'tmc')

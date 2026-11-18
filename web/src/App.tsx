@@ -426,7 +426,8 @@ export default function App() {
   const realAccountsRef = useRef<AuthAccount[]>([])
   const lastSynced = useRef(new Map<string, number>())
   const runId = useRef(0)
-  const [liveSearch, setLiveSearch] = useState<{ query: string; ids: Set<string> } | null>(null)
+  /** Search results for one search (key: the words + where it searches). Local hits (desktop app) and Gmail's hits add up. */
+  const [liveSearch, setLiveSearch] = useState<{ key: string; ids: Set<string> } | null>(null)
 
   /** Everything fetched from Gmail goes through here: into the list and into this device's local copy. */
   const mergeIn = useCallback((msgs: Message[]) => {
@@ -953,7 +954,38 @@ export default function App() {
 
   const [now] = useState(() => new Date())
   const liveQuery = query.trim()
-  const liveOn = realMode && liveQuery !== '' && liveSearch !== null && liveSearch.query === liveQuery
+  const liveKey = `${liveQuery}\u0000${selKey}\u0000${searchAll ? 1 : 0}`
+  const liveOn = realMode && liveQuery !== '' && liveSearch !== null && liveSearch.key === liveKey
+  const liveKeyRef = useRef(liveKey)
+  useEffect(() => {
+    liveKeyRef.current = liveKey
+  }, [liveKey])
+  /** Adds results to the current search. A slow answer for words typed earlier arrives too late to count and is ignored. */
+  const addLiveHits = useCallback((key: string, ids: Iterable<string>) => {
+    if (key !== liveKeyRef.current) return
+    setLiveSearch((cur) => ({ key, ids: new Set([...(cur?.key === key ? cur.ids : []), ...ids]) }))
+  }, [])
+  /**
+   * Windows app: everything stored on this computer is searched the moment a word is typed (well under a second, any age the
+   * computer holds). Gmail's own search below still runs and adds anything not stored here.
+   */
+  useEffect(() => {
+    if (!realMode || liveQuery === '') return
+    const t = window.setTimeout(() => {
+      const [, kind, id = ''] = selKey.split('|')
+      const targets = kind === 'all' ? realAccountsRef.current.map((x) => x.id) : [accountId]
+      const found = platform.cache.search(targets, liveQuery)
+      if (!found) return
+      void found.then((hits) => {
+        // The same places Gmail searches: the open folder or label, or (all mail / search everywhere) everything except Deleted.
+        const inScope = hits.filter((m) => (searchAll || kind === 'all' ? m.folder !== 'deleted' : kind === 'label' ? m.labels.includes(id) : kind === 'folder' ? m.folder === id : true))
+        if (inScope.length === 0) return
+        setMessages((prev) => mergeMessages(prev, inScope))
+        addLiveHits(liveKey, inScope.map((m) => m.id))
+      })
+    }, 80)
+    return () => window.clearTimeout(t)
+  }, [realMode, liveQuery, liveKey, accountId, searchAll, selKey, addLiveHits])
   /** Real mail: Gmail's own search (any age). Results appear as they arrive; until then the loaded mail is filtered locally. */
   useEffect(() => {
     if (!realMode || liveQuery === '') return
@@ -976,16 +1008,16 @@ export default function App() {
             onBatch: (ms) => {
               mergeIn(ms)
               for (const m of ms) ids.add(m.id)
-              setLiveSearch({ query: liveQuery, ids: new Set(ids) })
+              addLiveHits(liveKey, ids)
             },
           })
         }),
       )
-        .then(() => setLiveSearch({ query: liveQuery, ids: new Set(ids) }))
+        .then(() => addLiveHits(liveKey, ids))
         .catch(() => showToast('Gmail search is not available right now. Showing mail already loaded.'))
     }, 450)
     return () => window.clearTimeout(t)
-  }, [realMode, liveQuery, accountId, searchAll, selKey, ensureLabels, mergeIn, showToast])
+  }, [realMode, liveQuery, liveKey, accountId, searchAll, selKey, ensureLabels, mergeIn, showToast, addLiveHits])
 
   /** Messages of the open folder or label, before search and smart filters. */
   const scope = useMemo(

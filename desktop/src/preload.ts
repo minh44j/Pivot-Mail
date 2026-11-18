@@ -1,6 +1,7 @@
 /**
  * The only door between the Pivot Mail web app and Windows. Sandboxed, context-isolated, and deliberately tiny:
- * the page can ask for a taskbar number, start a file drag, and (on the first-run screen) pick the company. Nothing else.
+ * the page can ask for a taskbar number, start a file drag, use the local mail database, and (on the first-run screen) pick the
+ * company. Nothing else. The main process checks every call again (who is asking, and what).
  */
 import { contextBridge, ipcRenderer } from 'electron'
 
@@ -24,8 +25,20 @@ function badgePng(n: number): string | null {
   return c.toDataURL('image/png')
 }
 
+const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
+
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.1.0',
+  version: '0.2.0',
+  store: {
+    load: (accountId: string) => call('load', accountId),
+    save: (msgs: unknown[]) => call('save', msgs),
+    remove: (ids: string[]) => call('remove', ids),
+    search: (accountIds: string[], query: string) => call('search', accountIds, query),
+    getMeta: (key: string) => call('getMeta', key),
+    setMeta: (key: string, value: string) => call('setMeta', key, value),
+    clearAccount: (accountId: string) => call('clearAccount', accountId),
+    clearAll: () => call('clearAll'),
+  },
   setBadge(count: number) {
     const n = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
     ipcRenderer.send('pm:badge', n, badgePng(n))

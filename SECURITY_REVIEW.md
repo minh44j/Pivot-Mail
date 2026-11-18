@@ -38,7 +38,10 @@ dependency audit; each finding reproduced with a test that **fails on the old co
 - Anyone with a company Google account can sign in and starts as Staff (no invite step), as decided.
 - Administrators manage people of **both** companies (group-wide administrators).
 - Sessions last 7 days; with "Sign out of all devices" that is acceptable.
-- Mail bodies stay in each browser (IndexedDB); they are wiped on sign-out and when a different person signs in on the same computer.
+- Mail bodies stay on each device: in the browser (IndexedDB, up to 4,000 per mailbox) or, in the Windows app, in its own database
+  file in the person's Windows profile (`%APPDATA%\Pivot Mail\mail.db`, up to 50,000 per mailbox, for instant search). Both are wiped
+  on sign-out and when a different person signs in on the same computer. Only the Pivot Mail page itself can read the app's database
+  (not the first-run screen, previews or any other site); the file is protected by the Windows account, like Outlook's own data file.
 
 ## Still open
 

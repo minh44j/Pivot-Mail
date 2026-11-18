@@ -3,7 +3,7 @@
  *
  * The app window shows the same Pivot Mail as the website (so every screen, fix and feature is shared), and adds what a browser tab
  * cannot do well: a tray icon that keeps mail checking while the window is closed, real Windows alerts with the Pivot icon, the unread
- * number on the taskbar icon, dragging attachments out to the desktop or a folder, and (later) a local mail database for instant search.
+ * number on the taskbar icon, dragging attachments out to the desktop or a folder, and a local mail database for instant search (store.ts).
  *
  * Sign-in: Google does not allow its sign-in page inside an app's own window, so sign-in happens in the person's normal browser and is
  * handed back to the app (see beginSignIn / redeem, and web/api/_lib/auth/desktop.ts on the server).
@@ -14,6 +14,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { MailStore } from './store'
 
 type Company = 'scl' | 'tmc'
 const HOSTS: Record<Company, string> = { scl: 'https://mail.pivotscl.com', tmc: 'https://mail.pivottmc.com' }
@@ -53,6 +54,7 @@ const asset = (...p: string[]) => path.join(app.getAppPath(), ...p)
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
+let store: MailStore | null = null
 /** The secret of a sign-in in progress (its hash went to the browser; the secret itself never leaves this app). */
 let pending: { verifier: string; at: number } | null = null
 
@@ -316,6 +318,50 @@ function bridge(): void {
   })
 }
 
+/* ------------------------------------------------------------------ the local mail database (see store.ts) */
+
+const isId = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200
+const isIdList = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 20_000 && x.every(isId)
+
+function storeBridge(): void {
+  ipcMain.handle('pm:store', (e, op: unknown, a: unknown, b: unknown) => {
+    // Only the Pivot Mail page itself may read or change the mail database (never the first-run screen or a preview window).
+    if (!store || e.sender !== win?.webContents) return null
+    let from: URL
+    try {
+      from = new URL(e.senderFrame?.url ?? e.sender.getURL())
+    } catch {
+      return null
+    }
+    if (!isSameSite(from)) return null
+    switch (op) {
+      case 'load':
+        return isId(a) ? store.load(a) : []
+      case 'save':
+        if (Array.isArray(a) && a.length <= 20_000) store.save(a as Parameters<MailStore['save']>[0])
+        return null
+      case 'remove':
+        if (isIdList(a)) store.remove(a)
+        return null
+      case 'search':
+        return isIdList(a) && typeof b === 'string' && b.length <= 500 ? store.search(a, b) : []
+      case 'getMeta':
+        return isId(a) ? store.getMeta(a) : null
+      case 'setMeta':
+        if (isId(a) && typeof b === 'string' && b.length <= 10_000) store.setMeta(a, b)
+        return null
+      case 'clearAccount':
+        if (isId(a)) store.clearAccount(a)
+        return null
+      case 'clearAll':
+        store.clearAll()
+        return null
+      default:
+        return null
+    }
+  })
+}
+
 /* ------------------------------------------------------------------ start */
 
 // Automated tests only: a separate settings folder per run.
@@ -328,7 +374,13 @@ app.whenReady().then(() => {
   registerScheme()
   // Only what the app needs: alerts and the clipboard. Camera, microphone, location and the rest are refused.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(['notifications', 'clipboard-read', 'clipboard-sanitized-write'].includes(permission)))
+  try {
+    store = new MailStore(path.join(app.getPath('userData'), 'mail.db'))
+  } catch {
+    store = null // the app still works: the page falls back to its own smaller browser copy
+  }
   bridge()
+  storeBridge()
   buildTray()
   const hidden = process.argv.includes('--hidden')
   createWindow(hidden)
@@ -338,6 +390,10 @@ app.whenReady().then(() => {
 
 app.on('before-quit', () => {
   quitting = true
+})
+app.on('will-quit', () => {
+  store?.close()
+  store = null
 })
 app.on('window-all-closed', () => {
   /* stay in the tray */
