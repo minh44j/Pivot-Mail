@@ -33,6 +33,8 @@ export interface DesktopBridge {
   startDrag(files: DesktopFile[]): void
   /** Put real files on the Windows clipboard (Ctrl+V pastes them anywhere); resolves to how many were copied. From 0.4.0. */
   copyFiles?(files: DesktopFile[]): Promise<number>
+  /** Light or dark: the window's own background follows it from the next start. From 0.5.0. */
+  setTheme?(theme: 'light' | 'dark'): void
   /** Bring the window to the front, also when it is hidden in the tray (present from desktop version 0.2.0). */
   show?(): void
 }

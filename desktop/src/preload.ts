@@ -28,7 +28,7 @@ function badgePng(n: number): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.4.0',
+  version: '0.5.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld('pivotDesktop', {
       'pm:copy-files',
       files.map((f) => ({ name: String(f.name), bytes: f.bytes instanceof Uint8Array ? f.bytes : new Uint8Array(0) })),
     ) as Promise<number>
+  },
+  setTheme(theme: 'light' | 'dark') {
+    ipcRenderer.send('pm:theme', theme === 'dark' ? 'dark' : 'light')
+  },
+  retry() {
+    ipcRenderer.send('pm:retry')
   },
   show() {
     ipcRenderer.send('pm:show')

@@ -49,7 +49,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const opened = () => app.evaluate(() => global.__opened)
 
   // ---- the page itself is locked down
-  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'copyFiles', 'setBadge', 'show', 'startDrag', 'store', 'version'])))
+  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'copyFiles', 'retry', 'setBadge', 'setTheme', 'show', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
@@ -191,6 +191,40 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D24 "forget this device" (sign-out, another person) empties the whole database', JSON.stringify(wiped) === '[0,0,null,0]')
   await app3.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
   await app3.close().catch(() => {})
+
+  // ---- starting without internet (or with the server down): explained, and Pivot Mail opens by itself when it can connect
+  {
+    const PORT = 4377, URL1 = `http://localhost:${PORT}`
+    let mode = 'down' // down: nothing listens; 503: server error; up: answers
+    let srv = null
+    const listen = () => new Promise((r) => { srv = http.createServer((q, res) => { if (mode === '503') { res.statusCode = 503; return res.end('busy') } res.setHeader('content-type', q.url.startsWith('/api/') ? 'application/json' : 'text/html'); res.end(q.url.startsWith('/api/') ? '{}' : '<!doctype html><title>Pivot Mail</title><h1 id="pm-up">Pivot Mail is here</h1>') }); srv.listen(PORT, r) })
+    const ud = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-'))
+    fs.writeFileSync(path.join(ud, 'settings.json'), JSON.stringify({ dark: true }))
+    const a = await launch({ PIVOT_MAIL_URL: URL1, PIVOT_MAIL_USER_DATA: ud })
+    const w = await a.firstWindow(); await w.waitForTimeout(1500)
+    const page1 = await w.evaluate(() => ({ url: location.protocol, h1: document.querySelector('h1')?.textContent, code: document.getElementById('code')?.textContent, dark: document.body.classList.contains('dark'), sh: document.documentElement.scrollHeight, ih: innerHeight }))
+    console.log('   offline screen:', JSON.stringify(page1))
+    ok('D35 no internet at start: a clear built-in screen (not a blank window), with the reason for IT', page1.url === 'file:' && page1.h1 === 'No internet connection' && /\(-\d+\)/.test(page1.code || '') && page1.sh <= page1.ih)
+    ok('D36 a person who chose dark mode gets a dark window and a dark screen from the first moment', page1.dark && (await a.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase())) === '#141416')
+    await w.screenshot({ path: path.join(os.tmpdir(), 'pm-offline-dark.png') })
+    // the connection comes back: it opens by itself (checked every 5 s)
+    await listen(); mode = 'up'
+    const t0 = Date.now()
+    await w.waitForSelector('#pm-up', { timeout: 12000 }).catch(() => {})
+    const took = Date.now() - t0
+    ok('D37 when the connection is back, Pivot Mail opens by itself (no clicking needed)', w.url().startsWith(URL1) && (await w.locator('#pm-up').count()) === 1, `${took} ms`)
+    console.log('   reopened by itself after %d ms', took)
+    // the server answers with an error: explained differently; "Try again now" opens at once when it is back
+    mode = '503'
+    await w.evaluate(() => location.reload()); await w.waitForTimeout(1200)
+    const h2 = await w.evaluate(() => document.querySelector('h1')?.textContent)
+    ok('D38 server error (503): "Pivot Mail is not answering" (the internet itself is fine)', h2 === 'Pivot Mail is not answering', h2)
+    mode = 'up'
+    const t1 = Date.now(); await w.locator('#retry').click(); await w.waitForSelector('#pm-up', { timeout: 6000 }).catch(() => {})
+    ok('D39 "Try again now" opens Pivot Mail straight away once it answers', (await w.locator('#pm-up').count()) === 1 && Date.now() - t1 < 4000, `${Date.now() - t1} ms`)
+    await a.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {}); await a.close().catch(() => {})
+    srv.close()
+  }
 
   // ---- first run without a company: the chooser
   const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-'))

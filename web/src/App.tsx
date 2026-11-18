@@ -200,6 +200,10 @@ export default function App() {
   const [threaded, setThreaded] = usePersisted<boolean>('pm.threaded', true, (v) => v === 'true' || v === 'false')
   // Light unless the person switched to dark in the avatar menu (their choice is remembered). Applied to the page itself, so every screen follows.
   const [theme, setTheme] = usePersisted<'light' | 'dark'>('pm.theme', 'light', (v) => v === 'light' || v === 'dark')
+  // Windows app: remember the theme so the window opens in the right colour next time (no white flash in dark mode).
+  useEffect(() => {
+    desktop()?.setTheme?.(theme)
+  }, [theme])
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
@@ -596,8 +600,8 @@ export default function App() {
     [ensureLabels, mergeIn, showToast, addStored],
   )
 
-  const loadAccounts = useCallback(async () => {
-    const list = await fetchAccounts()
+  const loadAccounts = useCallback(async (early?: Promise<AuthAccount[] | null>) => {
+    const list = await (early ?? fetchAccounts())
     setAccountsTried(true)
     if (list === null) return
     realAccountsRef.current = list
@@ -637,6 +641,9 @@ export default function App() {
     const connectError = q.get('connect_error')
     if (q.has('auth_error') || connected || connectError) window.history.replaceState(null, '', window.location.pathname)
     void fetchAuthConfig().then(setAuthConfig)
+    // Someone signed in here before: ask for the mailbox list at the same time as the sign-in check (the answer belongs to
+    // whoever the session cookie is, so it is only used once that session is confirmed). Saves one round trip at every start.
+    const early = platform.storage.get('pm.lastuser') ? fetchAccounts().catch(() => null) : undefined
     void fetchSession().then(async (u) => {
       if (u) {
         // Someone else on this device? Their mail copy and unsent draft must not stay behind.
@@ -654,7 +661,8 @@ export default function App() {
       if (!u) return
       setMessages([]) // a real person never sees the sample mail
       void loadCases()
-      void loadAccounts().then(() => {
+      // After connecting a mailbox the list has just changed: ask again rather than use the early answer.
+      void loadAccounts(connected || connectError ? undefined : early).then(() => {
         if (connected) showToast(`${connected} connected`)
         else if (connectError) showToast(CONNECT_ERRORS[connectError] ?? 'The mailbox could not be connected.')
       })

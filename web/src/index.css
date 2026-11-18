@@ -4939,6 +4939,19 @@ button.ref-chip:hover { background: #cdeee1; }
 .si-kpi b { font-size: 28px; line-height: 1; color: #0f1f35; }
 .si-kpi span { font-size: 12px; font-weight: 700; color: #1c8f4a; }
 @media (prefers-reduced-motion: reduce) { .si-card, .si-brand { animation: none; } .si-google { transition: none; } }
+/* Shorter windows (a 1366x768 laptop gives a window about 700px tall): the same screen, tighter, never scrolling. */
+@media (min-width: 900px) and (max-height: 820px) {
+  .si-brand { padding-top: 28px; padding-bottom: 56px; }
+  .si-brand h2 { margin-top: 28px; font-size: clamp(30px, 3.2vw, 44px); }
+  .si-sub { margin-top: 14px; font-size: 16px; }
+  .si-pills { margin-top: 18px; }
+  .si-show { margin-top: 22px; }
+  .si-kpi { margin-top: 22px; }
+  .si-place { bottom: 22px; }
+}
+@media (min-width: 900px) and (max-height: 620px) {
+  .si-show { display: none; }
+}
 
 /* ---- Add account dialog (same look as the sign-in) ---- */
 .cn-modal { border-radius: 20px; }

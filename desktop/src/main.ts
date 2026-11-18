@@ -8,7 +8,7 @@
  * Sign-in: Google does not allow its sign-in page inside an app's own window, so sign-in happens in the person's normal browser and is
  * handed back to the app (see beginSignIn / redeem, and web/api/_lib/auth/desktop.ts on the server).
  */
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, session, shell } from 'electron'
+import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, net, session, shell } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
 import { execFile } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
@@ -30,6 +30,8 @@ interface Settings {
   bounds?: { x: number; y: number; width: number; height: number; maximized?: boolean }
   startWithWindows?: boolean
   trayHintShown?: boolean
+  /** The person chose dark mode in Pivot Mail: the window opens dark too (no white flash). */
+  dark?: boolean
 }
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
@@ -148,7 +150,7 @@ function guard(contents: WebContents): void {
       e.preventDefault()
       return
     }
-    if (u.protocol === 'file:' && u.pathname.endsWith('/static/choose.html')) return
+    if (u.protocol === 'file:' && /\/static\/(choose|offline)\.html$/.test(u.pathname)) return
     if (isSameSite(u)) {
       if (u.pathname === '/api/auth/start') {
         e.preventDefault()
@@ -215,7 +217,7 @@ function createWindow(hidden = false): void {
     show: false,
     title: 'Pivot Mail',
     icon: nativeImage.createFromPath(asset('build', 'icon.png')),
-    backgroundColor: '#ffffff',
+    backgroundColor: settings.dark ? '#141416' : '#ffffff',
     autoHideMenuBar: true,
     webPreferences: {
       preload: asset('dist', 'preload.js'),
@@ -247,9 +249,64 @@ function createWindow(hidden = false): void {
   win.on('closed', () => {
     win = null
   })
+  // Cannot reach Pivot Mail (no internet, network not up yet after Windows starts, server down): show the built-in explanation
+  // and keep trying, instead of a blank window. Navigations the app itself stops (other sites, sign-in) report "aborted": ignored.
+  win.webContents.on('did-fail-load', (_e, code, desc, url, isMainFrame) => {
+    if (!isMainFrame || code === -3) return
+    let u: URL
+    try {
+      u = new URL(url)
+    } catch {
+      return
+    }
+    if (isSameSite(u)) showOffline('offline', `${desc || 'ERR'} (${code})`, u)
+  })
+  win.webContents.on('did-navigate', (_e, url, status) => {
+    if (status < 500) return
+    try {
+      const u = new URL(url)
+      if (isSameSite(u)) showOffline('server', `HTTP ${status}`, u)
+    } catch {
+      /* ignored */
+    }
+  })
   const base = baseUrl()
-  if (base) void win.loadURL(base)
+  if (base) openApp(base)
   else void win.loadFile(asset('static', 'choose.html'))
+}
+
+/* ------------------------------------------------------------------ cannot connect: explain, keep trying, open by itself */
+
+let reconnect: NodeJS.Timeout | null = null
+let resumeAt: string | null = null
+
+function openApp(url: string): void {
+  win?.loadURL(url).catch(() => {
+    /* did-fail-load shows the explanation */
+  })
+}
+
+function showOffline(reason: 'offline' | 'server', code: string, failed: URL): void {
+  if (!win) return
+  // Come back to the same page afterwards, except a sign-in step (it is single-use: start from the inbox instead).
+  resumeAt = failed.pathname.startsWith('/api/') ? null : failed.href
+  void win.loadFile(asset('static', 'offline.html'), { query: { reason, code, dark: settings.dark ? '1' : '0' } }).catch(() => {})
+  if (!reconnect) reconnect = setInterval(() => void tryReconnect(), 5000)
+}
+
+/** Opens Pivot Mail again as soon as its server answers (every 5 s, at once on "Try again now" or when Windows is back online). */
+async function tryReconnect(): Promise<void> {
+  const base = baseUrl()
+  if (!base || !win) return
+  try {
+    const r = await net.fetch(new URL('/api/auth/config', base).href, { cache: 'no-store', signal: AbortSignal.timeout(4000) })
+    if (r.status >= 500) return
+  } catch {
+    return
+  }
+  if (reconnect) clearInterval(reconnect)
+  reconnect = null
+  openApp(resumeAt ?? base)
 }
 
 function rememberBounds(): void {
@@ -376,6 +433,26 @@ function bridge(): void {
     settings.company = company
     saveSettings()
     void win.loadURL(HOSTS[company])
+  })
+
+  ipcMain.on('pm:theme', (e, theme: unknown) => {
+    if (!win || !fromApp(e) || (theme !== 'light' && theme !== 'dark')) return
+    const dark = theme === 'dark'
+    win.setBackgroundColor(dark ? '#141416' : '#ffffff')
+    if (!!settings.dark !== dark) {
+      settings.dark = dark
+      saveSettings()
+    }
+  })
+
+  ipcMain.on('pm:retry', (e) => {
+    if (!win || e.sender !== win.webContents) return
+    try {
+      const u = new URL(e.senderFrame?.url ?? e.sender.getURL())
+      if (u.protocol === 'file:' && u.pathname.endsWith('/static/offline.html')) void tryReconnect()
+    } catch {
+      /* ignored */
+    }
   })
 
   // A clicked new-mail alert brings the window back, also from the tray.

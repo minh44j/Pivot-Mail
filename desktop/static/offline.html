@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'" />
+    <title>Pivot Mail</title>
+    <link rel="stylesheet" href="offline.css" />
+  </head>
+  <body>
+    <main class="card" role="alert" aria-live="polite">
+      <img src="../build/icon.png" width="56" height="56" alt="" />
+      <h1 id="title">No internet connection</h1>
+      <p id="lead">Pivot Mail needs the internet to open. Check the Wi&#8209;Fi or network cable.</p>
+      <p class="status"><span class="spin" aria-hidden="true"></span><span id="status">Pivot Mail will open by itself as soon as it can connect.</span></p>
+      <button type="button" id="retry">Try again now</button>
+      <small id="code"></small>
+    </main>
+    <script src="offline.js"></script>
+  </body>
+</html>
