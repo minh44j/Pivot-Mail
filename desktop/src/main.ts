@@ -760,11 +760,12 @@ function filesToClipboard(paths: string[]): Promise<boolean> {
       'ObjC.import("AppKit");' +
       'const list = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey("PM_CLIP_FILES")).split("\\n");' +
       'const urls = $.NSMutableArray.array; for (const p of list) urls.addObject($.NSURL.fileURLWithPath(p));' +
-      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; pb.writeObjects(urls) ? "ok" : "no"'
+      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; (pb.writeObjects(urls) ? "ok " : "no ") + pb.pasteboardItems.count + "/" + list.length'
     return new Promise((resolve) => {
       execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { timeout: 20_000, env: { ...process.env, PM_CLIP_FILES: paths.join('\n') } }, (err, out) => {
-        ;(global as unknown as { __pmClipboardFiles?: string[] }).__pmClipboardFiles = paths // read by the Mac test
-        resolve(!err && String(out).trim() === 'ok')
+        ;(global as unknown as { __pmClipboardFiles?: string[]; __pmClipboardNote?: string }).__pmClipboardFiles = paths // read by the Mac test
+        ;(global as unknown as { __pmClipboardNote?: string }).__pmClipboardNote = err ? String(err) : String(out).trim()
+        resolve(!err && String(out).trim().startsWith('ok '))
       })
     })
   }
