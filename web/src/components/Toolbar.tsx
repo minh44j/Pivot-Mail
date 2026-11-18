@@ -35,6 +35,9 @@ interface Props {
   onRef: (anchor?: RefAnchor) => void
   refOpen: boolean
   onSignOut: () => void
+  /** Dark theme switch (in the avatar menu) */
+  dark: boolean
+  onDark: (v: boolean) => void
   /** Email of the signed-in person, when real sign-in is used */
   signedInAs?: string
   /** Full name of the person (the preview uses a placeholder) */
@@ -376,6 +379,16 @@ export function Toolbar(p: Props) {
                     }}
                   />
                 )}
+                <div className="menu-sep" role="separator" />
+                <button type="button" role="menuitemcheckbox" aria-checked={p.dark} className="menu-item theme-item" onClick={() => p.onDark(!p.dark)}>
+                  <span className="ph">
+                    <Icon name={p.dark ? 'moon' : 'sun'} size={14} />
+                  </span>
+                  Dark mode
+                  <span className={`mini-switch${p.dark ? ' on' : ''}`} aria-hidden="true">
+                    <span />
+                  </span>
+                </button>
                 <button
                   type="button"
                   role="menuitem"

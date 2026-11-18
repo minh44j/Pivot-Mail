@@ -21,7 +21,9 @@ blockquote{margin:0;padding:0;border:0}
 function HtmlFrame({ html }: { html: string }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [h, setH] = useState(60)
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}</style></head><body>${html}</body></html>`
+  // Mail is written for a white page. In the dark theme it is shown on a white sheet (with some room around the text) rather than guessed into dark colours.
+  const dark = document.documentElement.dataset.theme === 'dark'
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}${dark ? 'html{background:#fff}body{padding:12px 14px}' : ''}</style></head><body>${html}</body></html>`
 
   const measure = () => {
     const d = ref.current?.contentDocument
@@ -46,7 +48,7 @@ function HtmlFrame({ html }: { html: string }) {
       sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
       referrerPolicy="no-referrer"
       srcDoc={doc}
-      style={{ height: h }}
+      style={dark ? { height: h, background: '#fff', borderRadius: 10 } : { height: h }}
       onLoad={measure}
     />
   )

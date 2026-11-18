@@ -1,5 +1,6 @@
 /* oxlint-disable react/preserve-manual-memoization -- the React Compiler is not part of this build; the rule only notes that it would skip this large component */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row } from './types'
 import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
@@ -63,6 +64,7 @@ import { Composer } from './components/Composer'
 import { ContextMenu } from './components/ContextMenu'
 import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
+import { PaneSplitter } from './components/PaneSplitter'
 import type { RefAnchor } from './components/RefGenerator'
 import { SignIn } from './components/SignIn'
 import { PerformancePage } from './components/PerformancePage'
@@ -139,6 +141,8 @@ function useStored<T>(key: string, initial: T, valid: (v: unknown) => v is T): [
 const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
 const isFolderMap = (v: unknown): v is Record<string, string[]> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every(isStrings)
 const isAccounts = (v: unknown): v is Account[] => Array.isArray(v) && v.every((x) => typeof x === 'object' && x !== null && typeof (x as Account).id === 'string' && typeof (x as Account).email === 'string')
+type PaneSizes = { folders?: number; list?: number; height?: number }
+const isPanes = (v: unknown): v is PaneSizes => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 4000)
 const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
@@ -160,6 +164,11 @@ export default function App() {
   const [smart, setSmart] = useState<SmartKey[]>([])
   const [showSmart, setShowSmart] = usePersisted<boolean>('pm.smart', true, (v) => v === 'true' || v === 'false')
   const [threaded, setThreaded] = usePersisted<boolean>('pm.threaded', true, (v) => v === 'true' || v === 'false')
+  // Light or dark: the person's choice if they made one, otherwise the computer's setting. Applied to the page itself, so every screen follows.
+  const [theme, setTheme] = usePersisted<'light' | 'dark'>('pm.theme', typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', (v) => v === 'light' || v === 'dark')
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+  }, [theme])
   const [pane, setPane] = usePersisted<PaneLayout>('pm.pane', 'right', (v) => ['right', 'bottom', 'off'].includes(v))
   const [density, setDensity] = usePersisted<Density>('pm.density', 'comfortable', (v) => v === 'comfortable' || v === 'compact')
   const [view, setView] = useState<MobileView>('list')
@@ -189,6 +198,13 @@ export default function App() {
   const messagesRef = useRef<Message[]>(INITIAL_MESSAGES)
   const undoStack = useRef<Message[][]>([])
   const [screen, setScreen] = useState<'mail' | 'performance' | 'settings'>('mail')
+  const [panes, setPanes] = useStored<PaneSizes>('pm.panes', {}, isPanes)
+  const setPane1 = (k: keyof PaneSizes, v: number | null) => {
+    const next: PaneSizes = { ...panes }
+    if (v === null) delete next[k]
+    else next[k] = v
+    setPanes(next)
+  }
   const [signatures, setSignatures] = useStored<Record<string, string>>('pm.signatures', {}, isRecord)
   const [customTemplates, setCustomTemplates] = useStored<Template[]>('pm.templates', [], isTemplates)
   const [colourNames, setColourNames] = useStored<Record<string, string>>('pm.colours', {}, isRecord)
@@ -2127,8 +2143,14 @@ export default function App() {
       Skip to message list
     </a>
     )}
-    <div className={`app${sim === 'offline' || !netOnline || sim === 'syncfail' || sim === 'ratelimit' ? ' has-banner' : ''}`} data-density={density}>
+    <div
+      className={`app${sim === 'offline' || !netOnline || sim === 'syncfail' || sim === 'ratelimit' ? ' has-banner' : ''}`}
+      data-density={density}
+      style={{ '--folders-w': panes.folders ? `${panes.folders}px` : undefined, '--list-w': panes.list ? `${panes.list}px` : undefined, '--list-h': panes.height ? `${panes.height}px` : undefined } as CSSProperties}
+    >
       <Toolbar
+        dark={theme === 'dark'}
+        onDark={(v) => setTheme(v ? 'dark' : 'light')}
         query={query}
         onQuery={setQuery}
         recent={recent}
@@ -2336,6 +2358,9 @@ export default function App() {
         )}
           </>
         )}
+        {!noMailbox && foldersOpen && <PaneSplitter kind="folders" label="Resize the folder list" value={panes.folders ?? null} onChange={(v) => setPane1('folders', v)} />}
+        {!noMailbox && pane === 'right' && <PaneSplitter kind="list" label="Resize the message list" value={panes.list ?? null} onChange={(v) => setPane1('list', v)} />}
+        {!noMailbox && pane === 'bottom' && <PaneSplitter kind="height" label="Resize the message list height" value={panes.height ?? null} onChange={(v) => setPane1('height', v)} />}
       </main>
       {compose && (
         <Composer
