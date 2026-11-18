@@ -1,20 +1,12 @@
 import { AUTH_ERRORS, startUrl } from '../auth'
 import type { AuthConfig } from '../auth'
-import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
-import type { IconName } from './Icon'
 
 interface Props {
   config: AuthConfig | null
   /** Error code from the last attempt (?auth_error=…) */
   error: string | null
 }
-
-const PILLS: { icon: IconName; text: string }[] = [
-  { icon: 'inbox', text: 'Every mailbox in one place' },
-  { icon: 'hash', text: 'Reference numbers from Pivot OS' },
-  { icon: 'users', text: 'Shared mailboxes for the team' },
-]
 
 /** The Google "G", in Google's own colours (the sign-in button is a Google action). */
 export function GoogleG({ size = 18 }: { size?: number }) {
@@ -28,125 +20,123 @@ export function GoogleG({ size = 18 }: { size?: number }) {
   )
 }
 
-/** A small, calm picture of the inbox: the same colours the real one uses. Decoration only. */
-function Showcase() {
-  const rows = [
-    { w: 64, unread: true, dot: 'c-orange', file: 'packing-list.pdf' },
-    { w: 80, unread: true, dot: 'c-green' },
-    { w: 52, unread: false },
-  ]
-  return (
-    <div className="si-show" aria-hidden="true">
-      <div className="si-mini">
-        <div className="si-mini-head">
-          <i className="si-mini-dot" />
-          <b>Inbox</b>
-          <span>3</span>
-        </div>
-        {rows.map((r, i) => (
-          <div className="si-mini-row" key={i}>
-            <span className={`si-mini-u${r.unread ? ' on' : ''}`} />
-            <div className="si-mini-lines">
-              <i style={{ width: `${r.w}%` }} className={r.unread ? 'b' : ''} />
-              <i style={{ width: `${r.w - 20}%` }} />
-              {r.file && <em>{r.file}</em>}
-            </div>
-            {r.dot && <span className={`dot ${r.dot}`} />}
-          </div>
-        ))}
-      </div>
-      <div className="si-kpi">
-        <small>Cases opened this week</small>
-        <div>
-          <b>38</b>
-          <span>▲ 6</span>
-        </div>
-      </div>
-    </div>
+const SHIP = (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3 15l1.6 4.2a2 2 0 0 0 1.9 1.3h11a2 2 0 0 0 1.9-1.3L21 15H3z" />
+    <path d="M5 15V9h14v6" />
+    <path d="M9 9V5h6v4" />
+    <path d="M12 5V3" />
+  </svg>
+)
+const PLANE = (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />
+  </svg>
+)
+const ARROW = (
+  <svg className="si-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5 12h14M13 6l6 6-6 6" />
+  </svg>
+)
+
+/** Fallback names, used when the server's list is not available (preview, sign-in not connected yet). */
+const COMPANIES = [
+  { id: 'scl' as const, name: 'Pivot Shipping', domain: 'pivotscl.com' },
+  { id: 'tmc' as const, name: 'Pivot Travel Management', domain: 'pivottmc.com' },
+]
+
+/** One company button: its picture (a ship / a plane), its name, and "Continue with Google". */
+function CompanyButton({ id, name, domain, href, autoFocus }: { id: 'scl' | 'tmc'; name: string; domain: string; href?: string; autoFocus?: boolean }) {
+  const inner = (
+    <>
+      <span className={`si-tile ${id}`}>{id === 'tmc' ? PLANE : SHIP}</span>
+      <span className="si-txt">
+        <b>{name}</b>
+        <small>
+          <GoogleG size={14} />
+          <span>
+            Continue with Google <i>·</i> <span className="si-dom">@{domain}</span>
+          </span>
+        </small>
+      </span>
+      {ARROW}
+    </>
+  )
+  return href ? (
+    <a className="si-co" data-co={id} href={href} autoFocus={autoFocus}>
+      {inner}
+    </a>
+  ) : (
+    <button type="button" className="si-co" data-co={id} disabled aria-disabled="true" aria-describedby="signin-note">
+      {inner}
+    </button>
   )
 }
 
 /**
- * Sign-in. Same layout as Pivot OS: the brand and a short promise on the left, one calm card on the right (the brand moves into the
- * card on phones). Only a real Google Workspace sign-in; there is no preview or demo door.
+ * Sign-in: the same card as the Windows app's sign-in window (logo over a soft glow, "Welcome back", one button per company
+ * with "Continue with Google"), floating in the middle of the page; full screen on phones. Only a real Google Workspace
+ * sign-in; there is no preview or demo door.
  */
 export function SignIn({ config, error }: Props) {
   const real = config?.configured === true
   const err = error ? (AUTH_ERRORS[error] ?? { title: 'Sign-in failed', text: 'Please try again.', denied: false }) : null
+  const list = real && config.companies.length > 0 ? config.companies : COMPANIES
+  // An address that belongs to one company only shows that company.
+  const shown = real && config.company ? list.filter((c) => c.id === config.company) : list
   return (
     <main className="si">
-      <section className="si-brand" aria-label="About Pivot Mail">
-        <BrandLogo size="lg" />
-        <h2>
-          Your mail,
-          <br />
-          at the speed of your work.
-        </h2>
-        <p className="si-sub">One inbox for Pivot Shipping and Pivot Travel Management, connected to Pivot OS.</p>
-        <ul className="si-pills">
-          {PILLS.map((p) => (
-            <li key={p.text}>
-              <Icon name={p.icon} size={15} />
-              {p.text}
-            </li>
-          ))}
-        </ul>
-        <Showcase />
-        <span className="si-place">Riyadh, Kingdom of Saudi Arabia</span>
-      </section>
-
-      <section className="si-side">
-        <div className="si-card" aria-labelledby="signin-title">
-          <div className="si-card-logo">
-            <BrandLogo />
-          </div>
+      <div className="si-bg" aria-hidden="true">
+        <span className="si-glow g1" />
+        <span className="si-glow g2" />
+        <span className="si-glow g3" />
+        <span className="si-dots" />
+      </div>
+      <section className="si-card" aria-labelledby="signin-title">
+        <div className="si-hero" aria-hidden="true">
+          <span className="si-glow g1" />
+          <span className="si-glow g2" />
+          <span className="si-dots" />
+        </div>
+        <header className="si-head">
+          <img className="si-logo" src="/icon-192.png" alt="" width={72} height={72} draggable={false} />
+          <span className="si-word">
+            <b>Pivot</b> Mail
+          </span>
+        </header>
+        <div className="si-sheet">
           <h1 id="signin-title">Welcome back</h1>
-          <p className="si-lead">Sign in to your Pivot Workspace to open your mailboxes.</p>
-
+          <p className="si-lead">Sign in with your Pivot work account.</p>
           {err && (
-            <p className="si-error" role="alert">
-              <strong>{err.title}.</strong> {err.text}
+            <div className="si-error" role="alert">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 8v5M12 16.5v.01" />
+              </svg>
+              <span>
+                <b>{err.title}</b>
+                {err.text}
+              </span>
+            </div>
+          )}
+          <div role="group" aria-label="Choose your company">
+            {shown.map((c, i) => (
+              <CompanyButton key={c.id} id={c.id} name={c.name} domain={c.domain} href={real ? (config.company ? startUrl() : startUrl(c.id)) : undefined} autoFocus={real && shown.length === 1 && i === 0} />
+            ))}
+          </div>
+          {!real && (
+            <p id="signin-note" className="si-note">
+              Google sign-in is not connected yet.
             </p>
           )}
-
-          {real && config.company ? (
-            <a className="si-google" href={startUrl()} autoFocus>
-              <GoogleG />
-              Continue with Google
-            </a>
-          ) : real ? (
-            <div className="si-cos" role="group" aria-label="Choose your company">
-              {config.companies.map((c) => (
-                <a key={c.id} className="si-google" href={startUrl(c.id)}>
-                  <GoogleG />
-                  <span>
-                    {c.name} <small>@{c.domain}</small>
-                  </span>
-                </a>
-              ))}
-            </div>
-          ) : (
-            <>
-              <button type="button" className="si-google" disabled aria-describedby="signin-note">
-                <GoogleG />
-                Continue with Google
-              </button>
-              <p id="signin-note" className="si-note">
-                Google sign-in is not connected yet.
-              </p>
-            </>
-          )}
-
-          <p className="si-fine">Use your @pivotscl.com or @pivottmc.com work account.</p>
-
-          <footer className="si-foot">
-            <span>
-              <Icon name="lock" size={13} />
-              Encrypted · Internal use only
-            </span>
-            <a href="mailto:it@pivotscl.com">Need help?</a>
-          </footer>
         </div>
+        <footer className="si-foot">
+          <span>
+            <Icon name="lock" size={13} />
+            Encrypted · Internal use only
+          </span>
+          <a href="mailto:it@pivotscl.com">Need help?</a>
+        </footer>
       </section>
     </main>
   )
