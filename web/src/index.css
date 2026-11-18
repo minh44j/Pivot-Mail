@@ -5064,3 +5064,7 @@ button.ref-chip:hover { background: #cdeee1; }
 
 .settings-body.wide { max-width: 1240px; transition: max-width 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
 @media (prefers-reduced-motion: reduce) { .settings-body.wide { transition: none; } }
+/* the sign-in brand side rises into place without fading, so its text is always at full contrast */
+@keyframes si-rise { from { transform: translateY(8px); } to { transform: none; } }
+@media (min-width: 900px) { .si-brand { animation-name: si-rise; } }
+.users-list .user.disabled .user-access { opacity: 1; }
