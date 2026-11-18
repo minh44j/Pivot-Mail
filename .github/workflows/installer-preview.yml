@@ -1,0 +1,56 @@
+# Shows what installing Pivot Mail looks like: builds three variants of the Windows installer (today's wizard, a Pivot-branded
+# wizard, one-click), runs each one on a real Windows machine pressing Enter like a person, photographs every screen, and
+# saves the photos to desktop/installer-preview/ on this branch. Preview only: the published installer is unchanged.
+name: Installer preview (screenshots)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/installer-preview.yml'
+      - 'desktop/build/brand/**'
+      - 'desktop/test/installer-shots.ps1'
+
+permissions:
+  contents: write
+
+jobs:
+  shots:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Build three installer variants
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npx electron-builder --win nsis --publish never -c.artifactName='A-Today-${version}.${ext}'
+          npx electron-builder --win nsis --publish never -c.artifactName='B-Branded-${version}.${ext}' -c.nsis.installerSidebar=build/brand/installerSidebar.bmp -c.nsis.uninstallerSidebar=build/brand/installerSidebar.bmp -c.nsis.installerHeader=build/brand/installerHeader.bmp -c.nsis.include=build/brand/per-user.nsh
+          npx electron-builder --win nsis --publish never -c.artifactName='C-OneClick-${version}.${ext}' -c.nsis.oneClick=true -c.nsis.perMachine=false
+      - name: Run each installer and photograph it
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $out = Join-Path (Get-Location) 'installer-preview'
+          Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+          ./test/installer-shots.ps1 -Installer "release/A-Today-$v.exe" -Name 'A-today' -Out $out
+          ./test/installer-shots.ps1 -Installer "release/B-Branded-$v.exe" -Name 'B-branded' -Out $out
+          ./test/installer-shots.ps1 -Installer "release/C-OneClick-$v.exe" -Name 'C-oneclick' -Out $out
+          Get-ChildItem $out | Format-Table Name, Length
+      - name: Save the photos on this branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add installer-preview
+          git commit -m "Installer preview screenshots [skip ci]" || exit 0
+          for i in 1 2 3 4; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break; sleep 5; done
