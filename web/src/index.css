@@ -5069,3 +5069,6 @@ button.ref-chip:hover { background: #cdeee1; }
 @media (min-width: 900px) { .si-brand { animation-name: si-rise; } }
 .users-list .user.disabled .user-access { opacity: 1; }
 .si-kpi span { color: #146c37; }
+
+/* both top rows share one white background (dark mode: the page colour) */
+.topbar { background: var(--ob); }
