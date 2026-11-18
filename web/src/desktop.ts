@@ -31,6 +31,8 @@ export interface DesktopBridge {
   setBadge(count: number): void
   /** Drag files out of the app onto the desktop or into a folder (call from dragstart, after preventDefault). */
   startDrag(files: DesktopFile[]): void
+  /** Put real files on the Windows clipboard (Ctrl+V pastes them anywhere); resolves to how many were copied. From 0.4.0. */
+  copyFiles?(files: DesktopFile[]): Promise<number>
   /** Bring the window to the front, also when it is hidden in the tray (present from desktop version 0.2.0). */
   show?(): void
 }

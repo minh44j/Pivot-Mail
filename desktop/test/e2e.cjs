@@ -49,7 +49,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const opened = () => app.evaluate(() => global.__opened)
 
   // ---- the page itself is locked down
-  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'setBadge', 'show', 'startDrag', 'store', 'version'])))
+  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'copyFiles', 'setBadge', 'show', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
@@ -156,6 +156,17 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const names2 = f2.map((f) => path.basename(f))
   console.log('   dragged names:', JSON.stringify(names2))
   ok('D30 two attachments with the same name both arrive ("invoice (2).pdf"); Windows-reserved names are made safe', f2.length === 4 && names2[0] === 'invoice.pdf' && names2[1] === 'invoice (2).pdf' && fs.readFileSync(f2[1], 'utf8') === '2' && names2[2] === '_CON.txt' && names2[3] === 'image001.png')
+
+  // ---- Copy (right-click > Copy, or Ctrl+C): the files themselves on the Windows clipboard, ready to paste anywhere
+  const copied = await win.evaluate(() => window.pivotDesktop.copyFiles([{ name: 'B-L MEDU1234567.pdf', mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) }, { name: 'packing list.xlsx', mime: 'application/vnd.ms-excel', bytes: new Uint8Array([80, 75]) }, { name: 'packing list.xlsx', mime: 'application/vnd.ms-excel', bytes: new Uint8Array([80, 76]) }]))
+  let onClipboard = []
+  if (process.platform === 'win32') {
+    // Ask Windows itself what is on the clipboard now: the same list Explorer pastes.
+    const out = require('node:child_process').execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }'], { encoding: 'utf8' })
+    onClipboard = out.split(/\r?\n/).filter(Boolean)
+  } else onClipboard = await app.evaluate(() => global.__pmClipboardFiles || [])
+  console.log('   on the clipboard:', JSON.stringify(onClipboard.map((f) => path.basename(f))))
+  ok('D34 Copy puts the real files on the Windows clipboard (3 files, same-name files kept apart, right content)', copied === 3 && onClipboard.length === 3 && JSON.stringify(onClipboard.map((f) => path.basename(f))) === JSON.stringify(['B-L MEDU1234567.pdf', 'packing list.xlsx', 'packing list (2).xlsx']) && fs.readFileSync(onClipboard[0]).subarray(0, 4).toString() === '%PDF' && fs.readFileSync(onClipboard[2], 'utf8') === 'PL')
 
   // ---- a Pivot Mail address that redirects to another site never shows that site in the app window
   await win.evaluate(() => { location.href = '/__test/redirect' }); await win.waitForTimeout(1200)

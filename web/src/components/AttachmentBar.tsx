@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PointerEvent as RPointerEvent } from 'react'
 import type { Attachment } from '../types'
 import { formatSize } from '../util'
@@ -25,7 +26,14 @@ interface Menu {
 
 /** Archive names stay plain ASCII: some browsers drop the whole name when it contains characters like × or –. */
 const safeName = (s: string): string =>
-  [...s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/×/g, 'x').replace(/[–—]/g, '-').replace(/[\\/:*?"<>|]/g, '')]
+  [
+    ...s
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/×/g, 'x')
+      .replace(/[–—]/g, '-')
+      .replace(/[\\/:*?"<>|]/g, ''),
+  ]
     .filter((ch) => ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) <= 126)
     .join('')
     .replace(/\s+/g, ' ')
@@ -35,15 +43,21 @@ const safeName = (s: string): string =>
 /**
  * Attachments shown above the message body (Outlook style).
  * Each file has Preview, Copy and Download buttons; the header has Download all.
- * - Click, Ctrl/Cmd+click, Shift+click and drag-marquee selection
- * - Space or double-click previews, Ctrl/Cmd+C copies
+ * - Click, Ctrl/Cmd+click, Shift+click, Ctrl+A, and press-and-drag selection from anywhere in the box that is not a file
+ *   (hold Ctrl to add to the selection, like Windows Explorer)
+ * - Space or double-click previews, Ctrl/Cmd+C copies (in the Windows app: the files themselves, ready to paste anywhere)
  * - Drag a file out (Chromium: saves the file), right-click for the same actions
  */
 export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [menu, setMenu] = useState<Menu | null>(null)
   const [preview, setPreview] = useState<number | null>(null)
-  const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(null)
+  const [marquee, setMarquee] = useState<{
+    x1: number
+    y1: number
+    x2: number
+    y2: number
+  } | null>(null)
   const wrap = useRef<HTMLDivElement>(null)
   const anchor = useRef<number>(-1)
 
@@ -91,10 +105,37 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
     onToast(`Downloaded ${files.length} files as a zip`)
   }
 
-  /** Copy the file itself when the browser allows it, otherwise the file name, and say which. */
+  /** Windows app: the files themselves go on the clipboard. A browser can only copy pictures, otherwise the file names. */
+  const canCopyFiles = typeof desktop()?.copyFiles === 'function'
   const copyFiles = async (files: Attachment[]) => {
     const first = files[0]
     if (!first) return
+    const app = desktop()
+    if (app?.copyFiles) {
+      try {
+        await Promise.all(files.map(ensureBytes))
+      } catch {
+        onToast('Could not fetch the attachment from Gmail. Please try again.')
+        return
+      }
+      const n = await app
+        .copyFiles(
+          files.map((f) => ({
+            name: f.name,
+            mime: f.mime,
+            bytes: mockBytes(f),
+          })),
+        )
+        .catch(() => 0)
+      if (n === files.length)
+        onToast(
+          n === 1
+            ? `Copied ${first.name}. Paste it with Ctrl+V into a folder, an email or a chat.`
+            : `Copied ${n} files. Paste them with Ctrl+V into a folder, an email or a chat.`,
+        )
+      else onToast('Windows did not accept the copy. Please try again, or drag the files out instead.')
+      return
+    }
     if (files.length === 1) {
       try {
         await ensureBytes(first)
@@ -108,7 +149,11 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
         return
       }
       const ok = await platform.copyText(first.name)
-      onToast(ok ? 'Copied the file name. Browsers cannot copy this file type, so use Download or drag it out.' : 'Copy was blocked by the browser')
+      onToast(
+        ok
+          ? 'Copied the file name. Browsers cannot copy this file type, so use Download or drag it out.'
+          : 'Copy was blocked by the browser',
+      )
       return
     }
     const ok = await platform.copyText(files.map((f) => f.name).join('\n'))
@@ -170,22 +215,37 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
     e.dataTransfer.effectAllowed = 'copy'
   }
 
-  // Marquee selection on empty space.
+  // Press-and-drag selection, started anywhere in the box that is not a file or a button (a press on a file drags it out instead,
+  // as in Windows Explorer). Holding Ctrl (or Shift) adds to what is already selected.
+  const base = useRef<Set<string>>(new Set())
   const onPointerDown = (e: RPointerEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget || e.button !== 0) return
-    const box = e.currentTarget.getBoundingClientRect()
-    setSelected(new Set())
-    setMarquee({ x1: e.clientX - box.left, y1: e.clientY - box.top, x2: e.clientX - box.left, y2: e.clientY - box.top })
+    if (e.button !== 0 || !wrap.current) return
+    const t = e.target as HTMLElement
+    if (t.closest('[data-att], button, a, input')) return
+    const box = wrap.current.getBoundingClientRect()
+    base.current = e.ctrlKey || e.metaKey || e.shiftKey ? new Set(selected) : new Set()
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) setSelected(new Set())
+    setMenu(null)
+    setMarquee({
+      x1: e.clientX - box.left,
+      y1: e.clientY - box.top,
+      x2: e.clientX - box.left,
+      y2: e.clientY - box.top,
+    })
     e.currentTarget.setPointerCapture(e.pointerId)
   }
   const onPointerMove = (e: RPointerEvent<HTMLDivElement>) => {
     if (!marquee || !wrap.current) return
     const box = wrap.current.getBoundingClientRect()
-    const next = { ...marquee, x2: e.clientX - box.left, y2: e.clientY - box.top }
+    const next = {
+      ...marquee,
+      x2: e.clientX - box.left,
+      y2: e.clientY - box.top,
+    }
     setMarquee(next)
     const [x1, x2] = [Math.min(next.x1, next.x2), Math.max(next.x1, next.x2)]
     const [y1, y2] = [Math.min(next.y1, next.y2), Math.max(next.y1, next.y2)]
-    const hit = new Set<string>()
+    const hit = new Set<string>(base.current)
     wrap.current.querySelectorAll<HTMLElement>('[data-att]').forEach((el) => {
       const r = el.getBoundingClientRect()
       const [l, t, rr, b] = [r.left - box.left, r.top - box.top, r.right - box.left, r.bottom - box.top]
@@ -199,7 +259,16 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
 
   const files = chosen()
   return (
-    <div className="attbar" tabIndex={0} onKeyDown={onKeyDown} aria-label={`${attachments.length} attachments`}>
+    <div
+      className="attbar"
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      aria-label={`${attachments.length} attachments`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
       <div className="attbar-head">
         <span className="sr-only">
           {attachments.length} attachment{attachments.length === 1 ? '' : 's'}
@@ -214,7 +283,7 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
           <Icon name="download" size={16} /> Download all ({attachments.length})
         </button>
       </div>
-      <div className="chips" ref={wrap} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
+      <div className="chips" ref={wrap}>
         {attachments.map((a, i) => (
           <div
             key={a.id}
@@ -278,38 +347,65 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
           />
         )}
       </div>
-      {menu && (
-        <div
-          className="ctx"
-          role="menu"
-          style={{ left: Math.min(menu.x, window.innerWidth - 220), top: Math.min(menu.y, window.innerHeight - 240) }}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const i = attachments.findIndex((a) => a.id === files[0]?.id)
-              if (i >= 0) setPreview(i)
-              setMenu(null)
+      {menu &&
+        createPortal(
+          <div
+            className="ctx att-ctx"
+            role="menu"
+            style={{
+              left: Math.min(menu.x, window.innerWidth - 220),
+              top: Math.min(menu.y, window.innerHeight - 240),
             }}
+            onPointerDown={(e) => e.stopPropagation()}
           >
-            Preview
-          </button>
-          <button type="button" role="menuitem" onClick={() => { download(files); setMenu(null) }}>
-            Download{files.length > 1 ? ` ${files.length} files` : ''}
-          </button>
-          <button type="button" role="menuitem" onClick={() => { void copyFiles(files); setMenu(null) }}>
-            Copy{files.length > 1 ? ' file names' : ''}
-          </button>
-          <button type="button" role="menuitem" onClick={() => { onForwardWith(files); setMenu(null) }}>
-            Attach to new mail
-          </button>
-          <button type="button" role="menuitem" disabled>
-            Save to Drive (Phase 2)
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const i = attachments.findIndex((a) => a.id === files[0]?.id)
+                if (i >= 0) setPreview(i)
+                setMenu(null)
+              }}
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                download(files)
+                setMenu(null)
+              }}
+            >
+              Download{files.length > 1 ? ` ${files.length} files` : ''}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                void copyFiles(files)
+                setMenu(null)
+              }}
+            >
+              {canCopyFiles ? `Copy${files.length > 1 ? ` ${files.length} files` : ''}` : `Copy${files.length > 1 ? ' file names' : ''}`}
+              <kbd>Ctrl+C</kbd>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onForwardWith(files)
+                setMenu(null)
+              }}
+            >
+              Attach to new mail
+            </button>
+            <button type="button" role="menuitem" disabled>
+              Save to Drive (Phase 2)
+            </button>
+          </div>,
+          document.body,
+        )}
       {preview !== null && (
         <AttachmentPreview
           files={attachments}

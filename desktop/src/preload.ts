@@ -28,7 +28,7 @@ function badgePng(n: number): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.3.0',
+  version: '0.4.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
@@ -50,6 +50,14 @@ contextBridge.exposeInMainWorld('pivotDesktop', {
       'pm:drag',
       files.map((f) => ({ name: String(f.name), bytes: f.bytes instanceof Uint8Array ? f.bytes : new Uint8Array(0) })),
     )
+  },
+  /** Put the files on the Windows clipboard (paste with Ctrl+V anywhere); resolves to how many were copied. */
+  copyFiles(files: { name: string; mime: string; bytes: Uint8Array }[]): Promise<number> {
+    if (!Array.isArray(files)) return Promise.resolve(0)
+    return ipcRenderer.invoke(
+      'pm:copy-files',
+      files.map((f) => ({ name: String(f.name), bytes: f.bytes instanceof Uint8Array ? f.bytes : new Uint8Array(0) })),
+    ) as Promise<number>
   },
   show() {
     ipcRenderer.send('pm:show')

@@ -10,6 +10,7 @@
  */
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, session, shell } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
+import { execFile } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -304,6 +305,39 @@ function chooseAgain(): void {
 
 /** Folders holding copies of dragged attachments; removed when the app quits, and any left from a crash at the next start. */
 const dragDirs: string[] = []
+/** Writes attachments handed over by the page to a fresh temporary folder (safe, unique names) and returns their paths. */
+function writeTempFiles(files: unknown): string[] {
+  if (!Array.isArray(files) || files.length === 0) return []
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pivot-mail-'))
+  dragDirs.push(dir)
+  const used = new Set<string>()
+  const paths: string[] = []
+  for (const f of files.slice(0, 50) as { name?: unknown; bytes?: unknown }[]) {
+    if (typeof f.name !== 'string' || !(f.bytes instanceof Uint8Array)) continue
+    const full = path.join(dir, uniqueName(safeFileName(f.name), used))
+    fs.writeFileSync(full, f.bytes)
+    paths.push(full)
+  }
+  return paths
+}
+
+/**
+ * Puts real files on the Windows clipboard, so Ctrl+V pastes them into a folder, the desktop, an Outlook or Teams message or a
+ * chat, exactly like copying files in Explorer. Windows' own Set-Clipboard does it (Electron cannot put several files on the
+ * clipboard by itself). The paths travel in an environment variable, never inside the command text.
+ */
+function filesToClipboard(paths: string[]): Promise<boolean> {
+  if (process.platform !== 'win32') {
+    ;(global as unknown as { __pmClipboardFiles?: string[] }).__pmClipboardFiles = paths // automated tests on other systems
+    return Promise.resolve(true)
+  }
+  const ps = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const cmd = "Set-Clipboard -LiteralPath ($env:PM_CLIP_FILES -split \"`n\")"
+  return new Promise((resolve) => {
+    execFile(ps, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', cmd], { windowsHide: true, timeout: 20_000, env: { ...process.env, PM_CLIP_FILES: paths.join('\n') } }, (err) => resolve(!err))
+  })
+}
+
 function cleanDragFolders(all = false): void {
   const dirs = all ? fs.readdirSync(os.tmpdir()).filter((d) => d.startsWith('pivot-mail-')).map((d) => path.join(os.tmpdir(), d)) : dragDirs
   for (const d of dirs) {
@@ -357,20 +391,22 @@ function bridge(): void {
     else win.setOverlayIcon(null, '')
   })
 
-  ipcMain.on('pm:drag', (e, files: unknown) => {
-    if (!fromApp(e) || !Array.isArray(files) || files.length === 0) return
+  // "Copy" on attachments: the files themselves, ready to paste anywhere in Windows.
+  ipcMain.handle('pm:copy-files', async (e, files: unknown) => {
+    if (!fromApp(e)) return 0
     try {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pivot-mail-'))
-      dragDirs.push(dir)
-      const used = new Set<string>()
-      const paths: string[] = []
-      for (const f of files.slice(0, 50) as { name?: unknown; bytes?: unknown }[]) {
-        if (typeof f.name !== 'string' || !(f.bytes instanceof Uint8Array)) continue
-        const name = uniqueName(safeFileName(f.name), used)
-        const full = path.join(dir, name)
-        fs.writeFileSync(full, f.bytes)
-        paths.push(full)
-      }
+      const paths = writeTempFiles(files)
+      if (paths.length === 0) return 0
+      return (await filesToClipboard(paths)) ? paths.length : 0
+    } catch {
+      return 0
+    }
+  })
+
+  ipcMain.on('pm:drag', (e, files: unknown) => {
+    if (!fromApp(e)) return
+    try {
+      const paths = writeTempFiles(files)
       if (paths.length === 0) return
       const icon = nativeImage.createFromPath(asset('build', 'tray.png'))
       if (paths.length === 1) e.sender.startDrag({ file: paths[0] as string, icon })
