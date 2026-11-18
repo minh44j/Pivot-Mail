@@ -123,6 +123,11 @@ ok('a batch of 100 new messages is stored in under 300 ms on its own thread (a 3
 ok('reference search over 50,000 messages: exactly the right message, under 100 ms (feels instant)', r1.length === 1 && r1[0].id === 'b43210' && r2.length === 1 && r2[0].id === 'b43210' && tExact < 100 && tSpaced < 100, JSON.stringify([r1.map((m) => m.id), r2.map((m) => m.id), tExact, tSpaced]))
 ok('broad word search over 50,000 messages: newest 300 in under 100 ms', r3.length === 300 && r4.length > 0 && tWord < 100 && tTwo < 100, `${r3.length} ${r4.length} ${tWord} ${tTwo}`)
 ok('opening the app: the newest 5,000 messages load in under 400 ms', r5.length === 5000 && tLoad < 400, tLoad)
+// Several mailboxes with many matches each: one list, newest first across both (not one mailbox after the other).
+big.save(Array.from({ length: 1500 }, (_, i) => ({ id: 'o' + i, threadId: 'o' + i, accountId: 'OTHER', folder: 'inbox', labels: [], from: { name: 'X', email: 'x@y.com' }, to: [], subject: 'customs ' + i, body: '', date: new Date(Date.UTC(2024, 0, 1) + i * 3_600_000 * 17).toISOString(), unread: false, attachments: [] })))
+const both = big.search(['BIG', 'OTHER'], 'customs')
+const dates = both.map((m) => m.date)
+ok('searching two mailboxes: one list, newest first across both, from both mailboxes', both.length === 300 && dates.every((d, i) => i === 0 || dates[i - 1] >= d) && new Set(both.map((m) => m.accountId)).size === 2, JSON.stringify([both.length, [...new Set(both.map((m) => m.accountId))]]))
 big.thread('BIG', 'b43210')
 const [tThread, r6] = time(() => big.thread('BIG', 'b43210'))
 console.log(`   open a conversation among 50,000: ${tThread.toFixed(2)} ms`)

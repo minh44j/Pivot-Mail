@@ -94,6 +94,11 @@ export class MailStore {
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
+      -- Read the file through memory mapping (no copy per page read: noticeably faster on Mac and Windows), a 16 MB page cache,
+      -- and in-memory scratch space for sorting search matches.
+      PRAGMA mmap_size = 268435456;
+      PRAGMA cache_size = -16000;
+      PRAGMA temp_store = MEMORY;
       CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, date TEXT NOT NULL, json TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS messages_account_date ON messages (account_id, date DESC);
       CREATE INDEX IF NOT EXISTS messages_thread ON messages (account_id, json_extract(json, '$.threadId'));
@@ -204,15 +209,33 @@ export class MailStore {
       .filter((w) => /[\p{L}\p{N}]/u.test(w))
       .slice(0, 12)
     if (words.length === 0 || accountIds.length === 0) return []
+    accountIds = [...new Set(accountIds)].slice(0, 50)
     let match = words.map((w) => `"${w}"*`).join(' AND ')
     // A reference typed with or without spaces and dashes ("MSKU 765432-1", "msku7654321", "7654321") also matches its joined form.
     const joined = words.join('').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
     if (/\d/.test(joined) && joined.length >= 5 && joined.length <= 30) match = `(${match}) OR refs : "${joined}"*`
+    const n = Math.min(Math.max(1, limit), 2000)
+    // 1. What the word index matched (row numbers only: cheap).
+    const found = (this.db.prepare('SELECT rowid AS r FROM search_index WHERE search_index MATCH ? LIMIT 1001').all(match) as { r: number }[]).map((x) => x.r)
+    if (found.length === 0) return []
     const marks = accountIds.map(() => '?').join(',')
-    // Two steps: find and sort the matches by date alone, then read only the newest ones in full.
-    const hits = this.db
-      .prepare(`SELECT m.rowid AS r FROM search_index f JOIN messages m ON m.rowid = f.rowid WHERE search_index MATCH ? AND m.account_id IN (${marks}) ORDER BY m.date DESC LIMIT ?`)
-      .all(match, ...accountIds, Math.min(Math.max(1, limit), 2000)) as { r: number }[]
+    let hits: { r: number }[]
+    if (found.length <= 1000) {
+      // 2a. A few matches (a reference number, a rare name): read just their dates and sort them.
+      hits = this.db
+        .prepare(`SELECT rowid AS r FROM messages WHERE rowid IN (${found.map(() => '?').join(',')}) AND account_id IN (${marks}) ORDER BY date DESC LIMIT ?`)
+        .all(...found, ...accountIds, n) as { r: number }[]
+    } else {
+      // 2b. Many matches (a common word): walk the small (mailbox, date) index newest-first and keep the matched ones, so the big
+      //     stored messages are never read just to learn their date (that made a common word take 0.4 s on a Mac with 50,000
+      //     messages). Several mailboxes: the newest of each, merged by date.
+      const q = this.db.prepare(
+        'SELECT rowid AS r, date FROM messages INDEXED BY messages_account_date WHERE account_id = ? AND rowid IN (SELECT rowid FROM search_index WHERE search_index MATCH ?) ORDER BY date DESC LIMIT ?',
+      )
+      const all = accountIds.flatMap((a) => q.all(a, match, n) as { r: number; date: string }[])
+      hits = accountIds.length > 1 ? all.sort((x, y) => (x.date < y.date ? 1 : x.date > y.date ? -1 : 0)).slice(0, n) : all
+    }
+    // 3. Only the page of results is read in full.
     const get = this.db.prepare('SELECT json FROM messages WHERE rowid = ?')
     return hits.map((h) => light((get.get(h.r) as { json: string }).json))
   }
