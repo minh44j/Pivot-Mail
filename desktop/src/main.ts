@@ -59,6 +59,8 @@ const asset = (...p: string[]) => path.join(app.getAppPath(), ...p)
 let win: BrowserWindow | null = null
 /** The small sign-in window, while nobody is signed in (static/signin.html). */
 let signin: BrowserWindow | null = null
+/** The sign-in page has loaded and can switch steps itself. */
+let signinReady = false
 let tray: Tray | null = null
 let quitting = false
 /** The mail database's own thread (store-worker.ts); null if it could not start (the page then keeps its smaller browser copy). */
@@ -138,7 +140,9 @@ async function handleLink(link: string): Promise<void> {
     return
   }
   const body = new URLSearchParams({ t, v: pending.verifier }).toString()
-  // The full window is prepared out of sight and signs in; the small window stays until that has worked.
+  // The full window is prepared out of sight and signs in; the small window says so and stays until that has worked.
+  const co = settings.company ?? 'scl'
+  if (signin) openSignIn({ state: 'finishing', co })
   if (!win) createWindow(true, false)
   const w = win as BrowserWindow | null
   if (!w) return
@@ -162,7 +166,8 @@ async function handleLink(link: string): Promise<void> {
     // the real sign-in still in progress in the browser, so "expired" leaves the small window waiting as it was.
     if (signin) {
       closeMain()
-      if (problem !== 'state') openSignIn({ error: /^[a-z_]{1,20}$/.test(problem) ? problem : 'unavailable' })
+      if (problem === 'state') openSignIn({ state: 'waiting', co })
+      else openSignIn({ error: /^[a-z_]{1,20}$/.test(problem) ? problem : 'unavailable' })
     }
     return
   }
@@ -274,7 +279,7 @@ async function sessionState(base: string): Promise<'in' | 'out' | 'unknown'> {
 
 /** The small sign-in window (about 440 x 600, fixed size, centred), like Outlook's. */
 function openSignIn(query: Record<string, string> = {}): void {
-  const q = { ...query, dark: settings.dark ? '1' : '0' }
+  const q = { ...query, dark: settings.dark ? '1' : '0', v: app.getVersion(), first: settings.company ? '0' : '1' }
   if (!signin) {
     signin = new BrowserWindow({
       width: 440,
@@ -287,13 +292,14 @@ function openSignIn(query: Record<string, string> = {}): void {
       show: false,
       title: 'Pivot Mail',
       icon: nativeImage.createFromPath(asset('build', 'icon.png')),
-      backgroundColor: settings.dark ? '#1b1b1e' : '#ffffff',
+      backgroundColor: settings.dark ? '#0b1626' : '#eaf3fc',
       autoHideMenuBar: true,
       webPreferences: { preload: asset('dist', 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
     })
     signin.once('ready-to-show', () => signin?.show())
     signin.on('closed', () => {
       signin = null
+      signinReady = false
       // Closing the sign-in window without signing in ends the app (there is no mail to check yet), like Outlook.
       if (!win) {
         pending = null
@@ -301,8 +307,18 @@ function openSignIn(query: Record<string, string> = {}): void {
         app.quit()
       }
     })
+  } else if (signinReady) {
+    // Already showing: move to the next step in place (no reload, so the logo and panel do not flash).
+    signin.webContents.send('pm:signin-state', q)
+    showWindow()
+    return
   } else showWindow()
-  void signin.loadFile(asset('static', 'signin.html'), { query: q }).catch(() => {})
+  signinReady = false
+  const w = signin
+  w.webContents.once('did-finish-load', () => {
+    if (signin === w) signinReady = true
+  })
+  void w.loadFile(asset('static', 'signin.html'), { query: q }).catch(() => {})
 }
 
 /** Removes the full window for good (sign-out, or before signing in again); its size and place are remembered. */

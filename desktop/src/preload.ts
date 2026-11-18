@@ -28,7 +28,7 @@ function badgePng(n: number): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.6.0',
+  version: '0.7.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
@@ -77,6 +77,12 @@ contextBridge.exposeInMainWorld('pivotDesktop', {
   },
   signInBack() {
     ipcRenderer.send('pm:signin-back')
+  },
+  /** The sign-in window's page hears about the next step (waiting, finishing, an error) without reloading. */
+  onSignInState(cb: (state: Record<string, string>) => void) {
+    if (typeof cb !== 'function') return
+    ipcRenderer.removeAllListeners('pm:signin-state')
+    ipcRenderer.on('pm:signin-state', (_e, state: unknown) => cb(state && typeof state === 'object' ? { ...(state as Record<string, string>) } : {}))
   },
   // The Pivot Mail page found nobody signed in: the app switches to the small sign-in window.
   signedOut() {

@@ -46,12 +46,14 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const box0 = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; const [cw, ch] = w.getContentSize(); return { n: BrowserWindow.getAllWindows().length, cw, ch, resizable: w.isResizable(), maximizable: w.isMaximizable() } })
   console.log('   sign-in window:', JSON.stringify(box0))
   ok('D40 not signed in: only a small sign-in window opens (440 x 600, fixed size), not the big one', box0.n === 1 && box0.cw === 440 && box0.ch === 600 && !box0.resizable && (process.platform === 'linux' || !box0.maximizable) && si.url().startsWith('file:'))
+  await si.waitForTimeout(1000) // let the entrance animation finish before measuring
   const fit = await si.evaluate(() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, iw: innerWidth, ih: innerHeight, buttons: [...document.querySelectorAll('button[data-co]')].map((b) => b.innerText.replace(/\s+/g, ' ').trim()) }))
-  ok('D41 ...just the logo and the two Google buttons, all of it fits (no scrolling)', fit.sw <= fit.iw && fit.sh <= fit.ih && fit.buttons.join('|') === 'Pivot Shipping @pivotscl.com|Pivot Travel Management @pivottmc.com', JSON.stringify(fit))
+  console.log('   buttons:', JSON.stringify(fit.buttons))
+  ok('D41 ...the logo and the two company buttons (each "Continue with Google"), all of it fits (no scrolling)', fit.sw <= fit.iw && fit.sh <= fit.ih && fit.buttons.join('|') === 'Pivot Shipping Continue with Google · @pivotscl.com|Pivot Travel Management Continue with Google · @pivottmc.com', JSON.stringify(fit))
   await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin.png') })
 
   // ---- the page itself is locked down
-  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
+  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'onSignInState', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await si.locator('button[data-co="scl"]').click(); await si.waitForTimeout(800)
@@ -261,7 +263,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await app2.evaluate(({ shell }) => { global.__opened = []; shell.openExternal = async (u) => { global.__opened.push(u) } })
   const w2 = await app2.firstWindow()
   await w2.waitForSelector('button[data-co]', { timeout: 15000 })
-  ok('D15 very first start: the small sign-in window with both companies (no separate company screen)', (await w2.locator('button[data-co]').count()) === 2 && (await w2.locator('h1').first().innerText()) === 'Sign in')
+  ok('D15 very first start: the small sign-in window with both companies (no separate company screen)', (await w2.locator('button[data-co]').count()) === 2 && (await w2.locator('h1').first().innerText()) === 'Welcome to Pivot Mail')
   const fromSignin = await w2.evaluate(async () => [await window.pivotDesktop.store.load('acc1'), await window.pivotDesktop.store.search(['acc1'], 'jeddah')])
   ok('D25 a page that is not Pivot Mail itself (here the sign-in window) gets nothing from the database', JSON.stringify(fromSignin) === '[null,null]')
   await w2.locator('button[data-co="tmc"]').click(); await w2.waitForTimeout(500)
