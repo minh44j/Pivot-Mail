@@ -111,9 +111,9 @@ ok('no cookie is 401, never cached', (await session(req(SCL, '/api/auth/session'
 ok('verifyToken ignores garbage', verifyToken('...', SECRET) === null && verifyToken(undefined, SECRET) === null)
 
 // 6. logout
-const lo = logout(req(SCL, '/api/auth/logout', { method: 'POST', headers: { origin: SCL } }))
+const lo = await logout(req(SCL, '/api/auth/logout', { method: 'POST', headers: { origin: SCL } }))
 ok('logout clears the cookie', lo.status === 200 && lo.headers.getSetCookie()[0]?.includes('Max-Age=0') === true)
-ok('logout from another site refused', logout(req(SCL, '/api/auth/logout', { method: 'POST', headers: { origin: 'https://evil.example' } })).status === 403)
+ok('logout from another site refused', (await logout(req(SCL, '/api/auth/logout', { method: 'POST', headers: { origin: 'https://evil.example' } }))).status === 403)
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

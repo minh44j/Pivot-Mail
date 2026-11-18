@@ -35,6 +35,8 @@ interface Props {
   onRef: (anchor?: RefAnchor) => void
   refOpen: boolean
   onSignOut: () => void
+  /** Real sign-in only: end every session of this person (other computers, phones) */
+  onSignOutAll?: () => void
   /** Dark theme switch (in the avatar menu) */
   dark: boolean
   onDark: (v: boolean) => void
@@ -401,6 +403,20 @@ export function Toolbar(p: Props) {
                   <span className="ph" />
                   {p.signedInAs ? 'Sign out' : 'Sign out (preview)'}
                 </button>
+                {p.onSignOutAll && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      p.onSignOutAll?.()
+                      close()
+                    }}
+                  >
+                    <span className="ph" />
+                    Sign out of all devices
+                  </button>
+                )}
               </>
             )}
           </Menu>

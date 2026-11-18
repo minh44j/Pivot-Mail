@@ -35,7 +35,7 @@ async function call<T>(method: string, body?: unknown): Promise<Result<T>> {
 }
 
 export const fetchPeople = () => call<{ users: PersonRow[]; shared: SharedBox[]; you: string }>('GET')
-export const changePerson = (id: string, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled'; shared?: string[] }) => call<{ ok: true }>('PATCH', { id, ...change })
+export const changePerson = (id: string, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled'; shared?: string[]; signOut?: true }) => call<{ ok: true }>('PATCH', { id, ...change })
 
 export const PEOPLE_ERRORS: Record<string, string> = {
   self: 'You cannot change your own role or access. Ask another administrator.',

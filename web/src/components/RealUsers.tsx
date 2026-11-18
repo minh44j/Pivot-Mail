@@ -40,7 +40,7 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
     return { active: l.filter((p) => p.status !== 'disabled').length, off: l.filter((p) => p.status === 'disabled').length, admins: l.filter((p) => p.role === 'admin' && p.status !== 'disabled').length }
   }, [people])
 
-  const apply = async (p: PersonRow, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled'; shared?: string[] }, done: string) => {
+  const apply = async (p: PersonRow, change: { role?: 'admin' | 'staff'; status?: 'active' | 'disabled'; shared?: string[]; signOut?: true }, done: string) => {
     setBusy(p.id)
     const r = await changePerson(p.id, change)
     setBusy(null)
@@ -114,6 +114,11 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
                     {own === 0 && shared.length === 0 ? 'No mailbox connected yet' : `${own} own${shared.length > 0 ? ` · shared: ${shared.map((s) => s.email.split('@')[0]).join(', ')}` : ' · no shared mailbox'}`}
                   </button>
                   <span className={`status-chip ${off ? 'disabled' : 'active'}`}>{off ? 'Turned off' : u.lastSeenAt ? `Active · ${day(u.lastSeenAt)}` : 'Never signed in'}</span>
+                  {!off && !me && (
+                    <button type="button" className="btn" disabled={busy === u.id} onClick={() => void apply(u, { signOut: true }, `${u.name || u.email} is signed out on every device`)} aria-label={`Sign ${u.name || u.email} out on every device`} title="Ends their sessions on every computer and phone. They can sign in again with Google.">
+                      Sign out
+                    </button>
+                  )}
                   <button type="button" className="btn" disabled={me || busy === u.id} onClick={() => (off ? void apply(u, { status: 'active' }, `${u.name || u.email} can sign in again`) : setConfirm({ p: u, to: 'disabled' }))}>
                     {off ? 'Turn on' : 'Turn off'}
                   </button>

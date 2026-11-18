@@ -8,7 +8,8 @@ import type { Me } from '../_lib/session.js'
 /**
  * People who have signed in, for administrators only.
  *   GET    the list (both companies) with role, status, last seen and the mailboxes each person can open
- *   PATCH  { id, role?: 'admin' | 'staff', status?: 'active' | 'disabled' }
+ *   PATCH  { id, role?: 'admin' | 'staff', status?: 'active' | 'disabled', shared?: string[], signOut?: true }
+ *          signOut ends every session of that person on every device (they sign in again with Google)
  *
  * Rules the server keeps whatever the screen does:
  *  - only an administrator may call either (checked against the database on every call);
@@ -100,7 +101,8 @@ export async function PATCH(req: Request): Promise<Response> {
   const status = b.status === 'active' || b.status === 'disabled' ? b.status : undefined
   const uuid = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v)
   const shared = Array.isArray(b.shared) && b.shared.length <= 100 && b.shared.every(uuid) ? [...new Set(b.shared as string[])] : undefined
-  if (!uuid(id) || (role === undefined && status === undefined && shared === undefined) || (b.role !== undefined && role === undefined) || (b.status !== undefined && status === undefined) || (b.shared !== undefined && shared === undefined)) return err('invalid', 400)
+  const signOut = b.signOut === true
+  if (!uuid(id) || (role === undefined && status === undefined && shared === undefined && !signOut) || (b.role !== undefined && role === undefined) || (b.status !== undefined && status === undefined) || (b.shared !== undefined && shared === undefined)) return err('invalid', 400)
   if (id === me.id && (role !== undefined || status !== undefined)) return err('self', 409)
 
   try {
@@ -114,6 +116,8 @@ export async function PATCH(req: Request): Promise<Response> {
       patch.role = role
     }
     if (status !== undefined && status !== target.status) patch.status = status
+    // Turning access off also ends every session the person has, so turning it back on later does not revive an old (perhaps copied) one.
+    if (patch.status === 'disabled' || signOut) patch.sessions_valid_after = new Date().toISOString()
 
     const demoting = patch.role === 'staff'
     const disabling = patch.status === 'disabled'
@@ -125,7 +129,8 @@ export async function PATCH(req: Request): Promise<Response> {
 
     if (Object.keys(patch).length > 0) {
       await update('app_users', `id=${eq(id)}`, patch)
-      await insert('audit_log', { actor_email: me.email, action: patch.role !== undefined ? 'user.role' : 'user.status', detail: { target: target.email, ...patch } })
+      const action = patch.role !== undefined ? 'user.role' : patch.status !== undefined ? 'user.status' : 'user.signout_all'
+      await insert('audit_log', { actor_email: me.email, action, detail: { target: target.email, ...patch } })
     }
     if (shared !== undefined) {
       // Only real shared mailboxes can be given out; anything else is refused before anything changes.

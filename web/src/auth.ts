@@ -50,9 +50,10 @@ export async function saveTitle(title: string): Promise<string | null> {
   }
 }
 
-export async function signOut(): Promise<void> {
+/** everywhere: also ends this person's sessions on every other computer and phone. */
+export async function signOut(everywhere = false): Promise<void> {
   try {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ everywhere }) })
   } catch {
     /* the cookie simply expires */
   }

@@ -21,7 +21,8 @@ export async function GET(req: Request): Promise<Response> {
     if (access.length === 0) return json({ error: 'forbidden' }, 403)
     const account = (await select<{ id: string; email: string; company: CompanyId; status: string }>('mail_accounts', `id=${eq(id)}&select=id,email,company,status`))[0]
     const tokenRow = (await select<{ refresh_token_enc: string; revoked_at: string | null }>('mail_tokens', `account_id=${eq(id)}&select=refresh_token_enc,revoked_at`))[0]
-    if (!account || !tokenRow || tokenRow.revoked_at) return json({ error: 'reconnect' }, 409)
+    if (!account || account.status === 'disabled') return json({ error: 'forbidden' }, 403)
+    if (!tokenRow || tokenRow.revoked_at) return json({ error: 'reconnect' }, 409)
     const client = clientFor(account.company)
     const refresh = open(tokenRow.refresh_token_enc, account.email)
     if (!client || !refresh) return json({ error: 'reconnect' }, 409)

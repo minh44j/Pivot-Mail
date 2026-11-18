@@ -1,6 +1,6 @@
 import type { Company } from './config.js'
 import type { CompanyId } from './config.js'
-import { dbConfigured, insert } from './db.js'
+import { dbConfigured, eq, insert, select, update } from './db.js'
 import { exchangeCodeFull, checkClaims } from './google.js'
 import { originOf, redirect } from './http.js'
 import { currentUser } from './session.js'
@@ -43,11 +43,25 @@ export async function finishConnect(p: { req: Request; host: string; secure: boo
   if (!result.refreshToken) return fail('norefresh')
 
   try {
-    const [account] = await insert<{ id: string }>('mail_accounts', { email: check.email, display_name: check.name, company: p.company.id, kind, status: 'active', created_by: me.id }, 'email')
+    // A mailbox that is already connected keeps who it belongs to and what kind it is. Reconnecting only renews the permission and
+    // gives the person access. Otherwise anyone who knows a shared mailbox's password could reconnect it as their own "personal"
+    // mailbox, become its owner and remove it for everybody.
+    const existing = (await select<{ id: string; kind: string; created_by: string | null }>('mail_accounts', `email=${eq(check.email)}&select=id,kind,created_by`))[0]
+    if (existing?.kind === 'shared' && me.role !== 'admin') return fail('forbidden')
+    let account: { id: string } | undefined
+    if (existing) {
+      // Only an administrator may turn a personal mailbox into a shared one; nothing turns a shared mailbox back into a personal one here.
+      const patch: Record<string, unknown> = { status: 'active' }
+      if (kind === 'shared' && existing.kind === 'personal' && me.role === 'admin') patch.kind = 'shared'
+      ;[account] = await update<{ id: string }>('mail_accounts', `id=${eq(existing.id)}`, patch)
+      if (patch.kind) await insert('audit_log', { actor_email: me.email, action: 'account.made_shared', account_id: existing.id, detail: { email: check.email } })
+    } else {
+      ;[account] = await insert<{ id: string }>('mail_accounts', { email: check.email, display_name: check.name, company: p.company.id, kind, status: 'active', created_by: me.id })
+    }
     if (!account) return fail('unavailable')
     await insert('mail_tokens', { account_id: account.id, refresh_token_enc: seal(result.refreshToken, check.email), key_version: 1, scopes: result.scope, granted_by: me.id, revoked_at: null }, 'account_id')
     await insert('mailbox_access', { user_id: me.id, account_id: account.id, granted_by: me.id }, 'user_id,account_id')
-    await insert('audit_log', { actor_email: me.email, action: 'account.connected', account_id: account.id, detail: { kind, company: p.company.id, otherAddress: check.email !== me.email } })
+    await insert('audit_log', { actor_email: me.email, action: existing ? 'account.reconnected' : 'account.connected', account_id: account.id, detail: { kind: existing?.kind ?? kind, company: p.company.id, otherAddress: check.email !== me.email } })
   } catch {
     return fail('unavailable')
   }

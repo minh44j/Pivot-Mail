@@ -3,7 +3,12 @@ export function parseCookies(header: string | null): Record<string, string> {
   for (const part of (header ?? '').split(';')) {
     const i = part.indexOf('=')
     if (i < 1) continue
-    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim())
+    const raw = part.slice(i + 1).trim()
+    try {
+      out[part.slice(0, i).trim()] = decodeURIComponent(raw)
+    } catch {
+      // A malformed value (for example a stray %) is ignored instead of failing the whole request.
+    }
   }
   return out
 }

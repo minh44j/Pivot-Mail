@@ -109,3 +109,8 @@ Status: UI preview complete (sample data). Next: real Google login and Gmail syn
 - **Pivot OS link (built, off until switched on):** Pivot Mail asks Pivot OS for reference numbers, pick-lists (clients, ports, salespeople) and case facts through signed endpoints added to Pivot OS (branch `claude/pivot-mail-link`). The Ref No. form and the "Reference issued" card now match Pivot OS. See `PIVOT_OS_LINK.md` for the steps to switch it on. ⚠️ Not yet tested against the live Pivot OS.
 
 - **People and access (built):** administrators see everyone who has signed in, switch roles, turn access off or on, and choose which shared mailboxes each person can open (Settings → Users and roles). All rules are kept by the server and written to the audit log. Everyone with a company Google account can sign in and starts as Staff; there is no invite step.
+
+## Phase 6 status: hardening (security review done, 2026-11-18)
+- Full review of sign-in, sessions, stored permissions, access rules, every server endpoint, the database and the email cleaner. Report: `SECURITY_REVIEW.md`.
+- **Fixed:** a hostile email could run a script when someone replied to it (critical); browser security policy added (no inline scripts, cannot be framed); shared mailboxes can no longer be taken over by reconnecting them; "Sign out of all devices" and remote sign-out by administrators; sign-in cookie types; append-only audit log; smaller items.
+- **Next:** backups for the Pivot Mail database, then the pilot (3 staff, 2 weeks).

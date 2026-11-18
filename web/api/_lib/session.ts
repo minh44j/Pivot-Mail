@@ -17,9 +17,20 @@ export interface Me {
 }
 
 interface Cookie extends Record<string, unknown> {
+  typ?: string
   email: string
   name: string
   company: 'scl' | 'tmc'
+  iat: number
+}
+
+/**
+ * Only a real session cookie counts. The one-time sign-in cookie is signed with the same key, so its type is checked
+ * (sessions issued before types existed have none, but always carry an email and never a sign-in state).
+ */
+function isSession(s: Cookie | null): s is Cookie {
+  if (!s || typeof s.email !== 'string' || !s.email.includes('@') || (s.company !== 'scl' && s.company !== 'tmc') || typeof s.iat !== 'number') return false
+  return s.typ === 'session' || (s.typ === undefined && s.state === undefined)
 }
 
 /**
@@ -30,9 +41,11 @@ export async function currentUser(req: Request): Promise<Me | null> {
   const secret = sessionSecret()
   if (!secret) return null
   const s = verifyToken<Cookie>(parseCookies(req.headers.get('cookie'))[SESSION_COOKIE], secret)
-  if (!s) return null
+  if (!isSession(s)) return null
   if (!dbConfigured()) return { id: null, email: s.email, name: s.name, company: s.company, role: roleFor(s.email), title: '' }
   const row = (await select<AppUser>('app_users', `email=${eq(s.email)}&select=*`))[0]
+  // "Sign out of all devices" (or access turned off): sessions issued before that moment no longer count.
+  if (row?.sessions_valid_after && s.iat * 1000 < Math.floor(Date.parse(row.sessions_valid_after) / 1000) * 1000) return null
   if (row) return row.status === 'disabled' ? null : { id: row.id, email: row.email, name: row.name || s.name, company: row.company, role: roleFor(row.email, row.role), title: row.title ?? '' }
   const made = await signInUser(s.email, s.company, s.name)
   return made.ok && made.user ? { id: made.user.id, email: made.user.email, name: made.user.name || s.name, company: made.user.company, role: roleFor(made.user.email, made.user.role), title: made.user.title ?? '' } : null

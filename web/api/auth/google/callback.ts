@@ -8,6 +8,7 @@ import { roleFor, signInUser } from '../../_lib/users.js'
 import { OAUTH_COOKIE, SESSION_COOKIE, SESSION_SECONDS, hostOf, originOf, redirect } from '../../_lib/http.js'
 
 interface OauthState extends Record<string, unknown> {
+  typ?: string
   state: string
   nonce: string
   verifier: string
@@ -32,7 +33,7 @@ export async function GET(req: Request): Promise<Response> {
 
   const saved = verifyToken<OauthState>(parseCookies(req.headers.get('cookie'))[OAUTH_COOKIE], secret)
   const code = q.get('code')
-  if (!saved || !code || q.get('state') !== saved.state) return fail('state')
+  if (!saved || saved.typ !== 'oauth' || !code || q.get('state') !== saved.state) return fail('state')
 
   const company = COMPANIES[saved.company]
   const client = clientFor(company.id)
@@ -55,6 +56,6 @@ export async function GET(req: Request): Promise<Response> {
   } catch {
     return fail('unavailable')
   }
-  const session = signToken({ email: check.email, name: check.name, company: company.id, role }, secret, SESSION_SECONDS)
+  const session = signToken({ typ: 'session', email: check.email, name: check.name, company: company.id, role }, secret, SESSION_SECONDS)
   return redirect(saved.next, [drop, setCookie(SESSION_COOKIE, session, { path: '/', maxAge: SESSION_SECONDS, secure })])
 }

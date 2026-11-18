@@ -211,6 +211,10 @@ refreshResult = { status: 400, body: { error: 'invalid_grant' } }
 t = await token(req(SCL, `/api/accounts/token?id=${annId}`, annCookie))
 ok('revoked permission: asks to reconnect and flags the mailbox', t.status === 409 && tables.mail_accounts.find((a) => a.id === annId)?.status === 'needs_reconnect')
 refreshResult = { status: 200, body: { access_token: 'ya29.fresh', expires_in: 3600 } }
+// security review: a mailbox that was switched off gives no key, even to someone who still has an access row
+tables.mail_accounts.find((x) => x.id === annId)!.status = 'disabled'
+ok('a switched-off mailbox gives no Gmail key', (await token(req(SCL, `/api/accounts/token?id=${annId}`, annCookie))).status === 403)
+tables.mail_accounts.find((x) => x.id === annId)!.status = 'active'
 
 // ================= disconnect =================
 const post = (id: string, cookie: any, origin: string | null = SCL) => disconnect(req(SCL, '/api/accounts/disconnect', { method: 'POST', headers: { ...cookie.headers, ...(origin ? { origin } : {}), 'content-type': 'application/json' }, body: JSON.stringify({ id }) }))
@@ -222,6 +226,23 @@ ok('owner can disconnect', r.status === 200 && !tables.mail_accounts.some((a) =>
 ok('permission revoked at Google', revoked.includes('REFRESH-SECRET-1'))
 ok('token and access rows gone', !tables.mail_tokens.some((x) => x.account_id === annId) && !tables.mailbox_access.some((x) => x.account_id === annId))
 ok('audit entry for removal', tables.audit_log.some((a) => a.action === 'account.disconnected'))
+
+
+// ================= reconnecting an existing mailbox (found in the security review, 2026-11-18) =================
+// Before the fix, a staff member who knew the shared login of ops@ could "Add account" it as personal: the upsert rewrote the
+// row to kind=personal and created_by=them, so they owned it and could remove it for everybody.
+const opsBefore = { ...tables.mail_accounts.find((a) => a.email === 'ops@pivotscl.com')! }
+c = await connectMailbox('ann@pivotscl.com', 'ops@pivotscl.com', { kind: 'personal', refresh: 'ANN-TAKEOVER' })
+const opsAfter = tables.mail_accounts.find((a) => a.email === 'ops@pivotscl.com')!
+ok('staff cannot reconnect a shared mailbox (even knowing its password)', loc(c.end!) === '/?connect_error=forbidden')
+ok('...the shared mailbox keeps its kind and its owner', opsAfter.kind === 'shared' && opsAfter.created_by === opsBefore.created_by)
+ok('...its saved permission is not replaced', !tables.mail_tokens.some((x) => x.account_id === opsAfter.id && open(x.refresh_token_enc, 'ops@pivotscl.com') === 'ANN-TAKEOVER'))
+ok('...and the person gets no access to it', !tables.mailbox_access.some((x) => x.account_id === opsAfter.id && x.user_id === tables.app_users.find((u) => u.email === 'ann@pivotscl.com')!.id))
+c = await connectMailbox('boss@pivotscl.com', 'ops@pivotscl.com', { kind: 'personal', refresh: 'OPS-REFRESH-2' })
+const opsRe = tables.mail_accounts.find((a) => a.email === 'ops@pivotscl.com')!
+ok('an administrator reconnecting it as "personal" does not turn it into a personal mailbox', loc(c.end!).startsWith('/?connected=') && opsRe.kind === 'shared' && opsRe.created_by === opsBefore.created_by)
+ok('...but the saved permission is renewed', tables.mail_tokens.some((x) => x.account_id === opsRe.id && open(x.refresh_token_enc, 'ops@pivotscl.com') === 'OPS-REFRESH-2'))
+ok('...and it is logged as a reconnection', tables.audit_log.some((a) => a.action === 'account.reconnected'))
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

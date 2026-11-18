@@ -21,7 +21,7 @@ export function GET(req: Request): Response {
   const state = randomToken(16)
   const nonce = randomToken(16)
   const verifier = randomToken(32)
-  const cookie = signToken({ state, nonce, verifier, company: company.id, next: safeNext(url.searchParams.get('next')) }, secret, 600)
+  const cookie = signToken({ typ: 'oauth', state, nonce, verifier, company: company.id, next: safeNext(url.searchParams.get('next')) }, secret, 600)
 
   const location = authUrl({
     clientId: client.clientId,

@@ -10,6 +10,7 @@ export interface AppUser {
   role: 'admin' | 'staff'
   status: 'invited' | 'active' | 'disabled'
   title?: string
+  sessions_valid_after?: string | null
 }
 
 /** Administrator if the database says so, or the address is in ADMIN_EMAILS (the bootstrap list). */

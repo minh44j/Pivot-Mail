@@ -21,7 +21,13 @@ const ALLOWED = new Set([
 ])
 
 /** Attributes that are safe as they are (all values are plain text, never code). */
-const PLAIN_ATTRS = new Set(['align', 'valign', 'width', 'height', 'colspan', 'rowspan', 'border', 'cellpadding', 'cellspacing', 'dir', 'lang', 'bgcolor', 'color', 'size', 'class'])
+const PLAIN_ATTRS = new Set(['align', 'valign', 'width', 'height', 'colspan', 'rowspan', 'border', 'cellpadding', 'cellspacing', 'dir', 'lang', 'bgcolor', 'color', 'size'])
+
+/**
+ * Class names are kept only when they mark quoted history (used to fold it and to style it like Outlook). Any other class could
+ * borrow the app's own look when a quote is pasted into the writing window (a fake "Message sent" card, an overlay).
+ */
+const KEEP_CLASSES = new Set(['gmail_quote', 'gmail_attr', 'gmail_extra', 'gmail_signature', 'yahoo_quoted', 'moz-cite-prefix'])
 
 const CSS_PROPS = new Set([
   'color', 'background-color', 'font-weight', 'font-style', 'font-size', 'text-align', 'text-decoration', 'line-height', 'width', 'max-width',
@@ -36,7 +42,9 @@ function safeStyle(style: string): string {
     const prop = decl.slice(0, i).trim().toLowerCase()
     const value = decl.slice(i + 1).trim()
     if (!CSS_PROPS.has(prop)) continue
-    if (/url\s*\(|expression|javascript:|@import|[\\<>]|behavior|binding/i.test(value)) continue
+    if (/url\s*\(|expression|javascript:|@import|[\\<>]|behavior|binding|var\s*\(|calc\s*\(/i.test(value)) continue
+    // No negative sizes: a negative margin or padding lets content slide over what is next to it.
+    if (/(^|[\s(,])-\s*\d/.test(value)) continue
     if (prop === 'font-size') {
       const m = value.match(/^([\d.]+)(px|pt|em|rem|%)?$/i)
       if (!m) continue
@@ -80,25 +88,29 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
   const doc = new DOMParser().parseFromString(`<body>${input.slice(0, MAX)}</body>`, 'text/html')
   let blocked = 0
 
+  // One node at a time; every node is visited once (an email built from thousands of nested unknown tags cannot freeze the app).
   const clean = (parent: Node): void => {
-    for (const node of Array.from(parent.childNodes)) {
-      if (node.nodeType === Node.TEXT_NODE) continue
+    for (const node of Array.from(parent.childNodes)) cleanNode(node)
+  }
+  const cleanNode = (node: Node): void => {
+    {
+      if (node.nodeType === Node.TEXT_NODE) return
       if (node.nodeType !== Node.ELEMENT_NODE) {
         node.parentNode?.removeChild(node) // comments, processing instructions
-        continue
+        return
       }
       const el = node as HTMLElement
       const tag = el.tagName.toUpperCase()
       if (DROP.has(tag)) {
         el.remove()
-        continue
+        return
       }
       if (!ALLOWED.has(tag)) {
         // Unknown wrapper: keep the text and children, lose the element.
         const kids = Array.from(el.childNodes)
         el.replaceWith(...kids)
-        for (const k of kids) if (k.nodeType === Node.ELEMENT_NODE) clean(k.parentNode as Node)
-        continue
+        for (const k of kids) cleanNode(k)
+        return
       }
 
       if (tag === 'IMG') {
@@ -117,14 +129,16 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
           ph.textContent = alt ? `Image: ${alt}` : 'Image'
           el.replaceWith(ph)
         }
-        continue
+        return
       }
 
       const style = el.getAttribute('style')
       const keepHref = tag === 'A' ? safeHref(el.getAttribute('href') ?? '') : null
+      const classes = (el.getAttribute('class') ?? '').split(/\s+/).filter((c) => KEEP_CLASSES.has(c))
       for (const a of Array.from(el.attributes)) {
         if (!PLAIN_ATTRS.has(a.name)) el.removeAttribute(a.name)
       }
+      if (classes.length > 0) el.setAttribute('class', classes.join(' '))
       if (style) {
         const s = safeStyle(style)
         if (s) el.setAttribute('style', s)
@@ -142,8 +156,10 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
             if (a && b && a !== b) el.setAttribute('data-mismatch', '1')
           }
         } else {
-          el.replaceWith(...Array.from(el.childNodes))
-          continue
+          const kids = Array.from(el.childNodes)
+          el.replaceWith(...kids)
+          for (const k of kids) cleanNode(k)
+          return
         }
       }
       clean(el)

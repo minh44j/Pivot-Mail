@@ -2226,6 +2226,14 @@ export default function App() {
           if (authUser) void forgetPersonalData().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
           setEntered(false)
         }}
+        onSignOutAll={
+          authUser
+            ? () => {
+                void forgetPersonalData().then(() => signOut(true)).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
+                setEntered(false)
+              }
+            : undefined
+        }
         role={role}
         onRole={setRole}
         onPerformance={openPerformance}
