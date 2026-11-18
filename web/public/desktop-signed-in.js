@@ -4,7 +4,7 @@
   var m = /[#&]t=([^&]+)/.exec(location.hash)
   var go = document.getElementById('go')
   var msg = document.getElementById('msg')
-  try { history.replaceState(null, '', location.pathname) } catch (e) {}
+  try { history.replaceState(null, '', location.pathname) } catch { /* old browsers: the ticket still expires in two minutes */ }
   if (!m) {
     msg.textContent = 'This sign-in link has already been used. Start again from the Pivot Mail app.'
     go.style.display = 'none'

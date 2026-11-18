@@ -8,6 +8,7 @@ import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
 import { BrandLogo } from './components/BrandLogo'
+import { desktop } from './desktop'
 import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
@@ -566,6 +567,23 @@ export default function App() {
     }
   }, [checkMailbox, ensureLabels, setHistory])
   useEffect(() => {
+    if (!desktop() || !authUser) return
+    let last = 0
+    const onFocus = () => {
+      if (Date.now() - last < 10_000) return
+      last = Date.now()
+      // Only a real change (a mailbox added or removed in the browser) reloads the mailboxes.
+      void fetchAccounts().then((list) => {
+        if (!list) return
+        const was = realAccountsRef.current.map((x) => `${x.id}:${x.status}`).sort().join()
+        const now = list.map((x) => `${x.id}:${x.status}`).sort().join()
+        if (was !== now) void loadAccounts()
+      })
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [authUser, loadAccounts])
+  useEffect(() => {
     const q = new URLSearchParams(window.location.search)
     const connected = q.get('connected')
     const connectError = q.get('connect_error')
@@ -1026,7 +1044,9 @@ export default function App() {
   }, [selectedRow, threaded, messages])
 
   const totalUnread = useMemo(() => (realMode ? Object.values(inboxUnread).reduce((s, n) => s + n, 0) : messages.filter((m) => m.unread && m.folder === 'inbox').length), [messages, realMode, inboxUnread])
-  useEffect(() => platform.setBadge(totalUnread), [totalUnread])
+  // Only a real inbox (or the #demo sample) counts: on the sign-in screen the sample mail must not put a number on the tab or taskbar.
+  const badgeCount = realMode || entered ? totalUnread : 0
+  useEffect(() => platform.setBadge(badgeCount), [badgeCount])
 
   const select = useCallback(
     (id: string) => {

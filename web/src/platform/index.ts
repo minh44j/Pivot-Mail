@@ -4,6 +4,8 @@
  * touch localStorage, Notification, clipboard or document.title directly.
  */
 
+import { desktop } from '../desktop'
+
 export interface KeyValueStore {
   get(key: string): string | null
   set(key: string, value: string): void
@@ -47,6 +49,7 @@ async function copyText(text: string): Promise<boolean> {
 
 function setBadge(unread: number): void {
   document.title = unread > 0 ? `(${unread}) Pivot Mail` : 'Pivot Mail'
+  desktop()?.setBadge(unread)
   const nav = navigator as Navigator & { setAppBadge?: (n?: number) => Promise<void>; clearAppBadge?: () => Promise<void> }
   try {
     if (unread > 0) void nav.setAppBadge?.(unread)

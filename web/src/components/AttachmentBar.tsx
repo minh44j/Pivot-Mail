@@ -4,6 +4,7 @@ import type { Attachment } from '../types'
 import { formatSize } from '../util'
 import { platform } from '../platform'
 import { ensureBytes, isReady, mockBlob, mockBytes } from '../data/mockfile'
+import { desktop } from '../desktop'
 import { makeZip } from '../zip'
 import { AttachmentPreview } from './AttachmentPreview'
 import { FileIcon } from './FileIcon'
@@ -150,6 +151,15 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
   const onDragStart = (e: React.DragEvent, a: Attachment) => {
     const files = selected.has(a.id) ? chosen() : [a]
     const first = files[0] ?? a
+    // Desktop app: a real drag of real files, onto the desktop or into any folder (like Outlook). The bytes were fetched on hover.
+    const app = desktop()
+    const ready = files.filter(isReady)
+    if (app && ready.length > 0) {
+      e.preventDefault()
+      app.startDrag(ready.map((f) => ({ name: f.name, mime: f.mime, bytes: mockBytes(f) })))
+      if (ready.length < files.length) onToast('Some files were still loading and were left out. Drag again in a moment.')
+      return
+    }
     // Chromium-only: lets the user drop the file onto the desktop or a folder.
     if (isReady(first)) {
       const url = URL.createObjectURL(mockBlob(first))
@@ -215,6 +225,10 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
             tabIndex={0}
             draggable
             onDragStart={(e) => onDragStart(e, a)}
+            onPointerEnter={() => {
+              // Fetch the file ahead of a drag, so the desktop app can hand it over the moment the drag starts.
+              if (desktop() && !isReady(a)) void ensureBytes(a).catch(() => {})
+            }}
             onClick={(e) => clickChip(e, i, a)}
             onDoubleClick={() => setPreview(i)}
             onKeyDown={(e) => {

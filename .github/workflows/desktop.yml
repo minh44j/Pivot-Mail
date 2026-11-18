@@ -1,0 +1,39 @@
+# Builds the Pivot Mail Windows installer on a Windows machine.
+# Runs when the desktop app changes, or by hand (Actions > Desktop app (Windows) > Run workflow).
+# The installer is attached to the run as "PivotMail-Windows" (download it from the run's summary page).
+name: Desktop app (Windows)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run dist
+        env:
+          # No code-signing certificate yet: Windows shows "Windows protected your PC" on first run (More info > Run anyway).
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PivotMail-Windows
+          path: desktop/release/*.exe
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,36 @@
+{
+  "name": "pivot-mail-desktop",
+  "productName": "Pivot Mail",
+  "version": "0.1.0",
+  "description": "Pivot Mail for Windows",
+  "author": "Pivot",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "npm run build && electron .",
+    "dist": "npm run build && electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.2.2",
+    "electron-builder": "26.18.1",
+    "typescript": "~7.0.2"
+  },
+  "build": {
+    "appId": "com.pivot.mail",
+    "productName": "Pivot Mail",
+    "artifactName": "PivotMail-Setup-${version}.${ext}",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**", "static/**", "build/icon.png", "build/tray.png", "package.json"],
+    "protocols": [{ "name": "Pivot Mail", "schemes": ["pivotmail"] }],
+    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Pivot Mail"
+    }
+  }
+}
