@@ -12,7 +12,7 @@ on:
       - '.github/workflows/mac.yml'
 
 permissions:
-  contents: read
+  contents: write # only to save the photos to desktop/mac-preview on this branch
 
 concurrency:
   group: mac-${{ github.ref }}
@@ -47,6 +47,9 @@ jobs:
           test -s "release/PivotMail-$v-mac.dmg"
           echo "--- runs on:"; lipo -archs "$app/Contents/MacOS/Pivot Mail" | tee /dev/stderr | grep -q "x86_64 arm64"
           echo "--- signature:"; codesign --verify --deep --strict --verbose=2 "$app"
+          codesign -dv "$app" 2>&1 | tee /tmp/sig.txt; grep -q "Signature=adhoc" /tmp/sig.txt; grep -q "Sealed Resources version=2" /tmp/sig.txt
+          echo "--- what a downloaded copy meets (unnotarised: macOS asks once, Privacy & Security > Open Anyway):"
+          cp -R "$app" /tmp/q.app && xattr -w com.apple.quarantine "0081;$(printf %x $(date +%s));Safari;" /tmp/q.app && (spctl -a -vv /tmp/q.app 2>&1 || true)
           echo "--- link handling:"; /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$app/Contents/Info.plist" | grep -qx pivotmail
           echo "--- identity:"; /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Contents/Info.plist" | grep -qx com.pivot.mail
           echo "--- menu bar symbol:"; node -e "const l=require('@electron/asar').listPackage(process.argv[1]); if(!l.some(f=>f.endsWith('trayTemplate@2x.png'))) process.exit(1)" "$app/Contents/Resources/app.asar"
@@ -55,8 +58,8 @@ jobs:
           hdiutil attach "release/PivotMail-$v-mac.dmg" -nobrowse -mountpoint /tmp/pmdmg
           test -d "/tmp/pmdmg/Pivot Mail.app" && test -L /tmp/pmdmg/Applications
           open /tmp/pmdmg; sleep 4; screencapture -x ../mac-preview/0-mac-installer.png || true
-          osascript -e 'tell application "Finder" to close every window' || true
-          hdiutil detach /tmp/pmdmg
+          (osascript -e 'tell application "Finder" to close every window' & sleep 5; kill $! 2>/dev/null) || true
+          hdiutil detach -force /tmp/pmdmg
           echo "PASS installer holds Pivot Mail.app and the Applications shortcut"
       - name: Test the Mac app
         env:
@@ -78,6 +81,16 @@ jobs:
           path: desktop/release/PivotMail-*-mac.dmg
           retention-days: 30
           compression-level: 0
+      - name: Save the photos on this branch (desktop/mac-preview)
+        if: always() && github.event_name == 'push'
+        working-directory: .
+        run: |
+          rm -rf desktop/mac-preview && mkdir -p desktop/mac-preview && cp mac-preview/*.png desktop/mac-preview/ 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop/mac-preview
+          git commit -m "Mac preview screenshots [skip ci]" || exit 0
+          for i in 1 2 3 4; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break; sleep 5; done
       - name: Keep the photos
         if: always()
         uses: actions/upload-artifact@v4

@@ -71,7 +71,7 @@ import { SignIn } from './components/SignIn'
 import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
 import { SettingsContext, mergeColours } from './settings'
-import { MOD, combo } from './shortcuts'
+import { MAC_SYSTEM_KEYS, MOD, combo, isMac } from './shortcuts'
 import { rememberCopiedEmail } from './emailClipboard'
 import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
@@ -2130,6 +2130,8 @@ export default function App() {
       const k = e.key
       const lk = k.length === 1 ? k.toLowerCase() : k
       if (help || jump || refOpen || ctx) return // dialogs and menus own the keyboard
+      // Mac: ⌘Q quits, ⌘H hides, ⌘M minimises, ⌘W closes, as in every Mac app (Pivot Mail uses Control for these letters).
+      if (isMac && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && MAC_SYSTEM_KEYS.includes(lk)) return
 
       // ---- global: work even while typing ----
       if (mod && !e.altKey && !e.shiftKey && (lk === 'f' || lk === 'e' || (lk === 'k' && !compose))) {

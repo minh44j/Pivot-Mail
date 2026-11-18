@@ -92,7 +92,15 @@ export const SHORTCUTS: ShortcutGroup[] = [
 ]
 
 /** Human-readable key label for this platform. */
+/**
+ * Mac keys that belong to the system with ⌘: Quit, Hide, Minimise, Close window. On a Mac, Pivot Mail answers to them only with
+ * the Control key (Control+Q = Mark as read, as in Outlook for Mac), so ⌘Q still quits.
+ */
+export const MAC_SYSTEM_KEYS = ['q', 'h', 'm', 'w']
+
 export function fmtKey(k: string): string {
   if (!isMac) return k
+  const sys = /^Ctrl\+([A-Za-z])$/.exec(k)
+  if (sys && MAC_SYSTEM_KEYS.includes((sys[1] as string).toLowerCase())) return `⌃${(sys[1] as string).toUpperCase()}`
   return k.replace('Ctrl', '⌘').replace('Alt', '⌥').replace('Shift', '⇧').replace('Backspace', '⌫').replace('Delete', '⌦').replace('Enter', '↩')
 }

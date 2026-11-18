@@ -48,6 +48,8 @@ interface Settings {
   resumeMinimized?: boolean
   /** The person chose dark mode in Pivot Mail: the window opens dark too (no white flash). */
   dark?: boolean
+  /** Mac: the one-time welcome alert was shown (it makes macOS ask for alert permission at once, not at the first mail). */
+  macAlertsIntro?: boolean
   /** Secret carried by the links in new-mail alerts, so only alerts from this app can open or mark mail (not a website). */
   toastKey?: string
 }
@@ -302,7 +304,7 @@ function showMailToast(payload: unknown, avatar: unknown): boolean {
 
 function keep(n: Notification): void {
   shownToasts.push(n)
-  if (shownToasts.length > 20) shownToasts.shift()
+  if (shownToasts.length > 50) shownToasts.shift() // (an alert whose object is gone leaves the Mac's notification list)
 }
 
 /** The simple alert (title and one line, no picture or buttons); a click opens the mail like the rich one. */
@@ -391,7 +393,9 @@ function guard(contents: WebContents): void {
 function showWindow(): void {
   const w = win ?? signin
   if (!w) {
-    void start(false)
+    // Still starting (the sign-in check can take a few seconds when the network is slow): show it when ready, never a second window.
+    if (starting) showAfterStart = true
+    else void start(false)
     return
   }
   reveal(w)
@@ -406,11 +410,25 @@ function reveal(w: BrowserWindow): void {
 }
 
 /** Signed in: the full window. Not signed in: the small sign-in window. No connection: the full window explains and retries. */
-async function start(hidden: boolean): Promise<void> {
-  const base = baseUrl()
-  const state = base ? await sessionState(base) : 'out'
-  if (state === 'out') openSignIn()
-  else createWindow(hidden)
+let starting: Promise<void> | null = null
+let showAfterStart = false
+
+function start(hidden: boolean): Promise<void> {
+  if (starting) return starting
+  starting = (async () => {
+    const base = baseUrl()
+    const state = base ? await sessionState(base) : 'out'
+    if (state === 'out') openSignIn()
+    else createWindow(hidden && !showAfterStart)
+  })().finally(() => {
+    starting = null
+    if (showAfterStart) {
+      showAfterStart = false
+      const w = win ?? signin
+      if (w) reveal(w)
+    }
+  })
+  return starting
 }
 
 /** Asks Pivot Mail whether this computer's session is still valid (with the app's own cookies). */
@@ -645,6 +663,7 @@ function buildTray(): void {
           settings.startWithWindows = item.checked
           saveSettings()
           setStartAtLogin(item.checked)
+          if (isMac) Menu.setApplicationMenu(macMenu())
         },
       },
       { type: 'separator' },
@@ -1013,7 +1032,26 @@ app.whenReady().then(() => {
   if (!primary) return
   settings = readSettings()
   // Mac: no installer asks, so "Open at Login" starts on, like the ticked box in the Windows installer (untick it in the menu).
-  if (isMac && typeof settings.startWithWindows !== 'boolean' && !process.env.PIVOT_MAIL_USER_DATA) {
+  // Mac: opened straight from the downloaded disk image (or a temporary place macOS chose): offer to move it to Applications
+  // first, so it stays installed and "Open at Login" points to the right place.
+  if (isMac && app.isPackaged && !process.env.PIVOT_MAIL_USER_DATA && !app.isInApplicationsFolder()) {
+    const choice = dialog.showMessageBoxSync({
+      type: 'question',
+      buttons: ['Move to Applications', 'Not now'],
+      defaultId: 0,
+      cancelId: 1,
+      message: 'Move Pivot Mail to your Applications folder?',
+      detail: 'Then it stays installed, opens from Launchpad and the Dock, and can start when you log in.',
+    })
+    if (choice === 0) {
+      try {
+        if (app.moveToApplicationsFolder()) return // it restarts from Applications
+      } catch {
+        /* moving was refused (the person can drag it there themselves) */
+      }
+    }
+  }
+  if (isMac && typeof settings.startWithWindows !== 'boolean' && !process.env.PIVOT_MAIL_USER_DATA && app.isInApplicationsFolder()) {
     settings.startWithWindows = true
     saveSettings()
   }
@@ -1069,6 +1107,20 @@ app.whenReady().then(() => {
     saveSettings()
   }
   ready = true
+  // Mac: alerts and the red number on the Dock icon both need the person's "Allow" once; ask now with a welcome alert.
+  if (isMac && app.isPackaged && !process.env.PIVOT_MAIL_USER_DATA && !settings.macAlertsIntro) {
+    settings.macAlertsIntro = true
+    saveSettings()
+    setTimeout(() => {
+      try {
+        const n = new Notification({ title: 'Pivot Mail is ready', body: 'New mail alerts appear here. If your Mac asks, choose Allow (it also shows the unread number on the Dock).' })
+        keep(n)
+        n.show()
+      } catch {
+        /* ignored */
+      }
+    }, 3000)
+  }
   void start(hidden).then(() => {
     const link = earlyLink ?? process.argv.find((a) => a.startsWith(`${SCHEME}://`))
     earlyLink = null
