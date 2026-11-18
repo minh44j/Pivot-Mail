@@ -5083,3 +5083,8 @@ button.ref-chip:hover { background: #cdeee1; }
 }
 .nm-btn { border-radius: 999px 0 0 999px; }
 .newsplit-more { border-radius: 0 999px 999px 0; }
+
+/* room under the ribbon buttons */
+@media (min-width: 900px) {
+  .topbar { padding-bottom: 9px; }
+}
