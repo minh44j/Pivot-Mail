@@ -2,7 +2,9 @@ import { useState } from 'react'
 import { COMPANIES } from '../data/companies'
 import type { CompanyId } from '../data/companies'
 import { connectUrl } from '../auth'
+import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
+import { GoogleG } from './SignIn'
 
 interface Props {
   isAdmin: boolean
@@ -20,7 +22,7 @@ export function ConnectDialog({ isAdmin, initial, onClose }: Props) {
   return (
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div
-        className="modal small"
+        className="modal small cn-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="cn-title"
@@ -31,8 +33,12 @@ export function ConnectDialog({ isAdmin, initial, onClose }: Props) {
           }
         }}
       >
-        <div className="modal-head">
-          <h2 id="cn-title">Add account</h2>
+        <div className="modal-head cn-head">
+          <BrandLogo word={false} />
+          <div className="grow">
+            <h2 id="cn-title">Add account</h2>
+            <p className="cn-sub">{co ? `A mailbox in ${co.name}` : 'Connect another mailbox to Pivot Mail'}</p>
+          </div>
           <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onClose} aria-label="Close">
             <Icon name="close" />
           </button>
@@ -40,11 +46,13 @@ export function ConnectDialog({ isAdmin, initial, onClose }: Props) {
         <div className="modal-body">
           {!co ? (
             <>
-              <p className="muted">Which company is the mailbox in?</p>
+              <p className="cn-q">Which company is the mailbox in?</p>
               <div className="co-pick" role="group" aria-label="Company">
                 {COMPANIES.map((c) => (
                   <button key={c.id} type="button" className="co-card" onClick={() => setCompany(c.id)}>
-                    <Icon name={c.id === 'tmc' ? 'plane' : 'ship'} size={20} tone={c.id === 'tmc' ? 'teal' : 'blue'} />
+                    <span className="co-ic" data-co={c.id}>
+                      <Icon name={c.id === 'tmc' ? 'plane' : 'ship'} size={20} />
+                    </span>
                     <span className="grow">
                       <strong>{c.name}</strong>
                       <small>@{c.domain}</small>
@@ -79,7 +87,8 @@ export function ConnectDialog({ isAdmin, initial, onClose }: Props) {
                     Back
                   </button>
                 )}
-                <a className="btn primary" href={connectUrl(co.id, kind)} autoFocus>
+                <a className="si-google" href={connectUrl(co.id, kind)} autoFocus>
+                  <GoogleG />
                   Continue with Google
                 </a>
               </div>

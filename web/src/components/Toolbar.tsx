@@ -4,7 +4,7 @@ import type { Density, PaneLayout } from '../types'
 import type { Template } from '../data/templates'
 import { useSettings } from '../settings'
 import { initials } from '../util'
-import logoLockup from '../assets/brand/logo-lockup.png'
+import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 import { SearchBox } from './SearchBox'
 import type { IconName, Tone } from './Icon'
@@ -179,7 +179,7 @@ export function Toolbar(p: Props) {
     <header className="topbar" aria-label="Mail toolbar">
       <div className="tp-brand">
         <h1 className="logo-h1">
-          <img className="logo-bar" src={logoLockup} alt="Pivot Mail" />
+          <BrandLogo />
         </h1>
       </div>
 

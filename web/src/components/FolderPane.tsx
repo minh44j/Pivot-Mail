@@ -31,7 +31,6 @@ interface Props {
   cases: Record<string, string[]>
   /** Real mailboxes: client name per case reference */
   caseNames?: Record<string, string>
-  onRefNumbers?: () => void
   onFolderAction: (accountId: string, action: 'new' | 'rename' | 'delete', name?: string) => void
   onReorder: (accountId: string, name: string, before: string | null) => void
   onSelect: (s: FolderSel) => void
@@ -39,7 +38,7 @@ interface Props {
 }
 
 /** All mailboxes stay visible and expandable, Outlook-style: compact rows, counts on the right. */
-export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, caseNames, onRefNumbers, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
+export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccount, onReconnect, onRemoveAccount, messages, selection, folders, cases, caseNames, onFolderAction, onReorder, onSelect, onDropMessage }: Props) {
   const [accMenu, setAccMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; accountId: string; name: string } | null>(null)
   const [drag, setDrag] = useState<{ accountId: string; name: string } | null>(null)
@@ -235,14 +234,6 @@ export function FolderPane({ accounts, sample = true, unreadOverride, onAddAccou
         </button>
         {!collapsed['biz'] && (
           <ul className="folder-list">
-            {onRefNumbers && (
-              <li>
-                <button type="button" className="folder" onClick={onRefNumbers}>
-                  <Icon name="hash" size={15} tone="teal" />
-                  <span className="grow">Reference Numbers</span>
-                </button>
-              </li>
-            )}
             {accounts
               .filter((x) => x.shared)
               .map((x) => (

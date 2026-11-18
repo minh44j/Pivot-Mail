@@ -4,7 +4,7 @@ import type { Account, Colour, Density, PaneLayout, Signature } from '../types'
 import { COLOURS } from '../data/colours'
 import type { Template } from '../data/templates'
 import { mergeColours } from '../settings'
-import logoLockup from '../assets/brand/logo-lockup.png'
+import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 
 import { RealUsers } from './RealUsers'
@@ -202,7 +202,7 @@ export function SettingsPage(p: Props) {
         <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={p.onBack} aria-label="Back to mail">
           <Icon name="back" />
         </button>
-        <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />
+        <BrandLogo />
         <span className="head-divider" aria-hidden="true" />
         <h1>Settings</h1>
       </header>

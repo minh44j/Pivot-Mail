@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { STAFF, aggregate, buildDays, csvCell, fmtClock, fmtDuration } from '../data/performance'
 import type { Aggregate, DayStat, StaffMember } from '../data/performance'
 import { initials } from '../util'
-import logoLockup from '../assets/brand/logo-lockup.png'
+import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 
 type Range = 1 | 7 | 30
@@ -231,7 +231,7 @@ export function PerformancePage({ role, onBack, onToast, data, status = 'ready' 
     return (
       <main className="perf">
         <div className="perf-forbidden">
-          <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />
+          <BrandLogo />
           <h1>Admin only</h1>
           <p className="muted">This page is available to administrators. In the real app the server refuses this request for other roles.</p>
           <button type="button" className="btn primary" onClick={onBack}>
@@ -259,7 +259,7 @@ export function PerformancePage({ role, onBack, onToast, data, status = 'ready' 
         <button type="button" className="icon-btn" style={{ display: 'inline-grid' }} onClick={onBack} aria-label="Back to mail">
           <Icon name="back" />
         </button>
-        <img src={logoLockup} alt="Pivot Mail" className="logo-bar" />
+        <BrandLogo />
         <span className="head-divider" aria-hidden="true" />
         <h1>Staff performance</h1>
         <span className="grow" />

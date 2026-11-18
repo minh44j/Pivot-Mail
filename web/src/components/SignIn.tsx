@@ -1,278 +1,152 @@
-import logoLockup from '../assets/brand/logo-lockup.png'
-
 import { AUTH_ERRORS, startUrl } from '../auth'
 import type { AuthConfig } from '../auth'
+import { BrandLogo } from './BrandLogo'
+import { Icon } from './Icon'
+import type { IconName } from './Icon'
 
 interface Props {
-  onPreview: () => void
-  /** From the server; null in the preview, where there is no sign-in yet */
   config: AuthConfig | null
   /** Error code from the last attempt (?auth_error=…) */
   error: string | null
 }
 
-/* ---- artwork pieces (original, drawn in code; brand palette from the logo) ---- */
+const PILLS: { icon: IconName; text: string }[] = [
+  { icon: 'inbox', text: 'Every mailbox in one place' },
+  { icon: 'hash', text: 'Reference numbers from Pivot OS' },
+  { icon: 'users', text: 'Shared mailboxes for the team' },
+]
 
-function waves(y: number, width: number): string {
-  const n = Math.ceil(width / 60) + 2
-  return `M-30 ${y} q30 -14 60 0${' t60 0'.repeat(n)}`
-}
-
-/** Container ship, drawn upward from its waterline at (0, 0). Width 180. */
-function Ship() {
-  const tops = ['#ffffff', '#b8f3df', '#02b789', '#ffffff', '#b8f3df']
-  const upper = ['#02b789', '#ffffff', '#b8f3df', '#ffffff']
+/** The Google "G", in Google's own colours (the sign-in button is a Google action). */
+export function GoogleG({ size = 18 }: { size?: number }) {
   return (
-    <g className="art-bob">
-      {tops.map((c, i) => (
-        <rect key={`a${i}`} x={14 + i * 24} y={-18} width="22" height="16" rx="2" fill={c} />
-      ))}
-      {upper.map((c, i) => (
-        <rect key={`b${i}`} x={26 + i * 24} y={-36} width="22" height="16" rx="2" fill={c} />
-      ))}
-      <rect x="142" y="-46" width="30" height="44" rx="3" fill="#fff" />
-      <rect x="148" y="-40" width="18" height="6" rx="1.5" fill="#162328" opacity="0.75" />
-      <rect x="148" y="-30" width="18" height="6" rx="1.5" fill="#162328" opacity="0.55" />
-      <path d="M0 -2 H180 L160 28 H20 Z" fill="#162328" />
-      <path d="M6 6 H174" stroke="#02b789" strokeWidth="3" />
-    </g>
-  )
-}
-
-function Globe({ cx, cy, r }: { cx: number; cy: number; r: number }) {
-  return (
-    <g fill="none" stroke="#fff" strokeOpacity="0.13" strokeWidth="1.3">
-      <circle cx={cx} cy={cy} r={r} />
-      <circle cx={cx} cy={cy} r={r * 0.72} />
-      <ellipse cx={cx} cy={cy} rx={r} ry={r * 0.38} />
-      <ellipse cx={cx} cy={cy} rx={r * 0.38} ry={r} />
-      <path d={`M${cx - r} ${cy}H${cx + r}`} />
-    </g>
-  )
-}
-
-function Lights({ pts }: { pts: [number, number, number, number][] }) {
-  return (
-    <g fill="#fff">
-      {pts.map(([x, y, r, o]) => (
-        <circle key={`${x}-${y}`} cx={x} cy={y} r={r} opacity={o} />
-      ))}
-    </g>
-  )
-}
-
-function Sea({ y, w, h, lines }: { y: number; w: number; h: number; lines: number[] }) {
-  return (
-    <g>
-      <rect y={y} width={w} height={h} fill="url(#sea)" />
-      <g fill="none" stroke="#fff" strokeOpacity="0.26" strokeWidth="1.6" strokeLinecap="round">
-        {lines.map((ly) => (
-          <path key={ly} d={waves(ly, w)} />
-        ))}
-      </g>
-    </g>
-  )
-}
-
-const SEA_DEF = (
-  <defs>
-    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stopColor="#0b1a1f" stopOpacity="0" />
-      <stop offset="1" stopColor="#0b1a1f" stopOpacity="0.8" />
-    </linearGradient>
-  </defs>
-)
-
-function ArtDesktop() {
-  return (
-    <svg className="art-svg desk" viewBox="0 0 1440 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true" focusable="false">
-      {SEA_DEF}
-      <Globe cx={1130} cy={300} r={300} />
-      <Lights
-        pts={[
-          [120, 110, 2.2, 0.5],
-          [310, 220, 1.6, 0.4],
-          [520, 90, 1.8, 0.45],
-          [760, 160, 2.4, 0.4],
-          [1330, 80, 1.8, 0.4],
-          [1390, 420, 1.4, 0.35],
-          [70, 400, 1.6, 0.35],
-          [220, 480, 2, 0.4],
-        ]}
-      />
-      <Sea y={690} w={1440} h={210} lines={[745, 800, 858]} />
-      <g transform="translate(120 650) scale(1.45)">
-        <Ship />
-      </g>
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 6.9l7.1 5.5c4.3-4 6.8-9.9 6.8-16.9z" />
+      <path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.5 0 20.1 0 24s.9 7.5 2.6 10.8l7.9-6.1z" />
+      <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.4-4.6 2.3-8.8 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z" />
     </svg>
   )
 }
 
-function ArtMobile() {
+/** A small, calm picture of the inbox: the same colours the real one uses. Decoration only. */
+function Showcase() {
+  const rows = [
+    { w: 64, unread: true, dot: 'c-orange', file: 'packing-list.pdf' },
+    { w: 80, unread: true, dot: 'c-green' },
+    { w: 52, unread: false },
+  ]
   return (
-    <svg className="art-svg mob" viewBox="0 0 480 330" preserveAspectRatio="xMidYMax meet" aria-hidden="true" focusable="false">
-      {SEA_DEF}
-      <Globe cx={350} cy={100} r={170} />
-      <Lights
-        pts={[
-          [60, 40, 2, 0.5],
-          [150, 100, 1.6, 0.4],
-          [250, 20, 1.8, 0.45],
-          [455, 200, 1.6, 0.35],
-          [30, 190, 1.6, 0.35],
-        ]}
-      />
-      <Sea y={282} w={480} h={48} lines={[300, 318]} />
-      <g transform="translate(40 262)">
-        <Ship />
-      </g>
-    </svg>
-  )
-}
-
-
-const SPARK = [18, 15, 17, 12, 13, 9, 10, 7]
-const BARS = [40, 62, 48, 80, 66, 92, 74]
-
-function KpiCards() {
-  const max = Math.max(...SPARK)
-  const pts = SPARK.map((v, i) => `${(i / (SPARK.length - 1)) * 100},${34 - (v / max) * 30}`).join(' ')
-  return (
-    <>
-      <div className="art-card kpi k1" aria-hidden="true">
-        <small>Average first reply</small>
-        <div className="kpi-main">
-          <b>14 min</b>
-          <span className="kpi-chip good">▼ 22%</span>
+    <div className="si-show" aria-hidden="true">
+      <div className="si-mini">
+        <div className="si-mini-head">
+          <i className="si-mini-dot" />
+          <b>Inbox</b>
+          <span>3</span>
         </div>
-        <svg viewBox="0 0 100 36" preserveAspectRatio="none" className="spark">
-          <polyline points={pts} fill="none" stroke="#2a78d6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        </svg>
-      </div>
-      <div className="art-card kpi k2" aria-hidden="true">
-        <small>Cases opened this week</small>
-        <div className="kpi-main">
-          <b>38</b>
-          <span className="kpi-chip">▲ 6</span>
-        </div>
-        <div className="bars">
-          {BARS.map((h, i) => (
-            <i key={i} style={{ height: `${h}%` }} className={i === BARS.length - 1 ? 'hi' : ''} />
-          ))}
-        </div>
-      </div>
-      <div className="art-card kpi k3" aria-hidden="true">
-        <small>Mail by company</small>
-        <div className="split">
-          <i style={{ width: '58%', background: '#2a78d6' }} />
-          <i style={{ width: '42%', background: '#1baf7a' }} />
-        </div>
-        <div className="legend">
-          <span><u style={{ background: '#2a78d6' }} />Shipping 58%</span>
-          <span><u style={{ background: '#1baf7a' }} />Travel 42%</span>
-        </div>
-      </div>
-    </>
-  )
-}
-
-function MiniInbox() {
-  return (
-    <div className="art-card" aria-hidden="true">
-      <div className="art-card-head">
-        <span className="dot c-blue" />
-        <b>Inbox</b>
-      </div>
-      {[
-        { w: 62, c: 'c-orange', unread: true, att: true },
-        { w: 78, c: 'c-green', unread: true, att: false },
-        { w: 54, c: '', unread: false, att: false },
-      ].map((r, i) => (
-        <div className="art-row" key={i}>
-          <span className={`art-udot${r.unread ? ' on' : ''}`} />
-          <div className="art-lines">
-            <i style={{ width: `${r.w}%` }} />
-            <i style={{ width: `${r.w - 18}%` }} />
-            {r.att && <em>packing-list.pdf</em>}
+        {rows.map((r, i) => (
+          <div className="si-mini-row" key={i}>
+            <span className={`si-mini-u${r.unread ? ' on' : ''}`} />
+            <div className="si-mini-lines">
+              <i style={{ width: `${r.w}%` }} className={r.unread ? 'b' : ''} />
+              <i style={{ width: `${r.w - 20}%` }} />
+              {r.file && <em>{r.file}</em>}
+            </div>
+            {r.dot && <span className={`dot ${r.dot}`} />}
           </div>
-          {r.c && <span className={`dot ${r.c}`} />}
+        ))}
+      </div>
+      <div className="si-kpi">
+        <small>Cases opened this week</small>
+        <div>
+          <b>38</b>
+          <span>▲ 6</span>
         </div>
-      ))}
+      </div>
     </div>
   )
 }
 
 /**
- * Sign-in screen. One brand-gradient canvas with artwork, and a white sheet with a curved edge
- * (bottom sheet on phones, floating card on larger screens).
- * Google login is not connected yet (needs the Workspace OAuth app), so the only working path
- * is the sample-data preview.
+ * Sign-in. Same layout as Pivot OS: the brand and a short promise on the left, one calm card on the right (the brand moves into the
+ * card on phones). Only a real Google Workspace sign-in; there is no preview or demo door.
  */
-export function SignIn({ onPreview, config, error }: Props) {
+export function SignIn({ config, error }: Props) {
   const real = config?.configured === true
   const err = error ? (AUTH_ERRORS[error] ?? { title: 'Sign-in failed', text: 'Please try again.', denied: false }) : null
   return (
-    <main className="signin">
-      <ArtDesktop />
-      <ArtMobile />
-      <div className="art-stack">
-        <KpiCards />
-        <MiniInbox />
-      </div>
+    <main className="si">
+      <section className="si-brand" aria-label="About Pivot Mail">
+        <BrandLogo size="lg" />
+        <h2>
+          Your mail,
+          <br />
+          at the speed of your work.
+        </h2>
+        <p className="si-sub">One inbox for Pivot Shipping and Pivot Travel Management, connected to Pivot OS.</p>
+        <ul className="si-pills">
+          {PILLS.map((p) => (
+            <li key={p.text}>
+              <Icon name={p.icon} size={15} />
+              {p.text}
+            </li>
+          ))}
+        </ul>
+        <Showcase />
+        <span className="si-place">Riyadh, Kingdom of Saudi Arabia</span>
+      </section>
 
-      <div className="signin-hero">
-        <h2>Your mail, at the speed of your work.</h2>
-      </div>
-
-      <section className="signin-panel" aria-labelledby="signin-title">
-        <img className="logo-lockup" src={logoLockup} alt="Pivot Mail" />
-        <h1 id="signin-title">Sign in</h1>
-        <p className="muted lead">Use your Pivot Workspace account to open your mailboxes.</p>
-
-        {err && (
-          <p className="signin-error" role="alert">
-            <strong>{err.title}.</strong> {err.text}
-          </p>
-        )}
-        {real && config.company ? (
-          <a className="btn wide google real" href={startUrl()}>
-            Continue with Google
-          </a>
-        ) : real ? (
-          <div className="co-sign" role="group" aria-label="Choose your company">
-            {config.companies.map((c) => (
-              <a key={c.id} className="btn wide google real" href={startUrl(c.id)}>
-                {c.name} <small>@{c.domain}</small>
-              </a>
-            ))}
+      <section className="si-side">
+        <div className="si-card" aria-labelledby="signin-title">
+          <div className="si-card-logo">
+            <BrandLogo />
           </div>
-        ) : (
-          <>
-            <button type="button" className="btn wide google" disabled aria-describedby="signin-note">
-              Continue with Google
-            </button>
-            <p id="signin-note" className="signin-note">
-              Google sign-in is not connected yet.
+          <h1 id="signin-title">Welcome back</h1>
+          <p className="si-lead">Sign in to your Pivot Workspace to open your mailboxes.</p>
+
+          {err && (
+            <p className="si-error" role="alert">
+              <strong>{err.title}.</strong> {err.text}
             </p>
-          </>
-        )}
+          )}
 
-        <div className="or" role="separator">
-          <span>or</span>
+          {real && config.company ? (
+            <a className="si-google" href={startUrl()} autoFocus>
+              <GoogleG />
+              Continue with Google
+            </a>
+          ) : real ? (
+            <div className="si-cos" role="group" aria-label="Choose your company">
+              {config.companies.map((c) => (
+                <a key={c.id} className="si-google" href={startUrl(c.id)}>
+                  <GoogleG />
+                  <span>
+                    {c.name} <small>@{c.domain}</small>
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <>
+              <button type="button" className="si-google" disabled aria-describedby="signin-note">
+                <GoogleG />
+                Continue with Google
+              </button>
+              <p id="signin-note" className="si-note">
+                Google sign-in is not connected yet.
+              </p>
+            </>
+          )}
+
+          <p className="si-fine">Use your @pivotscl.com or @pivottmc.com work account.</p>
+
+          <footer className="si-foot">
+            <span>
+              <Icon name="lock" size={13} />
+              Encrypted · Internal use only
+            </span>
+            <a href="mailto:it@pivotscl.com">Need help?</a>
+          </footer>
         </div>
-
-        <button type="button" className="btn primary wide" onClick={onPreview} autoFocus>
-          Open preview with sample data
-        </button>
-        <p className="signin-note">Sample data only. No real mail is read or stored.</p>
-
-        <footer className="signin-foot">
-          <span>Pivot Travel Management</span>
-          <span aria-hidden="true">·</span>
-          <span>Pivot Shipping</span>
-          <span aria-hidden="true">·</span>
-          <span>Internal use only</span>
-        </footer>
       </section>
     </main>
   )

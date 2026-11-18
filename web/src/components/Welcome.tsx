@@ -1,6 +1,8 @@
 import { connectUrl } from '../auth'
+import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
+import { GoogleG } from './SignIn'
 
 interface Props {
   /** First name, for the greeting */
@@ -11,14 +13,6 @@ interface Props {
 }
 
 const hello = (d = new Date()): string => (d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening')
-
-/** Little cards that drift around the centre badge. Decoration only. */
-const ORBIT: { icon: IconName; label: string }[] = [
-  { icon: 'ship', label: 'Shipping' },
-  { icon: 'plane', label: 'Travel' },
-  { icon: 'clip', label: 'Attachments' },
-  { icon: 'hash', label: 'Reference numbers' },
-]
 
 const TRUST: { icon: IconName; title: string; text: string }[] = [
   { icon: 'lock', title: 'Private to you', text: 'Nobody else can open your mailbox, not even an administrator.' },
@@ -37,28 +31,15 @@ export function Welcome({ name, email, company, onOther }: Props) {
   return (
     <section className="welcome-main" aria-labelledby="wl-title">
       <div className="wl-card">
-        <div className="wl-art" aria-hidden="true">
-          <span className="wl-glow g1" />
-          <span className="wl-glow g2" />
-          <div className="wl-orbit">
-            {ORBIT.map((o, i) => (
-              <span key={o.label} className="wl-chip" style={{ ['--i' as string]: i }}>
-                <Icon name={o.icon} size={20} />
-              </span>
-            ))}
-            <span className="wl-ring r1" />
-            <span className="wl-ring r2" />
-            <span className="wl-core">
-              <Icon name="inbox" size={38} />
-            </span>
+        <div className="wl-top">
+          <BrandLogo size="lg" word={false} />
+          <div>
+            <p className="wl-hello">{hello()}</p>
+            <h1 id="wl-title">Welcome, {first}</h1>
           </div>
         </div>
-
+        <p className="wl-lead">One more step and your mail is here. It takes about 20 seconds.</p>
         <div className="wl-body">
-          <p className="wl-hello">{hello()}</p>
-          <h1 id="wl-title">Welcome, {first}</h1>
-          <p className="wl-lead">One more step and your mail is here. It takes about 20 seconds.</p>
-
           <ol className="wl-steps">
             <li className="done">
               <span className="wl-dot" aria-hidden="true">
@@ -90,11 +71,8 @@ export function Welcome({ name, email, company, onOther }: Props) {
           </ol>
 
           <a className="wl-go" href={connectUrl(company, 'personal')}>
-            <span className="wl-g" aria-hidden="true">
-              G
-            </span>
+            <GoogleG />
             Connect {email}
-            <Icon name="arrow" size={18} />
           </a>
           <button type="button" className="wl-link" onClick={onOther}>
             Connect a different or shared mailbox

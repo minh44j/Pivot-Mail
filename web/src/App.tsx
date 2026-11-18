@@ -7,7 +7,7 @@ import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
 import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
-import logoLockup from './assets/brand/logo-lockup.png'
+import { BrandLogo } from './components/BrandLogo'
 import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
@@ -210,7 +210,15 @@ export default function App() {
   const [foldersOpen, setFoldersOpen] = usePersisted<boolean>('pm.folders', true, (v) => v === 'true' || v === 'false')
   const [notif, setNotif] = useState(platform.notificationState())
   const noticeSeq = useRef(0)
-  const [entered, setEntered] = usePersisted<boolean>('pm.entered', false, (v) => v === 'true' || v === 'false')
+  // Nobody is offered a preview any more: the sign-in screen has no such door, and a "stay in the preview" choice remembered by an older
+  // version is forgotten. The sample-data version can only be opened with #demo in the address (used by the automated tests).
+  const [entered, setEntered] = useState(() => typeof location !== 'undefined' && location.hash === '#demo')
+  useEffect(() => {
+    platform.storage.remove('pm.entered')
+    const onHash = () => setEntered(location.hash === '#demo')
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
   const [ctx, setCtx] = useState<{ id: string; x: number; y: number } | null>(null)
   const [refOpen, setRefOpen] = useState(false)
   const [refAnchor, setRefAnchor] = useState<RefAnchor | null>(null)
@@ -2072,12 +2080,12 @@ export default function App() {
   if ((!sessionChecked || (authUser && !accountsTried)) && !entered)
     return (
       <div className="splash" role="status" aria-live="polite">
-        <img src={logoLockup} alt="Pivot Mail" />
+        <BrandLogo size="lg" />
         <p>{authUser ? 'Setting up your account' : 'Loading'}</p>
         <div className="splash-bar" aria-hidden="true"><span /></div>
       </div>
     )
-  if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
+  if (!entered && !authUser) return <SignIn config={authConfig} error={authError} />
 
   if (sim === 'expired' || sim === 'denied') {
     return (
@@ -2275,10 +2283,6 @@ export default function App() {
           accounts={accountList}
           sample={!realMode}
           unreadOverride={realMode ? inboxUnread : undefined}
-          onRefNumbers={() => {
-            setRefAnchor(null)
-            setRefOpen(true)
-          }}
           onAddAccount={() => (realMode ? setConnectDlg('new') : setAccDlg({ mode: 'add' }))}
           onReconnect={(id) => {
             const x = realAccounts?.find((y) => y.id === id)
