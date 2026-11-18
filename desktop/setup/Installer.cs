@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -38,6 +39,7 @@ namespace PivotMailSetup
                 var payload = Path.Combine(tmp, "PivotMail-Package.exe");
                 var asm = Assembly.GetExecutingAssembly();
                 long expected = ReadExpectedBytes(asm);
+                int exitCode;
 
                 // 1. unpack the package (0-8 %)
                 progress?.Invoke(0.01, "Preparing the files…");
@@ -61,20 +63,39 @@ namespace PivotMailSetup
                 // 2. a running Pivot Mail (an update) is closed first, so its files can be replaced
                 CloseRunningApp();
 
-                // 3. install silently, for this person only (8-98 %, measured from the files written)
+                // 3. install silently, for this person only (8-98 %). Progress comes from the files the package writes (watched as
+                //    they are written: the package keeps each file's original date, so dates cannot tell new from old), with a
+                //    gentle time-based estimate underneath so the bar always moves.
                 progress?.Invoke(0.08, "Copying Pivot Mail to this computer…");
-                var started = DateTime.UtcNow.AddSeconds(-2);
-                var p = Process.Start(new ProcessStartInfo(payload, "/S") { UseShellExecute = false, CreateNoWindow = true });
-                if (p == null) return new Result { Message = "Windows did not start the installation." };
-                while (!p.HasExited)
+                Directory.CreateDirectory(InstallDir);
+                var seen = new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                using (var watch = new FileSystemWatcher(InstallDir) { IncludeSubdirectories = true, InternalBufferSize = 64 * 1024, NotifyFilter = NotifyFilters.FileName | NotifyFilters.Size | NotifyFilters.LastWrite })
                 {
-                    await Task.Delay(200);
-                    var written = WrittenSince(InstallDir, started);
-                    var f = expected > 0 ? Math.Min(1.0, (double)written / expected) : 0.5;
-                    progress?.Invoke(0.08 + 0.9 * f, f > 0.85 ? "Setting things up…" : "Copying Pivot Mail to this computer…");
+                    FileSystemEventHandler mark = (o, ev) => seen[ev.FullPath] = true;
+                    watch.Created += mark;
+                    watch.Changed += mark;
+                    watch.EnableRaisingEvents = true;
+                    var clock = Stopwatch.StartNew();
+                    var p = Process.Start(new ProcessStartInfo(payload, "/S") { UseShellExecute = false, CreateNoWindow = true });
+                    if (p == null) return new Result { Message = "Windows did not start the installation." };
+                    while (!p.HasExited)
+                    {
+                        await Task.Delay(200);
+                        long written = 0;
+                        foreach (var path in seen.Keys)
+                        {
+                            try { var fi = new FileInfo(path); if (fi.Exists) written += fi.Length; } catch { /* moved or locked */ }
+                        }
+                        var byFiles = expected > 0 ? Math.Min(1.0, (double)written / expected) : 0;
+                        var byTime = 0.9 * (1 - Math.Exp(-clock.Elapsed.TotalSeconds / 14.0));
+                        var f = Math.Max(byFiles, byTime);
+                        progress?.Invoke(0.08 + 0.9 * f, f > 0.85 ? "Setting things up…" : "Copying Pivot Mail to this computer…");
+                    }
+                    p.WaitForExit();
+                    exitCode = p.ExitCode;
                 }
-                if (p.ExitCode != 0 || !File.Exists(AppExe))
-                    return new Result { Message = $"The installer stopped with code {p.ExitCode}. Please try again; if it happens again, tell IT this code." };
+                if (exitCode != 0 || !File.Exists(AppExe))
+                    return new Result { Message = $"The installer stopped with code {exitCode}. Please try again; if it happens again, tell IT this code." };
                 progress?.Invoke(1.0, "Done");
                 return new Result { Ok = true };
             }
@@ -114,16 +135,6 @@ namespace PivotMailSetup
                 if (s == null) return 0;
                 using (var r = new StreamReader(s)) return long.TryParse(r.ReadToEnd().Trim(), out var v) ? v : 0;
             }
-        }
-
-        static long WrittenSince(string dir, DateTime since)
-        {
-            try
-            {
-                if (!Directory.Exists(dir)) return 0;
-                return new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Where(f => f.LastWriteTimeUtc >= since).Sum(f => f.Length);
-            }
-            catch { return 0; }
         }
 
         static void CloseRunningApp()

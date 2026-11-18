@@ -23,11 +23,14 @@ $p = Start-Process -FilePath $Installer -PassThru
 Start-Sleep -Seconds 3
 Shot '1-welcome'
 Press 'Pivot Mail Setup'
-for ($i = 1; $i -le 14; $i++) { Start-Sleep -Milliseconds 700; Shot ("2-installing-{0:D2}" -f $i) }
+# photograph the progress until Pivot Mail is installed (at most a minute), then the ready screen
+$exe = Join-Path $env:LOCALAPPDATA 'Programs\pivot-mail-desktop\Pivot Mail.exe'
+$i = 0
+do { Start-Sleep -Milliseconds 1200; $i++; Shot ("2-installing-{0:D2}" -f $i) } while (((Get-Process 'PivotMail-Package' -ErrorAction SilentlyContinue) -or $i -lt 3) -and $i -lt 50)
 Start-Sleep -Seconds 4
 Shot '3-ready'
 Press 'Pivot Mail Setup'
-Start-Sleep -Seconds 7
+Start-Sleep -Seconds 8
 Shot '4-pivot-mail-opens'
 # leave the machine clean
 Get-Process | Where-Object { $_.ProcessName -like 'Pivot Mail*' } | Stop-Process -Force -ErrorAction SilentlyContinue
