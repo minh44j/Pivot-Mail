@@ -1,8 +1,8 @@
-import { GET as config } from '../api/auth/config.js'
-import { GET as start } from '../api/auth/start.js'
-import { GET as callback } from '../api/auth/google/callback.js'
-import { GET as session } from '../api/auth/session.js'
-import { POST as logout } from '../api/auth/logout.js'
+import { GET as config } from '../api/_lib/auth/config.js'
+import { GET as start } from '../api/_lib/auth/start.js'
+import { GET as callback } from '../api/_lib/auth/callback.js'
+import { GET as session } from '../api/_lib/auth/session.js'
+import { POST as logout } from '../api/_lib/auth/logout.js'
 import { safeNext } from '../api/_lib/http.js'
 import { signToken, verifyToken } from '../api/_lib/crypto.js'
 

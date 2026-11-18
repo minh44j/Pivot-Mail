@@ -1,9 +1,9 @@
-import { COMPANIES, clientFor, companyForHost, protocolFor, sessionSecret } from '../_lib/config.js'
-import type { CompanyId } from '../_lib/config.js'
-import { setCookie } from '../_lib/cookies.js'
-import { randomToken, sha256b64url, signToken } from '../_lib/crypto.js'
-import { authUrl } from '../_lib/google.js'
-import { OAUTH_COOKIE, hostOf, originOf, redirect, safeNext } from '../_lib/http.js'
+import { COMPANIES, clientFor, companyForHost, protocolFor, sessionSecret } from '../config.js'
+import type { CompanyId } from '../config.js'
+import { setCookie } from '../cookies.js'
+import { randomToken, sha256b64url, signToken } from '../crypto.js'
+import { authUrl } from '../google.js'
+import { OAUTH_COOKIE, hostOf, originOf, redirect, safeNext } from '../http.js'
 
 /** Step 1 of sign-in: remember a one-time state, then send the person to Google. */
 export function GET(req: Request): Response {
@@ -21,7 +21,10 @@ export function GET(req: Request): Response {
   const state = randomToken(16)
   const nonce = randomToken(16)
   const verifier = randomToken(32)
-  const cookie = signToken({ typ: 'oauth', state, nonce, verifier, company: company.id, next: safeNext(url.searchParams.get('next')) }, secret, 600)
+  // Desktop app: it sends the hash of a secret only it knows; the finished sign-in is handed back to it (see desktop.ts).
+  const desk = url.searchParams.get('desktop')
+  const desktop = desk && /^[A-Za-z0-9_-]{43}$/.test(desk) ? desk : undefined
+  const cookie = signToken({ typ: 'oauth', state, nonce, verifier, company: company.id, next: safeNext(url.searchParams.get('next')), ...(desktop ? { desktop } : {}) }, secret, 600)
 
   const location = authUrl({
     clientId: client.clientId,

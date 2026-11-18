@@ -25,7 +25,11 @@ export async function GET(req: Request): Promise<Response> {
   } catch {
     return redirect('/?connect_error=unavailable')
   }
-  if (!me) return redirect('/?connect_error=session')
+  // Not signed in here (for example the desktop app opened this in the browser): sign in first, then come straight back.
+  if (!me) {
+    const u = new URL(req.url)
+    return redirect(`/api/auth/start?next=${encodeURIComponent(u.pathname + u.search)}`)
+  }
 
   const q = new URL(req.url).searchParams
   const asked = q.get('company')

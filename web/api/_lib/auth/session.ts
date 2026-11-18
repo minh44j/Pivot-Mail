@@ -1,6 +1,6 @@
-import { update, eq } from '../_lib/db.js'
-import { hostOf, json, originOf } from '../_lib/http.js'
-import { currentUser } from '../_lib/session.js'
+import { update, eq } from '../db.js'
+import { hostOf, json, originOf } from '../http.js'
+import { currentUser } from '../session.js'
 
 /** Who is signed in. The role and the disabled flag are re-read on every call, so changes take effect at once. */
 export async function GET(req: Request): Promise<Response> {

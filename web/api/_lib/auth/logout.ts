@@ -1,8 +1,8 @@
-import { protocolFor } from '../_lib/config.js'
-import { clearCookie } from '../_lib/cookies.js'
-import { dbConfigured, eq, insert, update } from '../_lib/db.js'
-import { SESSION_COOKIE, hostOf, json, originOf } from '../_lib/http.js'
-import { currentUser } from '../_lib/session.js'
+import { protocolFor } from '../config.js'
+import { clearCookie } from '../cookies.js'
+import { dbConfigured, eq, insert, update } from '../db.js'
+import { SESSION_COOKIE, hostOf, json, originOf } from '../http.js'
+import { currentUser } from '../session.js'
 
 /**
  * POST only, and only from the app's own address (blocks other sites from signing people out).

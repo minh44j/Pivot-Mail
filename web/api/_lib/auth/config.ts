@@ -1,5 +1,5 @@
-import { COMPANIES, clientFor, companyForHost, isConfigured } from '../_lib/config.js'
-import { hostOf, json } from '../_lib/http.js'
+import { COMPANIES, clientFor, companyForHost, isConfigured } from '../config.js'
+import { hostOf, json } from '../http.js'
 
 /** Tells the sign-in screen whether real sign-in exists here, and which company this address belongs to. */
 export function GET(req: Request): Response {

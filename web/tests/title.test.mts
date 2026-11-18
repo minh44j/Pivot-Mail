@@ -1,4 +1,4 @@
-import { GET, PATCH } from '../api/auth/session.js'
+import { GET, PATCH } from '../api/_lib/auth/session.js'
 import { signToken } from '../api/_lib/crypto.js'
 
 let pass = 0, fail = 0

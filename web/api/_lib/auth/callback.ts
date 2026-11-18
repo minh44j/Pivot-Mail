@@ -1,11 +1,11 @@
-import { COMPANIES, clientFor, protocolFor, sessionSecret } from '../../_lib/config.js'
-import type { CompanyId } from '../../_lib/config.js'
-import { clearCookie, parseCookies, setCookie } from '../../_lib/cookies.js'
-import { signToken, verifyToken } from '../../_lib/crypto.js'
-import { checkClaims, exchangeCode } from '../../_lib/google.js'
-import { finishConnect } from '../../_lib/connect.js'
-import { roleFor, signInUser } from '../../_lib/users.js'
-import { OAUTH_COOKIE, SESSION_COOKIE, SESSION_SECONDS, hostOf, originOf, redirect } from '../../_lib/http.js'
+import { COMPANIES, clientFor, protocolFor, sessionSecret } from '../config.js'
+import type { CompanyId } from '../config.js'
+import { clearCookie, parseCookies, setCookie } from '../cookies.js'
+import { signToken, verifyToken } from '../crypto.js'
+import { checkClaims, exchangeCode } from '../google.js'
+import { finishConnect } from '../connect.js'
+import { roleFor, signInUser } from '../users.js'
+import { OAUTH_COOKIE, SESSION_COOKIE, SESSION_SECONDS, hostOf, originOf, redirect } from '../http.js'
 
 interface OauthState extends Record<string, unknown> {
   typ?: string
@@ -17,6 +17,8 @@ interface OauthState extends Record<string, unknown> {
   /** 'connect' = adding a mailbox for an already signed-in person */
   purpose?: 'signin' | 'connect'
   kind?: 'personal' | 'shared'
+  /** sha256 (base64url) of the desktop app's secret, when the sign-in was started by the desktop app */
+  desktop?: string
 }
 
 /** Step 2: Google sends the person back here with a one-time code. Nothing is trusted until every check passes. */
@@ -57,5 +59,12 @@ export async function GET(req: Request): Promise<Response> {
     return fail('unavailable')
   }
   const session = signToken({ typ: 'session', email: check.email, name: check.name, company: company.id, role }, secret, SESSION_SECONDS)
-  return redirect(saved.next, [drop, setCookie(SESSION_COOKIE, session, { path: '/', maxAge: SESSION_SECONDS, secure })])
+  const browserSession = setCookie(SESSION_COOKIE, session, { path: '/', maxAge: SESSION_SECONDS, secure })
+  if (saved.desktop) {
+    // The browser is signed in too (so "Add account" can finish there later). The desktop app gets a two-minute ticket that only
+    // works together with its own secret; the ticket travels in the address fragment, which browsers never send to any server.
+    const ticket = signToken({ typ: 'handoff', email: check.email, name: check.name, company: company.id, role, ch: saved.desktop }, secret, 120)
+    return redirect(`/desktop-signed-in.html#t=${encodeURIComponent(ticket)}`, [drop, browserSession])
+  }
+  return redirect(saved.next, [drop, browserSession])
 }

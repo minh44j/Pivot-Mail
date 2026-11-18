@@ -1,6 +1,6 @@
 // Security review, 2026-11-18: each check names the problem it guards against.
-import { GET as session } from '../api/auth/session.js'
-import { POST as logout } from '../api/auth/logout.js'
+import { GET as session } from '../api/_lib/auth/session.js'
+import { POST as logout } from '../api/_lib/auth/logout.js'
 import { PATCH as usersPatch } from '../api/users/index.js'
 import { signToken } from '../api/_lib/crypto.js'
 import { parseCookies } from '../api/_lib/cookies.js'

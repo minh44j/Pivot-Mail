@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:api": "tsx tests/auth.test.mts && tsx tests/accounts.test.mts && tsx tests/gmail.test.mts && tsx tests/compose.test.mts && tsx tests/cases.test.mts && tsx tests/activity.test.mts && tsx tests/title.test.mts && tsx tests/pivotos.test.mts && tsx tests/users.test.mts && tsx tests/hardening.test.mts",
+    "test:api": "tsx tests/auth.test.mts && tsx tests/accounts.test.mts && tsx tests/gmail.test.mts && tsx tests/compose.test.mts && tsx tests/cases.test.mts && tsx tests/activity.test.mts && tsx tests/title.test.mts && tsx tests/pivotos.test.mts && tsx tests/users.test.mts && tsx tests/hardening.test.mts && tsx tests/desktop.test.mts",
     "check:api": "tsc -p api/tsconfig.json --noEmit"
   },
   "dependencies": {

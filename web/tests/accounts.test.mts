@@ -1,6 +1,6 @@
-import { GET as start } from '../api/auth/start.js'
-import { GET as callback } from '../api/auth/google/callback.js'
-import { GET as session } from '../api/auth/session.js'
+import { GET as start } from '../api/_lib/auth/start.js'
+import { GET as callback } from '../api/_lib/auth/callback.js'
+import { GET as session } from '../api/_lib/auth/session.js'
 import { GET as connect } from '../api/accounts/connect.js'
 import { GET as list } from '../api/accounts/index.js'
 import { GET as token } from '../api/accounts/token.js'
@@ -148,7 +148,7 @@ ok('database key is sent on every call', wrongKeyCalls === 0)
 
 // ================= connecting a mailbox =================
 r = await connect(req(SCL, '/api/accounts/connect?company=scl'))
-ok('connect needs a signed-in person', loc(r).includes('connect_error=session'))
+ok('connect without a session sends the person to sign in first, then back to connect', loc(r).startsWith('/api/auth/start?next=') && decodeURIComponent(loc(r)).includes('/api/accounts/connect?company='))
 r = await connect(req(SCL, '/api/accounts/connect?company=scl&kind=shared', annCookie))
 ok('staff cannot connect a shared mailbox', loc(r).includes('connect_error=forbidden'))
 let c = await connectMailbox('ann@pivotscl.com', 'ann@pivotscl.com')
