@@ -30,6 +30,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Build three installer variants
+        shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
