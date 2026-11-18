@@ -79,10 +79,10 @@ export async function syncQuery(p: {
   const withAtt = new Set(att.map((x) => x.id))
   const refresh = p.refreshNewest ?? 100
   const need = ids.filter((x, i) => i < refresh || !p.known.has(`${p.accountId}:${x.id}`))
-  // Headers arrive 50 at a time (batched requests): the list fills in batch by batch.
-  for (let i = 0; i < need.length; i += 50) {
+  // Headers arrive 40 at a time (two batched requests of 20): the list fills in batch by batch.
+  for (let i = 0; i < need.length; i += 40) {
     if (p.isCancelled?.()) return i
-    const chunk = need.slice(i, i + 50)
+    const chunk = need.slice(i, i + 40)
     const got = await getMetadataMany(p.accountId, chunk.map((x) => x.id))
     const msgs = got.map((g) => toMessage(p.accountId, g, p.labelNames)).filter((m): m is Message => m !== null)
     for (const m of msgs) m.hasAttachments = withAtt.has(m.id.split(':')[1] ?? '')
@@ -95,7 +95,13 @@ export async function syncQuery(p: {
     const stale = [...p.known.values()].filter((m) => m.accountId === p.accountId && m.folder === p.reconcile?.folder && !live.has(m.id) && Date.parse(m.date) >= since).slice(0, 60)
     const gone: string[] = []
     const fresh: Message[] = []
-    const got = await getMetadataMany(p.accountId, stale.map((m) => m.id.split(':')[1] ?? ''))
+    let got: Awaited<ReturnType<typeof getMetadataMany>>
+    try {
+      got = await getMetadataMany(p.accountId, stale.map((m) => m.id.split(':')[1] ?? ''))
+    } catch {
+      // The tidy-up check is optional: when Gmail is busy it waits for the next sync instead of failing this one (nothing is removed).
+      return ids.length
+    }
     const back = new Map(got.map((g) => [`${p.accountId}:${g.id}`, g]))
     for (const m of stale) {
       const g = back.get(m.id)

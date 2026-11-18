@@ -16,9 +16,11 @@ import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { safeFileName, uniqueName } from './files'
 import { cleanToast, toastXml } from './toast'
+import type { MailToast } from './toast'
 import { restartToUpdate, startUpdates, updateReadyVersion } from './updater'
 
 type Company = 'scl' | 'tmc'
@@ -33,6 +35,8 @@ interface Settings {
   bounds?: { x: number; y: number; width: number; height: number; maximized?: boolean }
   startWithWindows?: boolean
   trayHintShown?: boolean
+  /** An update installed itself while Pivot Mail sat in the tray: reopen in the tray too (read once, at the next start). */
+  resumeHidden?: boolean
   /** The person chose dark mode in Pivot Mail: the window opens dark too (no white flash). */
   dark?: boolean
   /** Secret carried by the links in new-mail alerts, so only alerts from this app can open or mark mail (not a website). */
@@ -86,7 +90,8 @@ if (!primary) {
   app.on('second-instance', (_e, argv) => {
     const link = argv.find((a) => a.startsWith(`${SCHEME}://`))
     if (link) void handleLink(link)
-    showWindow()
+    // "Mark as read" on an alert works quietly: the window stays where it is (in the tray, too). Everything else shows it.
+    if (!link || !link.startsWith(`${SCHEME}://read`)) showWindow()
   })
 }
 
@@ -241,16 +246,41 @@ function showMailToast(payload: unknown, avatar: unknown): boolean {
   const t = cleanToast(payload)
   if (!t || process.platform !== 'win32' || !Notification.isSupported()) return false
   const pic = avatarFile(avatar)
-  const xml = toastXml(t, (action, messageId) => mailLink(action, t.accountId, messageId), pic ? `file:///${pic.replace(/\\/g, '/')}` : undefined)
+  const xml = toastXml(t, (action, messageId) => mailLink(action, t.accountId, messageId), pic ? pathToFileURL(pic).href : undefined)
   try {
     const n = new Notification({ toastXml: xml })
     n.on('failed', (_e, err) => {
       ;(global as unknown as { __pmToastError?: string }).__pmToastError = String(err) // read by the Windows test
+      plainToast(t) // Windows refused the rich alert: a plain one, so the mail is still announced
     })
+    keep(n)
     n.show()
-    shownToasts.push(n)
-    if (shownToasts.length > 20) shownToasts.shift()
     ;(global as unknown as { __pmLastToast?: string }).__pmLastToast = xml
+    return true
+  } catch {
+    return plainToast(t)
+  }
+}
+
+function keep(n: Notification): void {
+  shownToasts.push(n)
+  if (shownToasts.length > 20) shownToasts.shift()
+}
+
+/** The simple alert (title and one line, no picture or buttons); a click opens the mail like the rich one. */
+function plainToast(t: MailToast): boolean {
+  try {
+    const title = t.kind === 'one' ? t.sender : `${t.count} new messages`
+    const body = t.kind === 'one' ? t.subject : t.lines.map((l) => `${l.sender}: ${l.subject}`).join('\n')
+    const n = new Notification({ title, body, silent: false })
+    n.on('click', () => {
+      showWindow()
+      const item = { action: t.kind === 'one' ? 'open' : 'inbox', accountId: t.accountId, messageId: t.kind === 'one' ? t.messageId : '' }
+      if (win && actionsReady) win.webContents.send('pm:mail-action', item)
+      else queuedActions.push(item)
+    })
+    keep(n)
+    n.show()
     return true
   } catch {
     return false
@@ -533,7 +563,7 @@ function buildTray(): void {
   const menu = () =>
     Menu.buildFromTemplate([
       { label: 'Open Pivot Mail', click: showWindow },
-      ...(updateReadyVersion() ? [{ label: `Restart to update (version ${updateReadyVersion()})`, click: () => { quitting = true; restartToUpdate() } }] : []),
+      ...(updateReadyVersion() ? [{ label: `Restart to update (version ${updateReadyVersion()})`, click: () => void restartToUpdate() }] : []),
       { type: 'separator' },
       {
         label: 'Start with Windows',
@@ -694,7 +724,7 @@ function bridge(): void {
   // "Restart now" on the update note in the page.
   ipcMain.on('pm:restart-to-update', (e) => {
     if (!fromApp(e)) return
-    quitting = true
+    // quitting is set by before-quit only once the restart really starts; if it cannot, closing the window still hides it.
     restartToUpdate()
   })
 
@@ -841,8 +871,17 @@ app.whenReady().then(() => {
       if (win && actionsReady) win.webContents.send('pm:update-ready', version)
       else pendingUpdateNote = version
     },
+    beforeIdleInstall() {
+      settings.resumeHidden = !win || !win.isVisible()
+      saveSettings()
+    },
   })
-  const hidden = process.argv.includes('--hidden')
+  // Started by Windows at sign-in (--hidden), or reopened by an update that installed itself while Pivot Mail sat in the tray.
+  const hidden = process.argv.includes('--hidden') || (process.argv.includes('--updated') && !!settings.resumeHidden)
+  if (settings.resumeHidden) {
+    settings.resumeHidden = false
+    saveSettings()
+  }
   void start(hidden).then(() => {
     const link = process.argv.find((a) => a.startsWith(`${SCHEME}://`))
     if (link) void handleLink(link)

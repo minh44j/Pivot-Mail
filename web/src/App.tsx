@@ -706,7 +706,9 @@ export default function App() {
     const handle = (a: { action: string; accountId: string; messageId: string }, tries = 0) => {
       const m = messagesRef.current.find((x) => x.id === a.messageId)
       const base = messagesRef.current.find((x) => x.accountId === a.accountId)
-      if (!(m || (a.action !== 'read' && base)) && tries < 15) {
+      // "Open" and "Mark as read" wait for that very message (not just any mail of the mailbox); "Inbox" only for the mailbox.
+      const ready = a.action === 'inbox' ? !!base : !!m
+      if (!ready && tries < 15) {
         window.setTimeout(() => handle(a, tries + 1), 1000)
         return
       }
@@ -1157,7 +1159,8 @@ export default function App() {
             refreshNewest: 0,
             onIds: (all) => {
               for (const id of all) if (known.has(id)) ids.add(id)
-              addLiveHits(liveKey, ids)
+              // Nothing known yet: keep the quick local results on screen until Gmail's first matches arrive (no blank list).
+              if (ids.size > 0) addLiveHits(liveKey, ids)
             },
             onBatch: (ms) => {
               mergeIn(ms)

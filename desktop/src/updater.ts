@@ -1,18 +1,28 @@
 /**
  * Automatic updates of the Windows app itself (the mail screens come from the website and update on every deploy without this).
  * Pivot Mail checks GitHub Releases 30 seconds after starting and then every 4 hours, downloads a newer version in the
- * background (checked against the release's SHA-512 checksum), says "update ready", and installs it silently on restart
- * or when Pivot Mail is next closed. Only releases published from this repository's "Desktop release" workflow are used.
+ * background (checked against the release's SHA-512 checksum) and says "update ready" once. It installs silently:
+ *  - when the person presses "Restart now" (page) or "Restart to update" (tray),
+ *  - when Pivot Mail is quit, or
+ *  - by itself once nobody has touched the computer for 20 minutes (closing the window only hides Pivot Mail in the tray,
+ *    so without this most staff would stay on the old version for weeks). Drafts are saved every few seconds, so nothing is lost.
+ * Only releases published from this repository's "Desktop release" workflow are used.
  */
-import { app } from 'electron'
+import { app, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
 export interface UpdateEvents {
-  /** A newer version has been downloaded and checked: it installs on restart. */
+  /** A newer version has been downloaded and checked: it installs on restart. Called once per version. */
   onReady(version: string): void
+  /** About to install while the computer is idle: the app notes how to reopen (hidden in the tray or not). */
+  beforeIdleInstall(): void
 }
 
+const IDLE_INSTALL_SECONDS = 20 * 60
+
 let readyVersion: string | null = null
+/** The version an idle install was already tried for (tried once: if it did not go through, it waits for a quit or a click). */
+let idleTried: string | null = null
 export const updateReadyVersion = () => readyVersion
 
 export function startUpdates(ev: UpdateEvents): void {
@@ -26,6 +36,8 @@ export function startUpdates(ev: UpdateEvents): void {
   const testFeed = process.env.PIVOT_MAIL_UPDATE_URL
   if (testFeed && /^http:\/\/(localhost|127\.0\.0\.1):\d+\//.test(testFeed)) autoUpdater.setFeedURL({ provider: 'generic', url: testFeed })
   autoUpdater.on('update-downloaded', (info) => {
+    // Every later check finds the same downloaded file again: say "update ready" only for a new version.
+    if (info.version === readyVersion) return
     readyVersion = info.version
     ;(global as unknown as { __pmUpdate?: string }).__pmUpdate = info.version // read by the Windows test
     ev.onReady(info.version)
@@ -37,9 +49,29 @@ export function startUpdates(ev: UpdateEvents): void {
   const first = Number(process.env.PIVOT_MAIL_UPDATE_DELAY) > 0 && testFeed ? Number(process.env.PIVOT_MAIL_UPDATE_DELAY) : 30_000
   setTimeout(check, first)
   setInterval(check, 4 * 60 * 60_000)
+  // Nobody at the computer for a while: install now rather than wait for a quit that may never come.
+  setInterval(() => {
+    if (!readyVersion || idleTried === readyVersion) return
+    let idle = 0
+    try {
+      idle = powerMonitor.getSystemIdleTime()
+    } catch {
+      return
+    }
+    if (idle < IDLE_INSTALL_SECONDS) return
+    idleTried = readyVersion
+    ev.beforeIdleInstall()
+    restartToUpdate()
+  }, 5 * 60_000)
 }
 
-/** "Restart now": install the downloaded version silently and open Pivot Mail again. */
-export function restartToUpdate(): void {
-  if (readyVersion) autoUpdater.quitAndInstall(true, true)
+/** "Restart now": install the downloaded version silently and open Pivot Mail again. False when nothing is ready. */
+export function restartToUpdate(): boolean {
+  if (!readyVersion) return false
+  try {
+    autoUpdater.quitAndInstall(true, true)
+    return true
+  } catch {
+    return false
+  }
 }

@@ -15,6 +15,8 @@ concurrency: desktop-release
 
 jobs:
   release:
+    # Only from the repository's main branch: staff computers install whatever is released, so it must be the reviewed code.
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: windows-latest
     defaults:
       run:
@@ -58,11 +60,20 @@ jobs:
           PIVOT_MAIL_EXE="release/win-unpacked/Pivot Mail.exe" node test/e2e.cjs
         env:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Check the update files exist
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          for f in "release/latest.yml" "release/PivotMail-Package-$v.exe.blockmap" "release/win-unpacked/resources/app-update.yml"; do
+            test -s "$f" || { echo "missing $f: installed copies could not update"; exit 1; }
+          done
+          grep -q "version: $v" release/latest.yml
       - name: Publish the release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           v=$(node -p "require('./package.json').version")
-          gh release create "v$v" --title "Pivot Mail for Windows $v" --notes "Install: download PivotMail-Setup-$v.exe and double-click it. Installed copies update themselves." \
+          # --target: the tag points at exactly the commit that was built and tested above.
+          gh release create "v$v" --target "$GITHUB_SHA" --title "Pivot Mail for Windows $v" --notes "Install: download PivotMail-Setup-$v.exe and double-click it. Installed copies update themselves." \
             "release/PivotMail-Setup-$v.exe" "release/PivotMail-Package-$v.exe" "release/PivotMail-Package-$v.exe.blockmap" "release/latest.yml"

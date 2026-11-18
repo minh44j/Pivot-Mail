@@ -31,7 +31,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const EXE = process.env.PIVOT_MAIL_EXE ? path.resolve(D, process.env.PIVOT_MAIL_EXE) : null
   // Linux test machines run as root, where Chromium's sandbox cannot start; Windows keeps it on.
   const flags = process.platform === 'linux' ? ['--no-sandbox'] : []
-  const launch = (env) => _electron.launch({ executablePath: EXE ?? require(path.join(D, 'node_modules', 'electron')), args: EXE ? flags : [...flags, D], cwd: D, env: { ...process.env, ...env } })
+  const launch = (env) => _electron.launch({ executablePath: EXE ?? require(path.join(D, 'node_modules', 'electron')), args: EXE ? flags : [...flags, D], cwd: D, env: { ...process.env, PIVOT_MAIL_NO_UPDATES: '1', ...env } }) // tests never update the app on the test computer, except D54
   console.log(`   running ${EXE ? 'the packaged app ' + EXE : 'from source'} on ${process.platform}`)
   const app = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })
   await app.evaluate(({ shell, dialog, BrowserWindow }) => {
@@ -146,6 +146,16 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), `pivotmail://read?a=acc-1&k=${key}&m=acc-1%3Am1`); await win.waitForTimeout(400)
   const acts = await win.evaluate(() => window.__acts)
   ok('D51 "Mark as read" on an alert reaches Pivot Mail; a faked link (wrong key) does nothing', acts.length === 1 && acts[0].action === 'read' && acts[0].messageId === 'acc-1:m1', JSON.stringify(acts))
+  // "Mark as read" from the tray: the window stays hidden
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide()); await win.waitForTimeout(200)
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), `pivotmail://read?a=acc-1&k=${key}&m=acc-1%3Am1`); await win.waitForTimeout(400)
+  ok('D56 "Mark as read" on an alert works quietly: the window stays in the tray', !(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())))
+  await win.evaluate(() => window.pivotDesktop.show()); await win.waitForTimeout(300)
+  // an emoji right at the length limit, and characters XML forbids, never break the alert
+  const oddMail = { ...one, sender: 'A'.repeat(79) + '\u{1F6A2}tail', subject: 'Ship \uFFFF\uD800 ok', preview: '' }
+  await win.evaluate((o) => window.pivotDesktop.notifyMail(o), oddMail)
+  const xml3 = await app.evaluate(() => global.__pmLastToast || '')
+  ok('D57 an emoji cut at the limit or a forbidden character does not break the alert', !/[\uD800-\uDFFF\uFFFE\uFFFF]/.test(xml3.replace(/\uD83D\uDEA2/g, '')) && xml3.includes('Ship ok') && xml3.includes('A'.repeat(79) + '\u{1F6A2}<'), xml3.slice(0, 260))
   if (process.platform === 'win32') {
     ok('D52 on Windows the alert is drawn by Windows itself', shownWin === true)
     await win.waitForTimeout(1500)
@@ -304,6 +314,13 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await app2.close().catch(() => {})
 
   // ---- automatic updates (Windows, packaged app): a newer version on a local feed is found, downloaded and checked
+  if (process.platform === 'win32' && EXE && /win-unpacked/.test(EXE)) {
+    const rel = path.dirname(path.dirname(EXE)) // release/
+    // Without these two files installed copies can never find an update (the release would also fail to publish).
+    const feedCfg = path.join(path.dirname(EXE), 'resources', 'app-update.yml')
+    const cfg = fs.existsSync(feedCfg) ? fs.readFileSync(feedCfg, 'utf8') : ''
+    ok('D55 the build carries its update address (GitHub minh44j/Pivot-Mail) and the update description latest.yml', fs.existsSync(path.join(rel, 'latest.yml')) && /provider: github/.test(cfg) && /owner: minh44j/.test(cfg) && /repo: Pivot-Mail/.test(cfg), cfg || 'app-update.yml missing')
+  }
   if (process.platform === 'win32' && EXE && fs.existsSync(path.join(path.dirname(path.dirname(EXE)), 'latest.yml'))) {
     const rel = path.dirname(path.dirname(EXE)) // release/
     const yml = fs.readFileSync(path.join(rel, 'latest.yml'), 'utf8')
@@ -313,7 +330,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
     fs.writeFileSync(path.join(feedDir, 'latest.yml'), yml.replace(/^version: .+$/m, 'version: 99.0.0'))
     const feed = http.createServer((q, res) => { const f = path.join(feedDir, decodeURIComponent(q.url.split('?')[0]).replace(/^\/+/, '')); if (!f.startsWith(feedDir) || !fs.existsSync(f)) { res.statusCode = 404; return res.end() } res.setHeader('content-length', fs.statSync(f).size); fs.createReadStream(f).pipe(res) })
     await new Promise((r) => feed.listen(4400, r))
-    const a5 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-')), PIVOT_MAIL_UPDATE_URL: 'http://localhost:4400/', PIVOT_MAIL_UPDATE_DELAY: '1500' })
+    const a5 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-')), PIVOT_MAIL_UPDATE_URL: 'http://localhost:4400/', PIVOT_MAIL_UPDATE_DELAY: '1500', PIVOT_MAIL_NO_UPDATES: '' })
     await a5.firstWindow()
     let got = null, err = null
     for (let i = 0; i < 90 && !got && !err; i++) { await new Promise((r) => setTimeout(r, 1000)); [got, err] = await a5.evaluate(() => [global.__pmUpdate || null, global.__pmUpdateError || null]) }

@@ -140,10 +140,15 @@ export const getMetadata = (accountId: string, id: string): Promise<GMessage> =>
 /* ---------- many message headers in one request (Gmail batch) ---------- */
 
 const BATCH_URL = 'https://gmail.googleapis.com/batch/gmail/v1'
-/** Gmail allows up to 100 requests per batch; 25 keeps each one well inside the per-person speed limit with two in flight. */
-const BATCH_SIZE = 25
-/** Set when batching does not work here (an unexpected answer): this session then fetches one by one, as before. */
+/**
+ * Messages per batch. Gmail runs a batch's requests side by side and starts refusing ("rate limit") at around 50 at once for one
+ * person, so 20 per batch with two batches in flight stays under that.
+ */
+const BATCH_SIZE = 20
+/** Set when Gmail says batching itself is not accepted here: this session then fetches one by one, as before. */
 let batchUnavailable = false
+/** Batch requests in a row that failed before reaching Gmail (network, a blocked address); at 2 this session stops batching. */
+let batchNetworkFailures = 0
 
 /** The body of a batch: one plain GET per message, numbered so the answers can be matched back. */
 export function buildBatch(boundary: string, paths: string[]): string {
@@ -176,17 +181,33 @@ export function parseBatch(contentType: string, text: string, count: number): ({
   return out
 }
 
-/** One batch request. Messages that are gone (404) are left out; anything else that failed is returned for a retry one by one. */
-async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessage[]; retry: string[] }> {
+/** Gmail's "slow down" answers (too many requests, rate limit, a busy server) and missing answers: worth another batch shortly. */
+const isBusy = (x: { status: number; body: unknown } | null) => !x || x.status === 429 || x.status === 403 || x.status >= 500
+
+/**
+ * One batch request. Messages that are gone (404) are left out; `busy` ones (Gmail asked to slow down) can go in a later batch;
+ * anything else that failed (`retry`) is fetched one by one, which also renews an expired sign-in.
+ */
+async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessage[]; busy: string[]; retry: string[] }> {
   const qs = new URLSearchParams(META).toString()
   const paths = ids.map((id) => `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?${qs}`)
   const boundary = `pm_batch_${Math.random().toString(36).slice(2)}`
   for (let attempt = 0; attempt < 2; attempt++) {
     const token = await accessToken(accountId, attempt > 0)
-    const res = await fetch(BATCH_URL, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/mixed; boundary=${boundary}` }, body: buildBatch(boundary, paths) })
+    let res: Response
+    try {
+      res = await fetch(BATCH_URL, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/mixed; boundary=${boundary}` }, body: buildBatch(boundary, paths) })
+    } catch (e) {
+      // Never reached Gmail. Twice in a row: batching is blocked on this network, so stop paying for it.
+      if (++batchNetworkFailures >= 2) batchUnavailable = true
+      throw e
+    }
+    batchNetworkFailures = 0
     if (res.status === 401 && attempt === 0) continue
+    if (res.status === 429 || res.status === 403 || res.status >= 500) return { ok: [], busy: ids, retry: [] } // slow down, then again
     if (!res.ok) {
-      if (res.status >= 400 && res.status < 500 && res.status !== 429) batchUnavailable = true
+      // 400 / 404 / 405 / 415: Gmail does not accept batches from here; one by one from now on.
+      if ([400, 404, 405, 415].includes(res.status)) batchUnavailable = true
       throw new Error(`batch ${res.status}`)
     }
     const parts = parseBatch(res.headers.get('content-type') ?? '', await res.text(), ids.length)
@@ -195,12 +216,15 @@ async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessa
       throw new Error('batch answer not understood')
     }
     const ok: GMessage[] = []
+    const busy: string[] = []
     const retry: string[] = []
     parts.forEach((x, i) => {
       if (x && x.status === 200 && x.body) ok.push(x.body as GMessage)
-      else if (!(x && x.status === 404)) retry.push(ids[i] as string)
+      else if (x && x.status === 404) return
+      else if (isBusy(x)) busy.push(ids[i] as string)
+      else retry.push(ids[i] as string)
     })
-    return { ok, retry }
+    return { ok, busy, retry }
   }
   throw new Error('batch not authorised')
 }
@@ -217,8 +241,24 @@ async function metadataOneByOne(accountId: string, ids: string[]): Promise<GMess
   return got.filter((g): g is GMessage => g !== null)
 }
 
+/** A batch, and again (after 1 s, then 3 s) for any messages Gmail asked to slow down on; what is still left goes one by one. */
+async function batchWithBackoff(accountId: string, ids: string[]): Promise<GMessage[]> {
+  const ok: GMessage[] = []
+  let todo = ids
+  for (const pause of [0, 1000, 3000]) {
+    if (todo.length === 0) return ok
+    if (pause) await wait(pause)
+    const r = await batchOnce(accountId, todo)
+    ok.push(...r.ok)
+    if (r.retry.length) ok.push(...(await metadataOneByOne(accountId, r.retry)))
+    todo = r.busy
+  }
+  if (todo.length) ok.push(...(await metadataOneByOne(accountId, todo)))
+  return ok
+}
+
 /**
- * Headers of many messages, fast: 25 per request (two requests in flight) instead of one request each. Falls back to one by one
+ * Headers of many messages, fast: 20 per request (two requests in flight) instead of one request each. Falls back to one by one
  * if batching is not available. Messages deleted meanwhile are simply left out. Results keep the order of `ids`.
  */
 export async function getMetadataMany(accountId: string, ids: string[]): Promise<GMessage[]> {
@@ -228,8 +268,7 @@ export async function getMetadataMany(accountId: string, ids: string[]): Promise
   for (let i = 0; i < ids.length; i += BATCH_SIZE) chunks.push(ids.slice(i, i + BATCH_SIZE))
   const parts = await pool(chunks, 2, async (chunk) => {
     try {
-      const r = await batchOnce(accountId, chunk)
-      return r.retry.length > 0 ? [...r.ok, ...(await metadataOneByOne(accountId, r.retry))] : r.ok
+      return await batchWithBackoff(accountId, chunk)
     } catch (e) {
       if (e instanceof GmailError) throw e
       return metadataOneByOne(accountId, chunk)

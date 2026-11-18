@@ -22,7 +22,21 @@ export interface MailToastMany {
 }
 export type MailToast = MailToastOne | MailToastMany
 
-const clip = (s: unknown, n: number) => (typeof s === 'string' ? s : '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n)
+/**
+ * Text Windows can put in an alert: characters XML forbids (control codes, U+FFFE/U+FFFF, half of an emoji) become spaces,
+ * and the cut is made between whole characters, so an emoji at the limit is never split (a split one makes Windows drop the alert).
+ */
+const clip = (s: unknown, n: number) =>
+  Array.from(
+    (typeof s === 'string' ? s : '')
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffe\uffff]/g, ' ')
+      .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
+    .slice(0, n)
+    .join('')
+    .trim()
 const isId = (s: unknown) => typeof s === 'string' && /^[A-Za-z0-9:_-]{1,200}$/.test(s)
 
 /** Accepts only what a new-mail alert can contain, trimmed to sensible lengths (the page is never trusted with markup). */

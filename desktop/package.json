@@ -35,6 +35,14 @@
       "dist/store-worker.js",
       "dist/store.js"
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "minh44j",
+        "repo": "Pivot-Mail",
+        "releaseType": "release"
+      }
+    ],
     "protocols": [
       {
         "name": "Pivot Mail",
