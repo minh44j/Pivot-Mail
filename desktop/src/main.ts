@@ -465,6 +465,7 @@ function createWindow(hidden = false, load = true): void {
     },
   })
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} PivotMailDesktop/${app.getVersion()}`)
+  // (An update reopens Pivot Mail on screen only after "Restart now" or behind a locked screen, so taking focus is fine here.)
   win.once('ready-to-show', () => {
     if (!hidden && win) reveal(win)
   })
@@ -556,6 +557,15 @@ function rememberBounds(): void {
 
 /* ------------------------------------------------------------------ tray */
 
+/** "Restart now" / "Restart to update", pressed by the person: Pivot Mail comes back on screen afterwards. */
+function manualRestartToUpdate(): void {
+  if (settings.resumeHidden) {
+    settings.resumeHidden = false
+    saveSettings()
+  }
+  restartToUpdate()
+}
+
 function buildTray(): void {
   tray = new Tray(nativeImage.createFromPath(asset('build', 'tray.png')))
   tray.setToolTip('Pivot Mail')
@@ -563,7 +573,7 @@ function buildTray(): void {
   const menu = () =>
     Menu.buildFromTemplate([
       { label: 'Open Pivot Mail', click: showWindow },
-      ...(updateReadyVersion() ? [{ label: `Restart to update (version ${updateReadyVersion()})`, click: () => void restartToUpdate() }] : []),
+      ...(updateReadyVersion() ? [{ label: `Restart to update (version ${updateReadyVersion()})`, click: () => manualRestartToUpdate() }] : []),
       { type: 'separator' },
       {
         label: 'Start with Windows',
@@ -725,7 +735,7 @@ function bridge(): void {
   ipcMain.on('pm:restart-to-update', (e) => {
     if (!fromApp(e)) return
     // quitting is set by before-quit only once the restart really starts; if it cannot, closing the window still hides it.
-    restartToUpdate()
+    manualRestartToUpdate()
   })
 
   // A clicked new-mail alert brings the window back, also from the tray.
@@ -871,6 +881,9 @@ app.whenReady().then(() => {
       if (win && actionsReady) win.webContents.send('pm:update-ready', version)
       else pendingUpdateNote = version
     },
+    mayInstallWhileIdle(locked) {
+      return locked || !win || !win.isVisible() || win.isMinimized()
+    },
     beforeIdleInstall() {
       settings.resumeHidden = !win || !win.isVisible()
       saveSettings()
@@ -898,7 +911,8 @@ app.on('will-quit', (e) => {
   if (worker && !closed) {
     e.preventDefault()
     closed = true
-    void storeCall('close', null)
+    // At most 1 s: an update's installer closes Pivot Mail forcibly shortly after asking (the database survives that anyway).
+    void Promise.race([storeCall('close', null), new Promise((r) => setTimeout(r, 1000))])
       .then(() => worker?.terminate())
       .finally(() => {
         worker = null

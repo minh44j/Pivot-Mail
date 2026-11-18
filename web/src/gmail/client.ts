@@ -147,8 +147,12 @@ const BATCH_URL = 'https://gmail.googleapis.com/batch/gmail/v1'
 const BATCH_SIZE = 20
 /** Set when Gmail says batching itself is not accepted here: this session then fetches one by one, as before. */
 let batchUnavailable = false
-/** Batch requests in a row that failed before reaching Gmail (network, a blocked address); at 2 this session stops batching. */
+/**
+ * Batch requests that failed before reaching Gmail (network, a blocked address). Two in a row pause batching for 10 minutes
+ * (one by one meanwhile), so a Wi-Fi change or a laptop waking up does not cost batching for the rest of a days-long session.
+ */
 let batchNetworkFailures = 0
+let batchPausedUntil = 0
 
 /** The body of a batch: one plain GET per message, numbered so the answers can be matched back. */
 export function buildBatch(boundary: string, paths: string[]): string {
@@ -199,7 +203,10 @@ async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessa
       res = await fetch(BATCH_URL, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/mixed; boundary=${boundary}` }, body: buildBatch(boundary, paths) })
     } catch (e) {
       // Never reached Gmail. Twice in a row: batching is blocked on this network, so stop paying for it.
-      if (++batchNetworkFailures >= 2) batchUnavailable = true
+      if (++batchNetworkFailures >= 2) {
+        batchPausedUntil = Date.now() + 10 * 60_000
+        batchNetworkFailures = 0
+      }
       throw e
     }
     batchNetworkFailures = 0
@@ -263,7 +270,7 @@ async function batchWithBackoff(accountId: string, ids: string[]): Promise<GMess
  */
 export async function getMetadataMany(accountId: string, ids: string[]): Promise<GMessage[]> {
   if (ids.length === 0) return []
-  if (batchUnavailable || ids.length === 1) return metadataOneByOne(accountId, ids)
+  if (batchUnavailable || Date.now() < batchPausedUntil || ids.length === 1) return metadataOneByOne(accountId, ids)
   const chunks: string[][] = []
   for (let i = 0; i < ids.length; i += BATCH_SIZE) chunks.push(ids.slice(i, i + BATCH_SIZE))
   const parts = await pool(chunks, 2, async (chunk) => {

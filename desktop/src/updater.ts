@@ -4,7 +4,7 @@
  * background (checked against the release's SHA-512 checksum) and says "update ready" once. It installs silently:
  *  - when the person presses "Restart now" (page) or "Restart to update" (tray),
  *  - when Pivot Mail is quit, or
- *  - by itself once nobody has touched the computer for 20 minutes (closing the window only hides Pivot Mail in the tray,
+ *  - by itself after 20 minutes without keyboard or mouse, when the screen is locked or Pivot Mail is not on screen (closing the window only hides Pivot Mail in the tray,
  *    so without this most staff would stay on the old version for weeks). Drafts are saved every few seconds, so nothing is lost.
  * Only releases published from this repository's "Desktop release" workflow are used.
  */
@@ -14,6 +14,8 @@ import { autoUpdater } from 'electron-updater'
 export interface UpdateEvents {
   /** A newer version has been downloaded and checked: it installs on restart. Called once per version. */
   onReady(version: string): void
+  /** May the update install now, with nobody at the computer? (`locked`: the screen is locked.) */
+  mayInstallWhileIdle(locked: boolean): boolean
   /** About to install while the computer is idle: the app notes how to reopen (hidden in the tray or not). */
   beforeIdleInstall(): void
 }
@@ -52,13 +54,16 @@ export function startUpdates(ev: UpdateEvents): void {
   // Nobody at the computer for a while: install now rather than wait for a quit that may never come.
   setInterval(() => {
     if (!readyVersion || idleTried === readyVersion) return
-    let idle = 0
+    // "Idle" alone is not enough (someone may be watching a long call or a presentation with Pivot Mail on screen): the screen
+    // must be locked, or Pivot Mail must not be on screen at all (in the tray).
+    let state: string
     try {
-      idle = powerMonitor.getSystemIdleTime()
+      state = powerMonitor.getSystemIdleState(IDLE_INSTALL_SECONDS)
     } catch {
       return
     }
-    if (idle < IDLE_INSTALL_SECONDS) return
+    if (state !== 'idle' && state !== 'locked') return
+    if (!ev.mayInstallWhileIdle(state === 'locked')) return
     idleTried = readyVersion
     ev.beforeIdleInstall()
     restartToUpdate()

@@ -2,7 +2,8 @@
 # desktop/package.json. Builds on Windows, runs the tests, then publishes GitHub Release v<version> with:
 #   PivotMail-Setup-<version>.exe   the installer for new computers (link this one for staff)
 #   PivotMail-Package-<version>.exe + latest.yml + .blockmap   what installed apps download to update themselves
-# Installed apps check every 4 hours (and 30 s after starting), download in the background and install on restart.
+# Installed apps check every 4 hours (and 30 s after starting), download in the background and install on "Restart now", on quit,
+# or by themselves after 20 idle minutes when the screen is locked or Pivot Mail sits in the tray. Run it from "main" only.
 name: Desktop release
 
 on:
@@ -15,13 +16,18 @@ concurrency: desktop-release
 
 jobs:
   release:
-    # Only from the repository's main branch: staff computers install whatever is released, so it must be the reviewed code.
-    if: github.ref_name == github.event.repository.default_branch
     runs-on: windows-latest
     defaults:
       run:
         working-directory: desktop
     steps:
+      # Only from "main": staff computers install whatever is released, so it must be the reviewed, merged code
+      # (not a working branch). Choose "main" in the "Use workflow from" list when pressing Run workflow.
+      - name: Only from the main branch
+        shell: bash
+        working-directory: .
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then echo "::error::Releases are made from the main branch only (this run: $GITHUB_REF)."; exit 1; fi
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:

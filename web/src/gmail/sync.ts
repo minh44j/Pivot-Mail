@@ -1,5 +1,5 @@
 import type { Message } from '../types'
-import { listMessageIds, getMetadataMany } from './client'
+import { listMessageIds, getMetadataMany, GmailError, SESSION_ENDED } from './client'
 import type { GLabel } from './client'
 import { toMessage } from './map'
 
@@ -98,8 +98,11 @@ export async function syncQuery(p: {
     let got: Awaited<ReturnType<typeof getMetadataMany>>
     try {
       got = await getMetadataMany(p.accountId, stale.map((m) => m.id.split(':')[1] ?? ''))
-    } catch {
-      // The tidy-up check is optional: when Gmail is busy it waits for the next sync instead of failing this one (nothing is removed).
+    } catch (e) {
+      // A mailbox that must be reconnected, or a sign-in that ended, is reported now as usual.
+      if (e instanceof GmailError && (e.status === 401 || e.status === SESSION_ENDED)) throw e
+      // Otherwise the tidy-up check is optional: when Gmail is busy it waits for the next sync instead of failing this one
+      // (nothing is removed).
       return ids.length
     }
     const back = new Map(got.map((g) => [`${p.accountId}:${g.id}`, g]))
