@@ -63,6 +63,12 @@ export function startUpdates(ev: UpdateEvents): void {
       return
     }
     if (state !== 'idle' && state !== 'locked') return
+    // ("locked" is reported as soon as the screen locks: wait the full 20 minutes there too, not a short coffee break.)
+    try {
+      if (powerMonitor.getSystemIdleTime() < IDLE_INSTALL_SECONDS) return
+    } catch {
+      return
+    }
     if (!ev.mayInstallWhileIdle(state === 'locked')) return
     idleTried = readyVersion
     ev.beforeIdleInstall()

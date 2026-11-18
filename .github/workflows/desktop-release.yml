@@ -3,7 +3,7 @@
 #   PivotMail-Setup-<version>.exe   the installer for new computers (link this one for staff)
 #   PivotMail-Package-<version>.exe + latest.yml + .blockmap   what installed apps download to update themselves
 # Installed apps check every 4 hours (and 30 s after starting), download in the background and install on "Restart now", on quit,
-# or by themselves after 20 idle minutes when the screen is locked or Pivot Mail sits in the tray. Run it from "main" only.
+# or by themselves after 20 minutes without keyboard/mouse when the screen is locked or Pivot Mail is not on screen. From "main" only.
 name: Desktop release
 
 on:

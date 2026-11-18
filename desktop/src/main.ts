@@ -37,6 +37,8 @@ interface Settings {
   trayHintShown?: boolean
   /** An update installed itself while Pivot Mail sat in the tray: reopen in the tray too (read once, at the next start). */
   resumeHidden?: boolean
+  /** ...or it was minimised: reopen minimised (on the taskbar, without jumping in front of what the person is doing). */
+  resumeMinimized?: boolean
   /** The person chose dark mode in Pivot Mail: the window opens dark too (no white flash). */
   dark?: boolean
   /** Secret carried by the links in new-mail alerts, so only alerts from this app can open or mark mail (not a website). */
@@ -71,6 +73,8 @@ let signin: BrowserWindow | null = null
 let signinReady = false
 let tray: Tray | null = null
 let quitting = false
+/** Reopened by an update that installed while Pivot Mail was minimised. */
+let startMinimized = false
 /** The mail database's own thread (store-worker.ts); null if it could not start (the page then keeps its smaller browser copy). */
 let worker: Worker | null = null
 let seq = 0
@@ -465,9 +469,13 @@ function createWindow(hidden = false, load = true): void {
     },
   })
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} PivotMailDesktop/${app.getVersion()}`)
-  // (An update reopens Pivot Mail on screen only after "Restart now" or behind a locked screen, so taking focus is fine here.)
+  // (An update reopens Pivot Mail on screen only after "Restart now" or behind a locked screen, so taking focus is fine there.)
   win.once('ready-to-show', () => {
-    if (!hidden && win) reveal(win)
+    if (hidden || !win) return
+    if (startMinimized) {
+      startMinimized = false
+      win.minimize() // back on the taskbar as it was, without taking focus
+    } else reveal(win)
   })
   win.on('close', (e) => {
     rememberBounds()
@@ -559,8 +567,9 @@ function rememberBounds(): void {
 
 /** "Restart now" / "Restart to update", pressed by the person: Pivot Mail comes back on screen afterwards. */
 function manualRestartToUpdate(): void {
-  if (settings.resumeHidden) {
+  if (settings.resumeHidden || settings.resumeMinimized) {
     settings.resumeHidden = false
+    settings.resumeMinimized = false
     saveSettings()
   }
   restartToUpdate()
@@ -886,13 +895,16 @@ app.whenReady().then(() => {
     },
     beforeIdleInstall() {
       settings.resumeHidden = !win || !win.isVisible()
+      settings.resumeMinimized = !!win && win.isVisible() && win.isMinimized() // (Windows counts a minimised window as visible)
       saveSettings()
     },
   })
   // Started by Windows at sign-in (--hidden), or reopened by an update that installed itself while Pivot Mail sat in the tray.
   const hidden = process.argv.includes('--hidden') || (process.argv.includes('--updated') && !!settings.resumeHidden)
-  if (settings.resumeHidden) {
+  startMinimized = process.argv.includes('--updated') && !!settings.resumeMinimized
+  if (settings.resumeHidden || settings.resumeMinimized) {
     settings.resumeHidden = false
+    settings.resumeMinimized = false
     saveSettings()
   }
   void start(hidden).then(() => {
