@@ -28,7 +28,7 @@ function badgePng(n: number): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.7.0',
+  version: '0.8.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
