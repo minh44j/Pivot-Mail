@@ -79,6 +79,13 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
             <input type="search" className="users-q" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a person" aria-label="Find a person" />
           </div>
 
+          <div className="users-head" aria-hidden="true">
+            <span>Person</span>
+            <span>Role</span>
+            <span>Mailboxes</span>
+            <span>Last active</span>
+            <span />
+          </div>
           <ul className="users-list" aria-label="Users">
             {shown.map((u) => {
               const me = u.id === you
@@ -87,21 +94,25 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
               const shared = u.mailboxes.filter((m) => m.kind === 'shared')
               return (
                 <li key={u.id} className={`user ${off ? 'disabled' : 'active'}`}>
-                  <span className="avatar" aria-hidden="true" data-tone={u.company === 'tmc' ? 'teal' : 'blue'}>
-                    {u.name
-                      .split(' ')
-                      .map((p) => p[0])
-                      .slice(0, 2)
-                      .join('') || '?'}
-                  </span>
                   <div className="user-id">
-                    <strong>
-                      {u.name || u.email}
-                      {me && <em> (you)</em>}
-                    </strong>
-                    <small>{u.email}</small>
+                    <span className="avatar" aria-hidden="true" data-tone={u.company === 'tmc' ? 'teal' : 'blue'}>
+                      {u.name
+                        .split(' ')
+                        .map((p) => p[0])
+                        .slice(0, 2)
+                        .join('') || '?'}
+                    </span>
+                    <div className="user-text">
+                      <strong>
+                        {u.name || u.email}
+                        {me && <em> (you)</em>}
+                      </strong>
+                      <small>
+                        <span className="email">{u.email}</span>
+                        <span className={`pill co-${u.company}`}>{CO[u.company]}</span>
+                      </small>
+                    </div>
                   </div>
-                  <span className={`pill co-${u.company}`}>{CO[u.company]}</span>
                   <div className="seg" role="group" aria-label={`Role for ${u.name || u.email}`}>
                     <button type="button" className={u.role === 'staff' ? 'on' : ''} aria-pressed={u.role === 'staff'} disabled={off || me || u.roleLocked || busy === u.id} onClick={() => void apply(u, { role: 'staff' }, `${u.name || u.email} is now staff`)}>
                       Staff
@@ -113,15 +124,20 @@ export function RealUsers({ onToast }: { onToast: (m: string) => void }) {
                   <button type="button" className="link user-access" onClick={() => setAccess(u)} aria-label={`Shared mailboxes for ${u.name || u.email}`} disabled={off}>
                     {own === 0 && shared.length === 0 ? 'No mailbox connected yet' : `${own} own${shared.length > 0 ? ` · shared: ${shared.map((s) => s.email.split('@')[0]).join(', ')}` : ' · no shared mailbox'}`}
                   </button>
-                  <span className={`status-chip ${off ? 'disabled' : 'active'}`}>{off ? 'Turned off' : u.lastSeenAt ? `Active · ${day(u.lastSeenAt)}` : 'Never signed in'}</span>
+                  <span className={`status-chip ${off ? 'disabled' : 'active'}`}>
+                    <i aria-hidden="true" />
+                    {off ? 'Turned off' : u.lastSeenAt ? `Active · ${day(u.lastSeenAt)}` : 'Never signed in'}
+                  </span>
+                  <div className="user-actions">
                   {!off && !me && (
-                    <button type="button" className="btn" disabled={busy === u.id} onClick={() => void apply(u, { signOut: true }, `${u.name || u.email} is signed out on every device`)} aria-label={`Sign ${u.name || u.email} out on every device`} title="Ends their sessions on every computer and phone. They can sign in again with Google.">
+                    <button type="button" className="btn sm" disabled={busy === u.id} onClick={() => void apply(u, { signOut: true }, `${u.name || u.email} is signed out on every device`)} aria-label={`Sign ${u.name || u.email} out on every device`} title="Ends their sessions on every computer and phone. They can sign in again with Google.">
                       Sign out
                     </button>
                   )}
-                  <button type="button" className="btn" disabled={me || busy === u.id} onClick={() => (off ? void apply(u, { status: 'active' }, `${u.name || u.email} can sign in again`) : setConfirm({ p: u, to: 'disabled' }))}>
+                  <button type="button" className={`btn sm${off ? '' : ' warn'}`} disabled={me || busy === u.id} onClick={() => (off ? void apply(u, { status: 'active' }, `${u.name || u.email} can sign in again`) : setConfirm({ p: u, to: 'disabled' }))}>
                     {off ? 'Turn on' : 'Turn off'}
                   </button>
+                  </div>
                 </li>
               )
             })}

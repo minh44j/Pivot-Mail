@@ -207,7 +207,7 @@ export function SettingsPage(p: Props) {
         <h1>Settings</h1>
       </header>
 
-      <div className="settings-body">
+      <div className={`settings-body${section === 'users' ? ' wide' : ''}`}>
         <nav className="settings-nav" aria-label="Settings sections">
           {SECTIONS.filter((s) => s.id !== 'users' || isAdmin).map((s) => (
             <button
