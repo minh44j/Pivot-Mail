@@ -15,7 +15,8 @@
  */
 import { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, net, session, shell } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
+import type { ChildProcess } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -730,6 +731,8 @@ function macMenu(): Menu {
 
 /** Folders holding copies of dragged attachments; removed when the app quits, and any left from a crash at the next start. */
 const dragDirs: string[] = []
+/** Mac: the helper holding copied files on the clipboard (see filesToClipboard). */
+let clipHelper: ChildProcess | null = null
 /** Writes attachments handed over by the page to a fresh temporary folder (safe, unique names) and returns their paths. */
 function writeTempFiles(files: unknown): string[] {
   if (!Array.isArray(files) || files.length === 0) return []
@@ -756,20 +759,43 @@ function filesToClipboard(paths: string[]): Promise<boolean> {
     // The same as copying files in Finder (file addresses on the Mac's clipboard): ⌘V pastes them in Finder, Mail, Teams,
     // WhatsApp and the rest. Done by the Mac's own scripting (osascript); the paths travel in an environment variable, never
     // inside the script text.
-    // One clipboard entry per file, each holding its file address in full right away (written "lazily", only the first file
-    // survived once the helper ended), and the classic file list on the first entry too, as Finder does.
+    // One clipboard entry per file (its file address), the first also carrying the classic file list, as Finder writes them.
+    // The Mac asks the program that copied for the data when someone pastes, so the helper stays running until something
+    // else is copied (or 30 minutes, or Pivot Mail quits): when it ended straight away, only the first file was left.
     const jxa =
       'ObjC.import("AppKit");' +
       'const list = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey("PM_CLIP_FILES")).split("\\n");' +
       'const items = $.NSMutableArray.array;' +
       'list.forEach((p, i) => { const it = $.NSPasteboardItem.alloc.init; it.setStringForType($.NSURL.fileURLWithPath(p).absoluteString, "public.file-url");' +
       ' if (i === 0) it.setPropertyListForType($(list), "NSFilenamesPboardType"); items.addObject(it) });' +
-      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; (pb.writeObjects(items) ? "ok " : "no ") + pb.pasteboardItems.count + "/" + list.length'
+      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; const ok = pb.writeObjects(items); const c0 = pb.changeCount;' +
+      '$.NSFileHandle.fileHandleWithStandardOutput.writeData($((ok ? "ok " : "no ") + pb.pasteboardItems.count + "/" + list.length + "\\n").dataUsingEncoding($.NSUTF8StringEncoding));' +
+      'for (let i = 0; i < 1800 && pb.changeCount === c0; i++) delay(1); ""'
+    clipHelper?.kill()
     return new Promise((resolve) => {
-      execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { timeout: 20_000, env: { ...process.env, PM_CLIP_FILES: paths.join('\n') } }, (err, out) => {
-        ;(global as unknown as { __pmClipboardFiles?: string[]; __pmClipboardNote?: string }).__pmClipboardFiles = paths // read by the Mac test
-        ;(global as unknown as { __pmClipboardNote?: string }).__pmClipboardNote = err ? String(err) : String(out).trim()
-        resolve(!err && String(out).trim().startsWith('ok '))
+      const h = spawn('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { env: { ...process.env, PM_CLIP_FILES: paths.join('\n') }, stdio: ['ignore', 'pipe', 'pipe'] })
+      clipHelper = h
+      let said = ''
+      let finished = false
+      const done = (note: string) => {
+        if (finished) return
+        finished = true
+        ;(global as unknown as { __pmClipboardFiles?: string[] }).__pmClipboardFiles = paths // read by the Mac test
+        ;(global as unknown as { __pmClipboardNote?: string }).__pmClipboardNote = note
+        resolve(note.startsWith('ok '))
+      }
+      const timer = setTimeout(() => done('no answer'), 20_000)
+      h.stdout.on('data', (b: Buffer) => {
+        said += b.toString()
+        if (said.includes('\n')) {
+          clearTimeout(timer)
+          done(said.trim())
+        }
+      })
+      h.on('exit', () => {
+        if (clipHelper === h) clipHelper = null
+        clearTimeout(timer)
+        if (!said.includes('\n')) done(said.trim() || 'helper ended')
       })
     })
   }
@@ -1148,6 +1174,7 @@ app.on('before-quit', () => {
 })
 let closed = false
 app.on('will-quit', (e) => {
+  clipHelper?.kill() // (the copied files are temporary copies deleted now anyway)
   cleanDragFolders()
   // Close the database properly before leaving (everything written, nothing half-saved), then quit.
   if (worker && !closed) {
