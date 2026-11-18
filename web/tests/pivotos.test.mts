@@ -24,6 +24,11 @@ const T: Record<string, Row[]> = {
     { id: 'u-maya', email: 'maya@pivottmc.com', name: 'Maya', company: 'tmc', role: 'staff', status: 'active' },
   ],
   cases: [], audit_log: [],
+  mail_accounts: [
+    { id: 'a-scl', company: 'scl', status: 'active' },
+    { id: 'a-tmc', company: 'tmc', status: 'active' },
+  ],
+  mailbox_access: [] as Row[],
 }
 const counters: Record<string, number> = {}
 let seq = 0
@@ -48,9 +53,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const table = url.pathname.split('/').pop() as string
   const rows = T[table]!
   const filters = [...url.searchParams.entries()].filter(([, v]) => v.startsWith('eq.'))
-  const match = (r: Row) => filters.every(([k, v]) => String(r[k]) === decodeURIComponent(v.slice(3)))
+  const ins = [...url.searchParams.entries()].filter(([, v]) => v.startsWith('in.('))
+  const match = (r: Row) => filters.every(([k, v]) => String(r[k]) === decodeURIComponent(v.slice(3))) && ins.every(([k, v]) => v.slice(4, -1).split(',').includes(String(r[k])))
   if (method === 'GET') {
     let res = rows.filter(match)
+    if (table === 'mailbox_access') res = res.map((r) => ({ ...r, mail_accounts: T.mail_accounts!.find((a) => a.id === r.account_id) ?? null }))
     if (table === 'cases') { res = [...res].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((r) => ({ ...r, opener: (() => { const u = T.app_users!.find((x) => x.id === r.opened_by); return u ? { name: u.name, email: u.email } : null })() })) }
     return ok2(res)
   }
@@ -116,7 +123,10 @@ ok('ports are a shipping-only list', (await call(GET, TMC, 'GET', maya, undefine
 r = await call(GET, TMC, 'GET', maya, undefined, '?directory=sales&clientId=c7')
 ok('travel pick-lists go to the travel endpoint', osCalls.at(-1)!.path === '/api/integrations/pivot-mail/travel/search?kind=sales&q=&clientId=c7' && osCalls.at(-1)!.valid)
 r = await call(GET, H, 'GET', ann, undefined, '?lookup=PS2600892,PT2600001,junk')
-ok('lookup sends only well-formed numbers', osCalls.at(-1)!.body.refs.join() === 'PS2600892,PT2600001')
+// Inverted on purpose: this used to expect PT2600001 to be sent along in a Shipping person's lookup. A Travel number
+// asked of Shipping's side of Pivot OS can never be found there, and a person without a Travel mailbox must not reach
+// Travel at all. Each number is now asked only in its own company, and only if the person may use that company.
+ok('lookup sends only well-formed numbers, and only the ones this person may ask about', osCalls.at(-1)!.body.refs.join() === 'PS2600892')
 ok('the list says the link is on', (await (await call(GET, H, 'GET', ann)).json()).linked === true)
 ok('a signed-out caller gets nothing', (await call(GET, H, 'GET', {}, undefined, '?directory=client&q=a')).status === 401)
 
@@ -129,5 +139,24 @@ ok('link off: a provisional number is made here and Pivot OS is not called', r.s
 ok('link off: pick-lists are not available', (await call(GET, H, 'GET', ann, undefined, '?directory=client&q=a')).status === 404 && (await (await call(GET, H, 'GET', ann)).json()).linked === false)
 process.env.PIVOT_OS_URL = 'http://os.example.com'
 ok('link off: plain http is not accepted', (await call(GET, H, 'GET', ann, undefined, '?directory=client&q=a')).status === 404)
+
+
+// ---- two companies: a person with a Travel mailbox too is served by Travel's side of Pivot OS for Travel work
+T.mailbox_access!.push({ user_id: 'u-ann', account_id: 'a-scl' }, { user_id: 'u-ann', account_id: 'a-tmc' }, { user_id: 'u-bob', account_id: 'a-scl' })
+process.env.PIVOT_OS_URL = OS + '/'
+process.env.PIVOT_OS_LINK_SECRET = LINK
+osReply = null
+osCalls.length = 0
+r = await call(GET, H, 'GET', ann, undefined, '?directory=client&q=gul&company=tmc')
+ok('Ann asks Travel\'s client list: Pivot OS is asked as Travel (PIVT), as Ann', osCalls.length === 1 && osCalls[0]!.company.toUpperCase() === 'PIVT' && osCalls[0]!.path.includes('/travel/search') && osCalls[0]!.actor === 'ann@pivotscl.com' && osCalls[0]!.valid)
+osCalls.length = 0
+r = await call(GET, H, 'GET', who('bob@pivotscl.com', 'scl'), undefined, '?directory=client&q=gul&company=tmc')
+ok('Bob (no Travel mailbox) asking for Travel\'s list is answered as Shipping instead', osCalls.length === 1 && osCalls[0]!.company.toUpperCase() === 'PIVS' && osCalls[0]!.path.includes('/shipping/search'))
+osCalls.length = 0
+r = await call(GET, H, 'GET', ann, undefined, '?lookup=PS2600892,PT2600017')
+ok('a lookup of one Shipping and one Travel number asks each company about its own number', osCalls.length === 2 && osCalls.some((c) => c.company.toUpperCase() === 'PIVS' && JSON.stringify(c.body.refs) === '["PS2600892"]') && osCalls.some((c) => c.company.toUpperCase() === 'PIVT' && JSON.stringify(c.body.refs) === '["PT2600017"]'))
+osCalls.length = 0
+r = await call(GET, H, 'GET', who('bob@pivotscl.com', 'scl'), undefined, '?lookup=PS2600892,PT2600017')
+ok('Bob\'s lookup asks only Shipping, and only about the Shipping number', osCalls.length === 1 && osCalls[0]!.company.toUpperCase() === 'PIVS' && JSON.stringify(osCalls[0]!.body.refs) === '["PS2600892"]')
 
 console.log(`${pass} pass, ${fail} fail`)

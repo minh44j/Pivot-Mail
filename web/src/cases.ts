@@ -16,6 +16,8 @@ export interface CaseRecord {
 }
 
 export interface NewCase {
+  /** which company the number is for (defaults to the person's own; the server checks they may use it) */
+  company?: 'scl' | 'tmc'
   client: string
   details: Record<string, string>
   notes?: string
@@ -65,16 +67,16 @@ async function call<T>(method: string, body?: unknown, qs = ''): Promise<Result<
   }
 }
 
-export async function fetchCasesInfo(): Promise<{ cases: CaseRecord[]; linked: boolean } | null> {
-  const r = await call<{ cases: CaseRecord[]; linked?: boolean }>('GET')
-  return r.ok ? { cases: r.data.cases, linked: r.data.linked === true } : null
+export async function fetchCasesInfo(): Promise<{ cases: CaseRecord[]; linked: boolean; companies: ('scl' | 'tmc')[] } | null> {
+  const r = await call<{ cases: CaseRecord[]; linked?: boolean; company?: 'scl' | 'tmc'; companies?: ('scl' | 'tmc')[] }>('GET')
+  return r.ok ? { cases: r.data.cases, linked: r.data.linked === true, companies: r.data.companies ?? (r.data.company ? [r.data.company] : []) } : null
 }
 
 export const openCase = (c: NewCase) => call<{ case: CaseRecord; subject: string | null }>('POST', c)
 
 /** Pivot OS pick-lists, when the link is on. Failures give an empty list (the form still works with typed text). */
-export async function fetchPicks(kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null): Promise<OsPick[]> {
-  const qs = `?directory=${kind}&q=${encodeURIComponent(q)}${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ''}`
+export async function fetchPicks(kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null, company?: 'scl' | 'tmc'): Promise<OsPick[]> {
+  const qs = `?directory=${kind}&q=${encodeURIComponent(q)}${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ''}${company ? `&company=${company}` : ''}`
   const r = await call<{ results: OsPick[] }>('GET', undefined, qs)
   return r.ok ? r.data.results : []
 }

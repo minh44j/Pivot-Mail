@@ -19,6 +19,12 @@ const T: Record<string, Row[]> = {
     { id: 'u-maya', email: 'maya@pivottmc.com', name: 'Maya', company: 'tmc', role: 'staff', status: 'active' },
   ],
   cases: [], audit_log: [],
+  mail_accounts: [
+    { id: 'a-scl', company: 'scl', status: 'active' },
+    { id: 'a-tmc', company: 'tmc', status: 'active' },
+    { id: 'a-off', company: 'tmc', status: 'disabled' },
+  ],
+  mailbox_access: [] as Row[],
 }
 const counters: Record<string, number> = {}
 let seq = 0
@@ -31,9 +37,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const table = url.pathname.split('/').pop() as string
   const rows = T[table]!
   const filters = [...url.searchParams.entries()].filter(([, v]) => v.startsWith('eq.'))
-  const match = (r: Row) => filters.every(([k, v]) => String(r[k]) === decodeURIComponent(v.slice(3)))
+  const ins = [...url.searchParams.entries()].filter(([, v]) => v.startsWith('in.('))
+  const match = (r: Row) => filters.every(([k, v]) => String(r[k]) === decodeURIComponent(v.slice(3))) && ins.every(([k, v]) => v.slice(4, -1).split(',').includes(String(r[k])))
   if (method === 'GET') {
     let res = rows.filter(match)
+    if (table === 'mailbox_access') res = res.map((r) => ({ ...r, mail_accounts: T.mail_accounts!.find((a) => a.id === r.account_id) ?? null }))
     if (table === 'cases') { res = [...res].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((r) => ({ ...r, opener: (() => { const u = T.app_users!.find((x) => x.id === r.opened_by); return u ? { name: u.name, email: u.email } : null })() })) }
     return ok2(res)
   }
@@ -99,6 +107,32 @@ ok('nothing to change is refused', (await call(PATCH, H, 'PATCH', who('bob@pivot
 ok('bad reference refused', (await call(PATCH, H, 'PATCH', who('bob@pivotscl.com', 'scl'), { ref: 'x', notes: 'n' })).status === 400)
 ok('writes from another site are refused', (await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), ship, false)).status === 403)
 ok('every case change is audited', T.audit_log!.filter((a) => a.action === 'case.opened').length >= 4 && T.audit_log!.some((a) => a.action === 'case.updated'))
+
+
+// ---- a person with mailboxes of both companies may work in both; nobody else may
+T.mailbox_access!.push({ user_id: 'u-ann', account_id: 'a-scl' }, { user_id: 'u-ann', account_id: 'a-tmc' }, { user_id: 'u-bob', account_id: 'a-scl' }, { user_id: 'u-bob', account_id: 'a-off' })
+const travelBody = { client: 'Gulf Holidays', details: { category: 'flight', salesperson: 'Sara' } }
+r = await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), { ...travelBody, company: 'tmc' })
+j = await r.json()
+ok('Ann (Shipping, with a Travel mailbox) can open a Travel case', r.status === 201 && /^PT26/.test(j.case.ref) && j.case.company === 'tmc' && j.case.kind === 'travel')
+r = await call(POST, H, 'POST', who('ann@pivotscl.com', 'scl'), ship)
+ok('...and without naming a company she still gets her own (Shipping)', (await r.json()).case.company === 'scl')
+r = await call(POST, H, 'POST', who('bob@pivotscl.com', 'scl'), { ...travelBody, company: 'tmc' })
+j = await r.json()
+ok('Bob has no usable Travel mailbox (his is switched off): the request falls back to his own company, as Shipping', r.status === 400 || (r.status === 201 && j.case.company === 'scl'))
+r = await call(POST, H, 'POST', who('maya@pivottmc.com', 'tmc'), { ...ship, company: 'scl' })
+ok('Maya (Travel only) cannot open a Shipping case by asking for it', r.status === 400 || (r.status === 201 && (await r.json()).case.company === 'tmc'))
+r = await call(GET, H, 'GET', who('ann@pivotscl.com', 'scl'))
+j = await r.json()
+ok('Ann is told both companies, and sees the cases of both', j.companies.length === 2 && j.cases.some((c: Row) => c.company === 'tmc') && j.cases.some((c: Row) => c.company === 'scl'))
+r = await call(GET, H, 'GET', who('bob@pivotscl.com', 'scl'))
+j = await r.json()
+ok('Bob sees only Shipping cases', j.companies.length === 1 && j.cases.every((c: Row) => c.company === 'scl'))
+const travelRef = T.cases!.find((c) => c.company === 'tmc')!.ref
+r = await call(PATCH, H, 'PATCH', who('bob@pivotscl.com', 'scl'), { ref: travelRef, status: 'closed' })
+ok('Bob cannot change a Travel case', r.status === 404)
+r = await call(PATCH, H, 'PATCH', who('ann@pivotscl.com', 'scl'), { ref: travelRef, status: 'closed' })
+ok('Ann can change a Travel case', r.status === 200)
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

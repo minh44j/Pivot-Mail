@@ -25,10 +25,12 @@ interface Props {
   /** Signed-in use: numbers are issued by the server and the case is saved for the whole team */
   real?: {
     company: 'scl' | 'tmc'
+    /** Every company this person may issue numbers for (their own plus the companies of their mailboxes) */
+    companies?: ('scl' | 'tmc')[]
     /** The server is connected to Pivot OS: numbers and pick-lists come from there */
     linked: boolean
     onCreate: (c: NewCase) => Promise<{ ok: true; ref: string; subject: string | null } | { ok: false; message: string }>
-    picks: (kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null) => Promise<OsPick[]>
+    picks: (kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null, company?: 'scl' | 'tmc') => Promise<OsPick[]>
   }
 }
 
@@ -76,6 +78,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const panel = Boolean(anchor) && window.innerWidth >= 900
   const PANEL_W = Math.min(640, window.innerWidth - 16)
   const [company, setCompany] = useState<Company>(real ? (real.company === 'tmc' ? 'travel' : 'shipping') : 'shipping')
+  const coCode: 'scl' | 'tmc' = company === 'travel' ? 'tmc' : 'scl'
   const [existing, setExisting] = useState('')
   const [showExisting, setShowExisting] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -125,7 +128,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   useEffect(() => {
     if (!linked || !picks) return
     let alive = true
-    void picks('sales', '', clientId).then((r) => {
+    void picks('sales', '', clientId, coCode).then((r) => {
       if (!alive) return
       setOsPeople(r)
       const s = r.find((x) => x.suggested)
@@ -134,26 +137,26 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
     return () => {
       alive = false
     }
-  }, [linked, picks, clientId])
+  }, [linked, picks, clientId, coCode])
   useEffect(() => {
     if (!linked || !picks || !clientOpen || clientId || client.trim().length < 2) return
     let alive = true
-    const t = window.setTimeout(() => void picks('client', client.trim()).then((r) => alive && setClientHits(r)), 250)
+    const t = window.setTimeout(() => void picks('client', client.trim(), null, coCode).then((r) => alive && setClientHits(r)), 250)
     return () => {
       alive = false
       window.clearTimeout(t)
     }
-  }, [linked, picks, clientOpen, clientId, client])
+  }, [linked, picks, clientOpen, clientId, client, coCode])
   useEffect(() => {
     const q = portFocus === 'from' ? from : portFocus === 'to' ? to : ''
     if (!linked || !picks || !portFocus || q.trim().length < 2) return
     let alive = true
-    const t = window.setTimeout(() => void picks('port', q.trim()).then((r) => alive && setPortHits(r)), 250)
+    const t = window.setTimeout(() => void picks('port', q.trim(), null, coCode).then((r) => alive && setPortHits(r)), 250)
     return () => {
       alive = false
       window.clearTimeout(t)
     }
-  }, [linked, picks, portFocus, from, to])
+  }, [linked, picks, portFocus, from, to, coCode])
   const left = anchor ? Math.max(8, Math.min(anchor.right - PANEL_W, window.innerWidth - PANEL_W - 8)) : 0
   const top = anchor ? anchor.bottom + 8 : 0
 
@@ -203,6 +206,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
           ? { scope, mode: 'sea', port: clrPort.trim(), salesperson: salesName }
           : { scope, mode, origin: canon(from), destination: canon(to), salesperson: salesName }
       const res = await real.onCreate({
+        company: coCode,
         client: client.trim(),
         details,
         notes: notes.trim(),
@@ -340,9 +344,9 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
           </p>
         )}
 
-        {!result && !real && (
+        {!result && (!real || (real.companies?.length ?? 0) > 1) && (
           <div className="co-tabs" role="tablist" aria-label="Company">
-            {(['shipping', 'travel'] as const).map((c) => (
+            {(['shipping', 'travel'] as const).filter((c) => !real?.companies || real.companies.includes(c === 'travel' ? 'tmc' : 'scl')).map((c) => (
               <button
                 key={c}
                 type="button"
@@ -352,6 +356,13 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
                 onClick={() => {
                   setCompany(c)
                   setClient('')
+                  setClientId(null)
+                  setOriginId(null)
+                  setDestId(null)
+                  setFrom('')
+                  setTo('')
+                  setSales('')
+                  setOsPeople([])
                   setErrors({})
                 }}
               >

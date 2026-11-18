@@ -360,12 +360,14 @@ export default function App() {
   const [osLinked, setOsLinked] = useState(false)
   const [osFacts, setOsFacts] = useState<Record<string, OsFacts>>({})
   const [syncDetail, setSyncDetail] = useState('')
+  const [caseCompanies, setCaseCompanies] = useState<('scl' | 'tmc')[]>([])
   const loadCases = useCallback(async () => {
     casesAt.current = Date.now()
     const info = await fetchCasesInfo()
     if (info) {
       setCasesDb(info.cases)
       setOsLinked(info.linked)
+      setCaseCompanies(info.companies)
     }
   }, [])
   const [labelsByAccount, setLabelsByAccount] = useState<Record<string, GLabel[]>>({})
@@ -2438,7 +2440,7 @@ export default function App() {
           onClose={() => setRefOpen(false)}
           onToast={showToast}
           onNewMail={(subject) => openCompose({ subject })}
-          real={authUser ? { company: authUser.company === 'tmc' ? 'tmc' : 'scl', linked: osLinked, onCreate: createCase, picks: fetchPicks } : undefined}
+          real={authUser ? { company: authUser.company === 'tmc' ? 'tmc' : 'scl', companies: caseCompanies.length > 0 ? caseCompanies : undefined, linked: osLinked, onCreate: createCase, picks: fetchPicks } : undefined}
         />
       )}
       <Notices notices={notices} onDismiss={dismissNotice} lead={
