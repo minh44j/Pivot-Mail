@@ -131,16 +131,20 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const conv = await win.evaluate(async () => window.pivotDesktop.store.thread('acc1', 'm1'))
   ok('D29 the list gets a light copy (preview, no full HTML), opening gets the complete message from this computer', light && light.loaded === false && light.body.length <= 400 && !('html' in light) && conv.length === 1 && conv[0].loaded === true && conv[0].body.includes('MSKU1234567'))
   ok('D21 a quick list refresh updates read/folder but keeps the full message already stored (and still findable)', m1 && m1.folder === 'archive' && m1.unread === false && m1.body.includes('MSKU1234567') && JSON.stringify(await q(['acc1'], 'msku')) === '["m1"]')
+  // While a big save runs, the app's main process (window, tray, alerts) must keep answering at once.
+  const pinger = (async () => { const lat = []; await new Promise((r) => setTimeout(r, 100)); for (let i = 0; i < 15; i++) { const t = Date.now(); await app.evaluate(() => 1); lat.push(Date.now() - t); await new Promise((r) => setTimeout(r, 40)) } return lat })()
   const big = await win.evaluate(async () => {
     const s = window.pivotDesktop.store
     const words = ['invoice', 'container', 'booking', 'customs', 'clearance', 'freight', 'Dammam', 'Riyadh', 'quotation', 'manifest']
     const msgs = Array.from({ length: 5000 }, (_, i) => ({ id: 'b' + i, threadId: 'b' + i, accountId: 'acc3', folder: 'inbox', labels: [], from: { name: 'Sender ' + i, email: `s${i}@example.com` }, to: [], subject: `${words[i % 10]} ${i}`, body: `${words[(i * 7) % 10]} reference PSC-${100000 + i} ${'lorem ipsum '.repeat(40)}`, date: new Date(Date.UTC(2026, 0, 1) + i * 3600_000).toISOString(), unread: false, flagged: false, attachments: [], loaded: true }))
-    const t0 = performance.now(); await s.save(msgs); const saveMs = performance.now() - t0
+    const t0 = performance.now(); const saving = s.save(msgs); window.__saving = true; await saving; window.__saving = false; const saveMs = performance.now() - t0
     const t1 = performance.now(); const hits = await s.search(['acc3'], 'PSC-104321'); const searchMs = performance.now() - t1
     const t2 = performance.now(); const many = await s.search(['acc3'], 'customs'); const manyMs = performance.now() - t2
     return { saveMs, searchMs, manyMs, hits: hits.map((m) => m.id), many: many.length }
   })
-  console.log('   5,000 messages: save %d ms, exact search %d ms, broad search %d ms', Math.round(big.saveMs), Math.round(big.searchMs), Math.round(big.manyMs))
+  const lat = await pinger
+  console.log('   5,000 messages: save %d ms, exact search %d ms, broad search %d ms; window response during the save: worst %d ms', Math.round(big.saveMs), Math.round(big.searchMs), Math.round(big.manyMs), Math.max(...lat))
+  ok('D33 while 5,000 messages are being saved, the window stays responsive (database on its own thread)', Math.max(...lat) < 150, JSON.stringify(lat))
   ok('D22 5,000 messages: a reference number is found instantly (well under a quarter second)', JSON.stringify(big.hits) === '["b4321"]' && big.searchMs < 250 && big.many === 300 && big.manyMs < 500)
   await win.evaluate(async () => { await window.pivotDesktop.store.clearAccount('acc3'); await window.pivotDesktop.store.setMeta('hist:acc1', '999') })
 

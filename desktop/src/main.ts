@@ -14,7 +14,7 @@ import { createHash, randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { MailStore } from './store'
+import { Worker } from 'node:worker_threads'
 import { safeFileName, uniqueName } from './files'
 
 type Company = 'scl' | 'tmc'
@@ -55,7 +55,10 @@ const asset = (...p: string[]) => path.join(app.getAppPath(), ...p)
 let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
-let store: MailStore | null = null
+/** The mail database's own thread (store-worker.ts); null if it could not start (the page then keeps its smaller browser copy). */
+let worker: Worker | null = null
+let seq = 0
+const waiting = new Map<number, { resolve: (v: unknown) => void; fallback: unknown }>()
 /** The secret of a sign-in in progress (its hash went to the browser; the secret itself never leaves this app). */
 let pending: { verifier: string; at: number } | null = null
 
@@ -383,34 +386,63 @@ function bridge(): void {
 const isId = (x: unknown): x is string => typeof x === 'string' && x.length > 0 && x.length <= 200
 const isIdList = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 20_000 && x.every(isId)
 
+function startStore(): void {
+  // Inside the installed app the code sits in an archive a worker thread cannot start from, so the worker file is kept unpacked.
+  const file = asset('dist', 'store-worker.js').replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`)
+  try {
+    worker = new Worker(file, { workerData: { file: path.join(app.getPath('userData'), 'mail.db') } })
+  } catch {
+    worker = null
+    return
+  }
+  worker.on('message', (m: { id: number; ok: boolean; r?: unknown }) => {
+    const w = waiting.get(m.id)
+    if (!w) return
+    waiting.delete(m.id)
+    w.resolve(m.ok ? m.r : w.fallback)
+  })
+  const fail = () => {
+    worker = null
+    for (const w of waiting.values()) w.resolve(w.fallback)
+    waiting.clear()
+  }
+  worker.on('error', fail)
+  worker.on('exit', fail)
+}
+
+/** One request to the database thread; answers `fallback` if it is not running or the request fails (never an error). */
+function storeCall(op: string, fallback: unknown, a?: unknown, b?: unknown): Promise<unknown> {
+  if (!worker) return Promise.resolve(fallback)
+  const id = ++seq
+  return new Promise((resolve) => {
+    waiting.set(id, { resolve, fallback })
+    worker?.postMessage({ id, op, a, b })
+  })
+}
+
 function storeBridge(): void {
   ipcMain.handle('pm:store', (e, op: unknown, a: unknown, b: unknown) => {
     // Only the Pivot Mail page itself may read or change the mail database (never the first-run screen or a preview window).
-    if (!store || !fromApp(e)) return null
+    if (!worker || !fromApp(e)) return null
     switch (op) {
       case 'load':
-        return isId(a) ? store.load(a) : []
+        return isId(a) ? storeCall('load', [], a) : []
       case 'save':
-        if (Array.isArray(a) && a.length <= 20_000) store.save(a as Parameters<MailStore['save']>[0])
-        return null
+        return Array.isArray(a) && a.length <= 20_000 ? storeCall('save', null, a) : null
       case 'remove':
-        if (isIdList(a)) store.remove(a)
-        return null
+        return isIdList(a) ? storeCall('remove', null, a) : null
       case 'thread':
-        return isId(a) && isId(b) ? store.thread(a, b) : []
+        return isId(a) && isId(b) ? storeCall('thread', [], a, b) : []
       case 'search':
-        return isIdList(a) && typeof b === 'string' && b.length <= 500 ? store.search(a, b) : []
+        return isIdList(a) && typeof b === 'string' && b.length <= 500 ? storeCall('search', [], a, b) : []
       case 'getMeta':
-        return isId(a) ? store.getMeta(a) : null
+        return isId(a) ? storeCall('getMeta', null, a) : null
       case 'setMeta':
-        if (isId(a) && typeof b === 'string' && b.length <= 10_000) store.setMeta(a, b)
-        return null
+        return isId(a) && typeof b === 'string' && b.length <= 10_000 ? storeCall('setMeta', null, a, b) : null
       case 'clearAccount':
-        if (isId(a)) store.clearAccount(a)
-        return null
+        return isId(a) ? storeCall('clearAccount', null, a) : null
       case 'clearAll':
-        store.clearAll()
-        return null
+        return storeCall('clearAll', null)
       default:
         return null
     }
@@ -435,11 +467,7 @@ app.whenReady().then(() => {
   registerScheme()
   // Only what the app needs: alerts and the clipboard. Camera, microphone, location and the rest are refused.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(['notifications', 'clipboard-read', 'clipboard-sanitized-write'].includes(permission)))
-  try {
-    store = new MailStore(path.join(app.getPath('userData'), 'mail.db'))
-  } catch {
-    store = null // the app still works: the page falls back to its own smaller browser copy
-  }
+  startStore()
   bridge()
   storeBridge()
   buildTray()
@@ -452,10 +480,20 @@ app.whenReady().then(() => {
 app.on('before-quit', () => {
   quitting = true
 })
-app.on('will-quit', () => {
-  store?.close()
-  store = null
+let closed = false
+app.on('will-quit', (e) => {
   cleanDragFolders()
+  // Close the database properly before leaving (everything written, nothing half-saved), then quit.
+  if (worker && !closed) {
+    e.preventDefault()
+    closed = true
+    void storeCall('close', null)
+      .then(() => worker?.terminate())
+      .finally(() => {
+        worker = null
+        app.quit()
+      })
+  }
 })
 app.on('window-all-closed', () => {
   /* stay in the tray */
