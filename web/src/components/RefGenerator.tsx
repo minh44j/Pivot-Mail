@@ -247,19 +247,6 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
 
   const salesBlock = (
     <Section icon="user" tone="red" title="Salesperson" hint="Optional.">
-      <div className="rg-select">
-        <Icon name="user" size={15} />
-        <select value={sales} onChange={(e) => setSales(e.target.value)} aria-label="Salesperson">
-          <option value="">Select a salesperson</option>
-          {people.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-              {s.suggested ? ' ★' : ''}
-            </option>
-          ))}
-        </select>
-        <Icon name="chevron" size={14} />
-      </div>
       <div className="rg-people" role="radiogroup" aria-label="Salesperson shortcuts">
         {people.map((s) => (
           <button key={s.id} type="button" role="radio" aria-checked={sales === s.id} className={`rg-person${sales === s.id ? ' on' : ''}`} onClick={() => setSales(sales === s.id ? '' : s.id)}>
@@ -282,7 +269,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
           onChange={(e) => setNotes(e.target.value)}
           placeholder={travel ? 'e.g. RUH–DXB, 3 pax, 12 Dec' : 'e.g. 2×40HQ machinery, urgent, anything ops should know'}
           aria-label="Additional details"
-          rows={3}
+          rows={2}
         />
         <small aria-hidden="true">{notes.length}/500</small>
       </div>
@@ -342,17 +329,11 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
         </div>
 
         {real ? (
-          <p className="notice" role="note">
-            {linked ? (
-              <>
-                <strong>Connected to Pivot OS.</strong> The number and the job come from Pivot OS, and your team sees the case here too.
-              </>
-            ) : (
-              <>
-                <strong>Provisional numbers.</strong> Pivot Mail issues these and shares the case with your team. They are not Pivot OS numbers yet.
-              </>
-            )}
-          </p>
+          linked ? null : (
+            <p className="notice" role="note">
+              <strong>Provisional numbers.</strong> Pivot Mail issues these and shares the case with your team. They are not Pivot OS numbers yet.
+            </p>
+          )
         ) : (
           <p className="notice" role="note">
             <strong>Preview only.</strong> These numbers are generated in this browser and are not registered in Pivot OS. Do not use them on real jobs.

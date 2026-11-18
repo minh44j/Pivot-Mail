@@ -4247,7 +4247,7 @@ a.btn.google.real:hover {
 }
 @media (min-width: 1180px) { .tp-greet { display: inline; } }
 @media (max-width: 899px) {
-  .cmdbar { overflow-x: auto; scrollbar-width: none; }
+  .cmdbar { position: relative; overflow-x: auto; scrollbar-width: none; }
   .cmdbar::-webkit-scrollbar { display: none; }
   .cb-scroll { overflow: visible; flex: none; min-width: auto; }
   .cb-tools { margin-left: 0; flex: none; }
@@ -4456,12 +4456,12 @@ button.ref-chip:hover { background: #cdeee1; }
 .rg-mode:hover { background: #fafbfc; }
 .rg-mode.on { background: #2a68b0; border-color: #2a68b0; color: #fff; font-weight: 600; }
 .rg-mode.on svg { color: #fff; }
-.rg-area { position: relative; border-radius: 22px; }
-.rg-area textarea { display: block; width: 100%; min-height: 96px; padding: 14px 18px 26px; border: 0; border-radius: 22px; background: none; outline: none; resize: vertical; font: inherit; color: var(--label); }
+.rg-area { position: relative; border-radius: 14px; }
+.rg-area textarea { display: block; width: 100%; min-height: 56px; padding: 10px 14px 22px; border: 0; border-radius: 14px; background: none; outline: none; resize: vertical; font: inherit; color: var(--label); }
 .rg-area small { position: absolute; right: 14px; bottom: 8px; font-size: 12px; color: var(--label-2); }
 .rg-select { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 16px; color: var(--label-2); }
 .rg-select select { flex: 1; min-width: 0; appearance: none; border: 0; background: none; outline: none; font: inherit; color: var(--label); }
-.rg-people { display: flex; gap: 6px; overflow-x: auto; padding: 10px 8px; border-radius: 18px; background: #f7f8fa; scrollbar-width: thin; }
+.rg-people { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: thin; }
 .rg-person { display: flex; flex: none; flex-direction: column; align-items: center; gap: 4px; width: 76px; padding: 4px 2px; border: 0; border-radius: var(--r-md); background: none; color: var(--label); }
 .rg-person .avatar { width: 42px; height: 42px; background: #fff; box-shadow: 0 0 0 1px var(--separator); }
 .rg-person small { font-size: 12px; max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
