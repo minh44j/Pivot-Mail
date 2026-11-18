@@ -30,6 +30,20 @@ namespace PivotMailSetup
         /// <summary>Must match the app's AppUserModelId: Electron's "Start with Windows" uses it as the registry value name.</summary>
         const string RunValue = "com.pivot.mail";
 
+        /// <summary>
+        /// Pivot Mail runs on 64-bit Windows 10 and 11 (Intel/AMD, and Windows 11 on ARM through its built-in x64 emulation).
+        /// Returns why this computer cannot run it, or null when it can.
+        /// </summary>
+        public static string Unsupported()
+        {
+            var v = Environment.OSVersion.Version; // true version: app.manifest declares Windows 10/11 support
+            if (v.Major < 10) return "Pivot Mail needs Windows 10 or Windows 11. This computer has an older Windows, which no longer receives security updates. Please ask IT to update it.";
+            if (!Environment.Is64BitOperatingSystem) return "Pivot Mail needs the 64-bit edition of Windows 10 or 11. This computer has the 32-bit edition. Please ask IT.";
+            var arch = (Environment.GetEnvironmentVariable("PROCESSOR_ARCHITEW6432") ?? Environment.GetEnvironmentVariable("PROCESSOR_ARCHITECTURE") ?? "").ToUpperInvariant();
+            if (arch == "ARM64" && v.Build < 22000) return "On computers with an ARM processor, Pivot Mail needs Windows 11 (Windows 10 on ARM cannot run it). Please ask IT.";
+            return null;
+        }
+
         public static async Task<Result> InstallAsync(Action<double, string> progress)
         {
             var tmp = Path.Combine(Path.GetTempPath(), "PivotMailSetup-" + Guid.NewGuid().ToString("N"));

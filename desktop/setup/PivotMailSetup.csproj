@@ -1,10 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Pivot Mail Setup: the installer people double-click. A small WPF window (.NET Framework 4.8 is part of Windows 10/11, so
+  <!-- Pivot Mail Setup: the installer people double-click. A small WPF window (.NET Framework 4.6.2 is part of Windows 10/11, so
        nothing extra is needed) that carries the real installer (electron-builder's NSIS package) inside and runs it out of sight.
        Build: dotnet build -c Release -p:PayloadPath=..\release\PivotMail-Package-X.exe -p:ExpectedBytesPath=..\release\expected-bytes.txt -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net48</TargetFramework>
+    <!-- 4.6.2 is built into every Windows 10 still in use (1607 and later) and Windows 11. -->
+    <TargetFramework>net462</TargetFramework>
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <LangVersion>latest</LangVersion>

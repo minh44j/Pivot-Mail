@@ -14,6 +14,11 @@ namespace PivotMailSetup
                 if (arg == "/silent" || arg == "--silent" || arg == "/s")
                 {
                     ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                    if (Installer.Unsupported() != null)
+                    {
+                        Shutdown(2); // this Windows cannot run Pivot Mail
+                        return;
+                    }
                     // On a worker thread: waiting here on the window thread itself would never finish.
                     var r = System.Threading.Tasks.Task.Run(() => Installer.InstallAsync(null)).GetAwaiter().GetResult();
                     if (r.Ok) Installer.Apply(runNow: false, startup: true, desktop: true);

@@ -1,6 +1,6 @@
 # Runs Pivot Mail Setup the way a person would (Enter = the highlighted button) and photographs each screen.
 # Used only by .github/workflows/installer-preview.yml to show what installing Pivot Mail looks like.
-param([string]$Installer, [string]$Out)
+param([string]$Installer, [string]$Out, [switch]$KeepInstalled)
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @"
 using System; using System.Runtime.InteropServices;
@@ -32,7 +32,13 @@ Shot '3-ready'
 Press 'Pivot Mail Setup'
 Start-Sleep -Seconds 8
 Shot '4-pivot-mail-opens'
-# leave the machine clean
+# close Pivot Mail; remove it unless the next step still needs it
 Get-Process | Where-Object { $_.ProcessName -like 'Pivot Mail*' } | Stop-Process -Force -ErrorAction SilentlyContinue
+# the refusal screen a computer with an unsupported Windows would see
+$r = Start-Process -FilePath $Installer -ArgumentList '/preview-unsupported' -PassThru
+Start-Sleep -Seconds 3
+Shot '7-unsupported-windows'
+Stop-Process -Id $r.Id -Force -ErrorAction SilentlyContinue
+if ($KeepInstalled) { return }
 $un = Join-Path $env:LOCALAPPDATA 'Programs\pivot-mail-desktop\Uninstall Pivot Mail.exe'
 if (Test-Path $un) { Start-Process -FilePath $un -ArgumentList '/S' -Wait }

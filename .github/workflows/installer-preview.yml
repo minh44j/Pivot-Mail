@@ -25,8 +25,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            desktop/package-lock.json
+            web/package-lock.json
       - run: npm ci
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
       - name: Package and Setup
         shell: bash
         env:
@@ -43,8 +47,17 @@ jobs:
           $v = (Get-Content package.json | ConvertFrom-Json).version
           $out = Join-Path (Get-Location) 'installer-preview'
           Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
-          ./test/installer-shots.ps1 -Installer "release/PivotMail-Setup-$v.exe" -Out $out
-          Get-ChildItem $out | Format-Table Name, Length
+          ./test/installer-shots.ps1 -Installer "release/PivotMail-Setup-$v.exe" -Out $out -KeepInstalled
+      - name: Real new-mail alerts from the installed app
+        shell: bash
+        run: |
+          (cd ../web && npm ci && npm run build)
+          npm install --no-save playwright@1.63.0
+          (cd ../web && nohup npx tsx ../desktop/test/server.mts > "$GITHUB_WORKSPACE/server.log" 2>&1 &)
+          for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:4310/ && break; sleep 1; done
+          PIVOT_MAIL_EXE="$LOCALAPPDATA/Programs/pivot-mail-desktop/Pivot Mail.exe" PIVOT_MAIL_SHOTS="$(cygpath -w "$PWD/installer-preview")" node test/e2e.cjs || true
+          "$LOCALAPPDATA/Programs/pivot-mail-desktop/Uninstall Pivot Mail.exe" /S || true
+          ls -la installer-preview
       - name: Save the photos on this branch
         shell: bash
         run: |

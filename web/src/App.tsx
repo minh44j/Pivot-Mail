@@ -699,6 +699,44 @@ export default function App() {
     }
   })
 
+  /** "Mark as read" on a Windows alert: the same as marking it read in the list (also in Gmail). */
+  const alertRead = useRef<(id: string) => void>(() => {})
+  useEffect(() => {
+    // An alert clicked while Pivot Mail was closed starts the app first: the mail may not be loaded yet, so it waits (up to 15 s).
+    const handle = (a: { action: string; accountId: string; messageId: string }, tries = 0) => {
+      const m = messagesRef.current.find((x) => x.id === a.messageId)
+      const base = messagesRef.current.find((x) => x.accountId === a.accountId)
+      if (!(m || (a.action !== 'read' && base)) && tries < 15) {
+        window.setTimeout(() => handle(a, tries + 1), 1000)
+        return
+      }
+      if (a.action === 'read') {
+        if (m) alertRead.current(m.id)
+      } else if (a.action === 'open' && m) alertOpen.current(m)
+      else if (base) alertOpen.current({ ...base, id: '' }) // the Inbox of that mailbox
+    }
+    desktop()?.onMailAction?.((a) => handle(a))
+  }, [])
+
+  /**
+   * New-mail alert. In the Windows app: a real Windows alert like Outlook's (initials picture, sender, subject, first line,
+   * mailbox, Open / Mark as read). Elsewhere, or if Windows cannot show it: the browser's simpler alert.
+   */
+  const notifyNewMail = useCallback(async (accountId: string, fresh: Message[], mailbox: string) => {
+    const one = fresh[0]
+    if (!one) return
+    const app = desktop()
+    if (app?.notifyMail) {
+      const shown =
+        fresh.length === 1
+          ? await app.notifyMail({ kind: 'one', accountId, messageId: one.id, sender: one.from.name || one.from.email, subject: one.subject, preview: (one.body || '').replace(/\s+/g, ' ').slice(0, 200), mailbox }, { name: one.from.name, email: one.from.email })
+          : await app.notifyMail({ kind: 'many', accountId, count: fresh.length, mailbox, lines: fresh.slice(0, 3).map((m) => ({ sender: m.from.name || m.from.email, subject: m.subject })) }, { name: mailbox, email: mailbox })
+      if (shown) return
+    }
+    if (fresh.length === 1) platform.notify(one.from.name || one.from.email || 'New mail', one.subject || '(no subject)', () => alertOpen.current(one))
+    else platform.notify(`${fresh.length} new messages`, fresh.map((m) => m.from.name || m.from.email).slice(0, 3).join(', '), () => alertOpen.current({ ...one, id: '' }))
+  }, [])
+
   const applyChanges = useCallback(
     async (accountId: string, r: Changes) => {
       const labels = await ensureLabels(accountId)
@@ -752,11 +790,9 @@ export default function App() {
       // Alert for new unread mail in the Inbox, not for what we sent ourselves.
       const me = realAccountsRef.current.find((x) => x.id === accountId)?.email
       const fresh2 = added.filter((m) => m.folder === 'inbox' && m.unread && m.from.email !== me && !known.has(m.id))
-      const one = fresh2[0]
-      if (fresh2.length === 1 && one) platform.notify(one.from.name || one.from.email || 'New mail', one.subject || '(no subject)', () => alertOpen.current(one))
-      else if (fresh2.length > 1) platform.notify(`${fresh2.length} new messages`, fresh2.map((m) => m.from.name || m.from.email).slice(0, 3).join(', '), () => alertOpen.current({ ...fresh2[0]!, id: '' }))
+      if (fresh2.length > 0) void notifyNewMail(accountId, fresh2, me ?? '')
     },
-    [ensureLabels, mergeIn, loadThread],
+    [ensureLabels, mergeIn, loadThread, notifyNewMail],
   )
 
   const pollAccount = useCallback(
@@ -1970,6 +2006,10 @@ export default function App() {
       }
     }
   }
+  // "Mark as read" on a Windows alert does exactly what marking it read in the list does.
+  useEffect(() => {
+    alertRead.current = (id) => runOp([id], { kind: 'read', read: true })
+  })
 
   /** Drag onto a sidebar folder or label. Same mailbox only. */
   const dropMessages = (ids: string[], target: FolderSel) => runOp(ids, { kind: 'move', target })

@@ -19,7 +19,12 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Tested on a Windows 10-class machine (Server 2022 shares Windows 10's code base) and a Windows 11-class one (Server 2025).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: desktop
@@ -94,6 +99,7 @@ jobs:
         shell: bash
         run: cat "$GITHUB_WORKSPACE/server.log" || true
       - uses: actions/upload-artifact@v4
+        if: matrix.os == 'windows-latest'
         with:
           name: PivotMail-Windows
           path: desktop/release/PivotMail-Setup-*.exe

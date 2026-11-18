@@ -19,7 +19,22 @@ namespace PivotMailSetup
             Fine.Text = $"Installs for you only · no administrator rights needed · version {v.Major}.{v.Minor}.{v.Build}";
             // The card's corners also clip the waves.
             Root.SizeChanged += (s, e) => Root.Clip = new RectangleGeometry(new Rect(0, 0, Root.ActualWidth, Root.ActualHeight), 17, 17);
-            Loaded += (s, e) => Show(Welcome); // Enter presses the dark button (IsDefault); its outline only shows when someone uses Tab
+            Loaded += (s, e) =>
+            {
+                // A computer that cannot run Pivot Mail is told so at once, before anything is installed.
+                var why = Installer.Unsupported();
+                // Screenshot preview only (installer-preview workflow): shows the refusal screen on a supported computer.
+                if (Array.IndexOf(Environment.GetCommandLineArgs(), "/preview-unsupported") > 0) why = "Pivot Mail needs Windows 10 or Windows 11. This computer has an older Windows, which no longer receives security updates. Please ask IT to update it.";
+                if (why != null)
+                {
+                    FailTitle.Text = "This computer can't run Pivot Mail";
+                    FailText.Text = why;
+                    RetryBtn.Visibility = Visibility.Collapsed;
+                    Show(Failed);
+                    return;
+                }
+                Show(Welcome); // Enter presses the dark button (IsDefault); its outline only shows when someone uses Tab
+            };
         }
 
         /// <summary>Shows one screen with a short fade and rise (the others are hidden).</summary>

@@ -9,7 +9,7 @@
  * Sign-in: Google does not allow its sign-in page inside an app's own window, so sign-in happens in the person's normal browser and is
  * handed back to the app (see beginSignIn / handleLink, and web/api/_lib/auth/desktop.ts on the server).
  */
-import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, net, session, shell } from 'electron'
+import { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, net, session, shell } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
 import { execFile } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
@@ -18,6 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { safeFileName, uniqueName } from './files'
+import { cleanToast, toastXml } from './toast'
 
 type Company = 'scl' | 'tmc'
 const HOSTS: Record<Company, string> = { scl: 'https://mail.pivotscl.com', tmc: 'https://mail.pivottmc.com' }
@@ -33,6 +34,8 @@ interface Settings {
   trayHintShown?: boolean
   /** The person chose dark mode in Pivot Mail: the window opens dark too (no white flash). */
   dark?: boolean
+  /** Secret carried by the links in new-mail alerts, so only alerts from this app can open or mark mail (not a website). */
+  toastKey?: string
 }
 
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json')
@@ -127,7 +130,12 @@ async function handleLink(link: string): Promise<void> {
   } catch {
     return
   }
-  if (u.host !== 'auth' && u.pathname.replace(/^\/+/, '') !== 'auth') return
+  const verb = u.host || u.pathname.replace(/^\/+/, '')
+  if (verb === 'open' || verb === 'read' || verb === 'inbox') {
+    mailAction(verb, u)
+    return
+  }
+  if (verb !== 'auth') return
   const t = u.searchParams.get('t')
   const base = baseUrl()
   // Only a sign-in this app started (in the last 10 minutes) is accepted: a link arriving out of the blue is ignored.
@@ -175,6 +183,75 @@ async function handleLink(link: string): Promise<void> {
   pendingStart = null
   reveal(w)
   signin?.close()
+}
+
+/* ------------------------------------------------------------------ new-mail alerts (toast.ts) */
+
+/** Alerts stay referenced while shown (Windows drops the click handler of an alert that was garbage-collected). */
+const shownToasts: Notification[] = []
+/** Alert clicks that arrived before the page was ready to handle them (for example the click that started the app). */
+let queuedActions: { action: string; accountId: string; messageId: string }[] = []
+let actionsReady = false
+
+function toastKey(): string {
+  if (!settings.toastKey) {
+    settings.toastKey = b64url(randomBytes(18))
+    saveSettings()
+  }
+  return settings.toastKey
+}
+
+function mailLink(action: 'open' | 'read' | 'inbox', accountId: string, messageId?: string): string {
+  const q = new URLSearchParams({ a: accountId, k: toastKey() })
+  if (messageId) q.set('m', messageId)
+  return `${SCHEME}://${action}?${q.toString()}`
+}
+
+/** A click on an alert or one of its buttons: only with this computer's key; opens the window and tells the page what to do. */
+function mailAction(action: string, u: URL): void {
+  if (!settings.toastKey || u.searchParams.get('k') !== settings.toastKey) return
+  const accountId = u.searchParams.get('a') ?? ''
+  const messageId = u.searchParams.get('m') ?? ''
+  if (!/^[A-Za-z0-9:_-]{1,200}$/.test(accountId) || (messageId && !/^[A-Za-z0-9:_-]{1,200}$/.test(messageId))) return
+  if (action !== 'read') showWindow()
+  const item = { action, accountId, messageId }
+  if (win && actionsReady) win.webContents.send('pm:mail-action', item)
+  else queuedActions.push(item)
+}
+
+/** Writes the sender's initials picture (a small PNG drawn by the page) where Windows can read it for the alert. */
+function avatarFile(dataUrl: unknown): string | undefined {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,') || dataUrl.length > 200_000) return undefined
+  try {
+    const bytes = Buffer.from(dataUrl.slice(22), 'base64')
+    const dir = path.join(app.getPath('userData'), 'alert-pictures')
+    fs.mkdirSync(dir, { recursive: true })
+    const file = path.join(dir, `${createHash('sha1').update(bytes).digest('hex').slice(0, 16)}.png`)
+    if (!fs.existsSync(file)) fs.writeFileSync(file, bytes)
+    return file
+  } catch {
+    return undefined
+  }
+}
+
+function showMailToast(payload: unknown, avatar: unknown): boolean {
+  const t = cleanToast(payload)
+  if (!t || process.platform !== 'win32' || !Notification.isSupported()) return false
+  const pic = avatarFile(avatar)
+  const xml = toastXml(t, (action, messageId) => mailLink(action, t.accountId, messageId), pic ? `file:///${pic.replace(/\\/g, '/')}` : undefined)
+  try {
+    const n = new Notification({ toastXml: xml })
+    n.on('failed', (_e, err) => {
+      ;(global as unknown as { __pmToastError?: string }).__pmToastError = String(err) // read by the Windows test
+    })
+    n.show()
+    shownToasts.push(n)
+    if (shownToasts.length > 20) shownToasts.shift()
+    ;(global as unknown as { __pmLastToast?: string }).__pmLastToast = xml
+    return true
+  } catch {
+    return false
+  }
 }
 
 /* ------------------------------------------------------------------ navigation rules */
@@ -372,6 +449,10 @@ function createWindow(hidden = false, load = true): void {
   })
   win.on('closed', () => {
     win = null
+    actionsReady = false
+  })
+  win.webContents.on('did-start-navigation', (_e, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) actionsReady = false
   })
   // Cannot reach Pivot Mail (no internet, network not up yet after Windows starts, server down): show the built-in explanation
   // and keep trying, instead of a blank window. Navigations the app itself stops (other sites, sign-in) report "aborted": ignored.
@@ -581,6 +662,26 @@ function bridge(): void {
     } catch {
       /* ignored */
     }
+  })
+
+  // New-mail alert drawn by Windows (false: not available here, the page then uses its own simpler alert).
+  ipcMain.handle('pm:notify', (e, payload: unknown, avatar: unknown) => {
+    if (!fromApp(e)) return false
+    if (process.platform !== 'win32') {
+      // Automated tests on other systems: keep what would have been shown.
+      const t = cleanToast(payload)
+      if (!t) return false
+      ;(global as unknown as { __pmLastToast?: string }).__pmLastToast = toastXml(t, (action, messageId) => mailLink(action, t.accountId, messageId), avatarFile(avatar))
+      return false
+    }
+    return showMailToast(payload, avatar)
+  })
+  // The page is ready for alert clicks: hand over any that arrived while it was starting.
+  ipcMain.on('pm:actions-ready', (e) => {
+    if (!win || !fromApp(e)) return
+    actionsReady = true
+    for (const a of queuedActions) win.webContents.send('pm:mail-action', a)
+    queuedActions = []
   })
 
   // A clicked new-mail alert brings the window back, also from the tray.

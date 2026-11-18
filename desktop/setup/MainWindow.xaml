@@ -117,9 +117,9 @@
           <Ellipse Fill="#FDE7E5" />
           <Path Data="M 31 18 L 31 35 M 31 43 L 31 43.5" Stroke="#C8281C" StrokeThickness="5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
         </Grid>
-        <TextBlock Text="Installation didn't finish" FontFamily="{StaticResource Display}" FontSize="30" FontWeight="Bold" Foreground="{StaticResource Ink}" HorizontalAlignment="Center" />
+        <TextBlock x:Name="FailTitle" Text="Installation didn't finish" FontFamily="{StaticResource Display}" FontSize="30" FontWeight="Bold" Foreground="{StaticResource Ink}" HorizontalAlignment="Center" />
         <TextBlock x:Name="FailText" FontSize="15" Foreground="{StaticResource Ink2}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460" Margin="0,8,0,24" />
-        <Button Style="{StaticResource Primary}" Content="Try again" IsDefault="True" Click="OnRetry" />
+        <Button x:Name="RetryBtn" Style="{StaticResource Primary}" Content="Try again" IsDefault="True" Click="OnRetry" />
         <Button Style="{StaticResource Secondary}" Content="Close" Margin="0,12,0,0" Click="OnClose" />
       </StackPanel>
     </Grid>

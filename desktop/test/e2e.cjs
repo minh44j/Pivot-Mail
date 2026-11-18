@@ -53,7 +53,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin.png') })
 
   // ---- the page itself is locked down
-  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'onSignInState', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
+  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'notifyMail', 'onMailAction', 'onSignInState', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await si.locator('button[data-co="scl"]').click(); await si.waitForTimeout(800)
@@ -128,6 +128,37 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide()); await win.waitForTimeout(300)
   await win.evaluate(() => window.pivotDesktop.show()); await win.waitForTimeout(500)
   ok('D28 clicking an alert brings the window back out of the tray', await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
+
+  // ---- rich new-mail alerts (Windows toasts)
+  const one = { kind: 'one', accountId: 'acc-1', messageId: 'acc-1:m1', sender: 'Maersk Line <script>&', subject: 'Arrival notice — MSKU 765432-1 at "Jeddah"', preview: 'Your container has arrived at Jeddah Islamic Port. Please arrange customs clearance and delivery.', mailbox: 'ops@pivotscl.com' }
+  const shownWin = await win.evaluate((o) => window.pivotDesktop.notifyMail(o, { name: 'Maersk Line', email: 'notify@maersk.com' }), one)
+  const xml = await app.evaluate(() => global.__pmLastToast || '')
+  const key = JSON.parse(fs.readFileSync(path.join(userData, 'settings.json'), 'utf8')).toastKey || ''
+  ok('D48 a new mail alert carries the sender, subject, first line and mailbox, with Open and Mark as read', /Maersk Line &lt;script&gt;&amp;/.test(xml) && xml.includes('Arrival notice — MSKU 765432-1 at &quot;Jeddah&quot;') && xml.includes('Your container has arrived') && xml.includes('placement="attribution">ops@pivotscl.com') && xml.includes('content="Open"') && xml.includes('content="Mark as read"') && xml.includes('Notification.Mail') && xml.includes('appLogoOverride'), xml.slice(0, 300))
+  ok('D49 ...its buttons carry this computer\'s secret key (a website cannot fake them)', key.length >= 20 && xml.includes(`k=${key}`))
+  const many = { kind: 'many', accountId: 'acc-1', count: 5, mailbox: 'ops@pivotscl.com', lines: [{ sender: 'Maersk Line', subject: 'Arrival notice' }, { sender: 'Hapag-Lloyd', subject: 'Booking confirmed' }, { sender: 'Customs', subject: 'Clearance done' }] }
+  await win.evaluate((o) => window.pivotDesktop.notifyMail(o, { name: 'ops', email: 'ops@pivotscl.com' }), many)
+  const xml2 = await app.evaluate(() => global.__pmLastToast || '')
+  ok('D50 several at once: one tidy alert "5 new messages" with three senders and "+ 2 more"', xml2.includes('5 new messages') && xml2.includes('Hapag-Lloyd — Booking confirmed') && xml2.includes('+ 2 more'))
+  // clicks on the alert's buttons arrive in the page; a link with the wrong key is ignored
+  await win.evaluate(() => { window.__acts = []; window.pivotDesktop.onMailAction((a) => window.__acts.push(a)) }); await win.waitForTimeout(200)
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), `pivotmail://read?a=acc-1&k=wrong&m=acc-1%3Am1`); await win.waitForTimeout(300)
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), `pivotmail://read?a=acc-1&k=${key}&m=acc-1%3Am1`); await win.waitForTimeout(400)
+  const acts = await win.evaluate(() => window.__acts)
+  ok('D51 "Mark as read" on an alert reaches Pivot Mail; a faked link (wrong key) does nothing', acts.length === 1 && acts[0].action === 'read' && acts[0].messageId === 'acc-1:m1', JSON.stringify(acts))
+  if (process.platform === 'win32') {
+    ok('D52 on Windows the alert is drawn by Windows itself', shownWin === true)
+    await win.waitForTimeout(1500)
+    const err = await app.evaluate(() => global.__pmToastError || null)
+    ok('D53 ...and Windows accepted it (no error)', err === null, err)
+    if (process.env.PIVOT_MAIL_SHOTS) {
+      // Photograph the real alerts on screen (the installer-preview job runs this against the installed app).
+      const shot = (name) => require('node:child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command', `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $p=New-Object Drawing.Bitmap $b.Width,$b.Height; $g=[Drawing.Graphics]::FromImage($p); $g.CopyFromScreen($b.Location,[Drawing.Point]::Empty,$b.Size); $p.Save('${path.join(process.env.PIVOT_MAIL_SHOTS, name).replace(/'/g, "''")}')`])
+      await win.evaluate((o) => window.pivotDesktop.notifyMail({ ...o, sender: 'Maersk Line' }, { name: 'Maersk Line', email: 'notify@maersk.com' }), one); await win.waitForTimeout(2500); shot('5-alert-one-mail.png')
+      await win.waitForTimeout(6000)
+      await win.evaluate((o) => window.pivotDesktop.notifyMail(o, { name: 'ops', email: 'ops@pivotscl.com' }), many); await win.waitForTimeout(2500); shot('6-alert-several.png')
+    }
+  }
 
   // ---- the local mail database
   const mk = (id, acc, date, extra = {}) => ({ id, threadId: id, accountId: acc, folder: 'inbox', labels: [], from: { name: 'Maersk Line', email: 'notify@maersk.com' }, to: [{ name: 'Ann', email: 'ann@pivotscl.com' }], subject: 'Hello', body: '', date, unread: true, flagged: false, attachments: [], ...extra })
