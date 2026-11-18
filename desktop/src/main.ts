@@ -756,11 +756,15 @@ function filesToClipboard(paths: string[]): Promise<boolean> {
     // The same as copying files in Finder (file addresses on the Mac's clipboard): ⌘V pastes them in Finder, Mail, Teams,
     // WhatsApp and the rest. Done by the Mac's own scripting (osascript); the paths travel in an environment variable, never
     // inside the script text.
+    // One clipboard entry per file, each holding its file address in full right away (written "lazily", only the first file
+    // survived once the helper ended), and the classic file list on the first entry too, as Finder does.
     const jxa =
       'ObjC.import("AppKit");' +
       'const list = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey("PM_CLIP_FILES")).split("\\n");' +
-      'const urls = $.NSMutableArray.array; for (const p of list) urls.addObject($.NSURL.fileURLWithPath(p));' +
-      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; (pb.writeObjects(urls) ? "ok " : "no ") + pb.pasteboardItems.count + "/" + list.length'
+      'const items = $.NSMutableArray.array;' +
+      'list.forEach((p, i) => { const it = $.NSPasteboardItem.alloc.init; it.setStringForType($.NSURL.fileURLWithPath(p).absoluteString, "public.file-url");' +
+      ' if (i === 0) it.setPropertyListForType($(list), "NSFilenamesPboardType"); items.addObject(it) });' +
+      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; (pb.writeObjects(items) ? "ok " : "no ") + pb.pasteboardItems.count + "/" + list.length'
     return new Promise((resolve) => {
       execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { timeout: 20_000, env: { ...process.env, PM_CLIP_FILES: paths.join('\n') } }, (err, out) => {
         ;(global as unknown as { __pmClipboardFiles?: string[]; __pmClipboardNote?: string }).__pmClipboardFiles = paths // read by the Mac test
