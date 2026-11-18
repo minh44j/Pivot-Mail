@@ -45,7 +45,7 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
             </section>
           ))}
           <p className="muted sc-foot">
-            {isMac ? '⌘ or Control both work.' : 'On Mac, ⌘ works in place of Ctrl.'} The browser keeps Ctrl+N, Ctrl+T and Ctrl+W, so use N or Ctrl+Shift+M for a new message. Ctrl+Shift+I may open developer tools in some browsers.
+            {isMac ? '⌘ or Control both work, except ⌘Q, ⌘H, ⌘M and ⌘W, which stay with your Mac (use Control there: ⌃Q marks as read).' : 'On Mac, ⌘ works in place of Ctrl.'} The browser keeps Ctrl+N, Ctrl+T and Ctrl+W, so use N or Ctrl+Shift+M for a new message. Ctrl+Shift+I may open developer tools in some browsers.
           </p>
         </div>
       </div>

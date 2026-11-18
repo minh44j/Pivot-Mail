@@ -94,9 +94,8 @@ export class MailStore {
     this.db.exec(`
       PRAGMA journal_mode = WAL;
       PRAGMA synchronous = NORMAL;
-      -- Read the file through memory mapping (no copy per page read: noticeably faster on Mac and Windows), a 16 MB page cache,
-      -- and in-memory scratch space for sorting search matches.
-      PRAGMA mmap_size = 268435456;
+      -- A 16 MB page cache and in-memory scratch space for sorting search matches. (No memory mapping: with it a disk read error,
+      -- e.g. on a company network drive, would crash the whole app instead of failing one query.)
       PRAGMA cache_size = -16000;
       PRAGMA temp_store = MEMORY;
       -- Fold the write-ahead log into the file every ~40 MB instead of every 4 MB: each fold waits for the disk (slow on Windows),

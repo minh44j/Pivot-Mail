@@ -50,6 +50,8 @@ interface Settings {
   dark?: boolean
   /** Mac: the one-time welcome alert was shown (it makes macOS ask for alert permission at once, not at the first mail). */
   macAlertsIntro?: boolean
+  /** Mac: "Not now" to moving into Applications (not asked again). */
+  macMoveDeclined?: boolean
   /** Secret carried by the links in new-mail alerts, so only alerts from this app can open or mark mail (not a website). */
   toastKey?: string
 }
@@ -419,14 +421,13 @@ function start(hidden: boolean): Promise<void> {
     const base = baseUrl()
     const state = base ? await sessionState(base) : 'out'
     if (state === 'out') openSignIn()
-    else createWindow(hidden && !showAfterStart)
+    else {
+      if (showAfterStart) startMinimized = false // the person clicked meanwhile: they want to see it
+      createWindow(hidden && !showAfterStart) // (it shows itself once drawn: no empty window first)
+    }
   })().finally(() => {
     starting = null
-    if (showAfterStart) {
-      showAfterStart = false
-      const w = win ?? signin
-      if (w) reveal(w)
-    }
+    showAfterStart = false
   })
   return starting
 }
@@ -632,7 +633,11 @@ function manualRestartToUpdate(): void {
 }
 
 /** Start Pivot Mail when the person signs in to the computer: quietly in the tray (Windows) or with its window hidden (Mac). */
+/** Mac: "Open at Login" only from the Applications folder (from the disk image it would point at a place that disappears). */
+const canStartAtLogin = () => !isMac || !app.isPackaged || app.isInApplicationsFolder()
+
 function setStartAtLogin(on: boolean): void {
+  if (on && !canStartAtLogin()) return
   try {
     if (isMac) app.setLoginItemSettings({ openAtLogin: on })
     else app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] })
@@ -658,7 +663,8 @@ function buildTray(): void {
       {
         label: isMac ? 'Open at Login' : 'Start with Windows',
         type: 'checkbox',
-        checked: !!settings.startWithWindows,
+        enabled: canStartAtLogin(),
+        checked: !!settings.startWithWindows && canStartAtLogin(),
         click: (item) => {
           settings.startWithWindows = item.checked
           saveSettings()
@@ -695,7 +701,8 @@ function macMenu(): Menu {
         {
           label: 'Open at Login',
           type: 'checkbox',
-          checked: !!settings.startWithWindows,
+          enabled: canStartAtLogin(),
+          checked: !!settings.startWithWindows && canStartAtLogin(),
           click: (item) => {
             settings.startWithWindows = item.checked
             saveSettings()
@@ -1034,7 +1041,7 @@ app.whenReady().then(() => {
   // Mac: no installer asks, so "Open at Login" starts on, like the ticked box in the Windows installer (untick it in the menu).
   // Mac: opened straight from the downloaded disk image (or a temporary place macOS chose): offer to move it to Applications
   // first, so it stays installed and "Open at Login" points to the right place.
-  if (isMac && app.isPackaged && !process.env.PIVOT_MAIL_USER_DATA && !app.isInApplicationsFolder()) {
+  if (isMac && app.isPackaged && !process.env.PIVOT_MAIL_USER_DATA && !settings.macMoveDeclined && !app.isInApplicationsFolder()) {
     const choice = dialog.showMessageBoxSync({
       type: 'question',
       buttons: ['Move to Applications', 'Not now'],
@@ -1049,6 +1056,9 @@ app.whenReady().then(() => {
       } catch {
         /* moving was refused (the person can drag it there themselves) */
       }
+    } else {
+      settings.macMoveDeclined = true
+      saveSettings()
     }
   }
   if (isMac && typeof settings.startWithWindows !== 'boolean' && !process.env.PIVOT_MAIL_USER_DATA && app.isInApplicationsFolder()) {

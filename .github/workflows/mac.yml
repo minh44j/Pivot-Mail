@@ -12,7 +12,7 @@ on:
       - '.github/workflows/mac.yml'
 
 permissions:
-  contents: write # only to save the photos to desktop/mac-preview on this branch
+  contents: read
 
 concurrency:
   group: mac-${{ github.ref }}
@@ -27,6 +27,8 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -81,16 +83,6 @@ jobs:
           path: desktop/release/PivotMail-*-mac.dmg
           retention-days: 30
           compression-level: 0
-      - name: Save the photos on this branch (desktop/mac-preview)
-        if: always() && github.event_name == 'push'
-        working-directory: .
-        run: |
-          rm -rf desktop/mac-preview && mkdir -p desktop/mac-preview && cp mac-preview/*.png desktop/mac-preview/ 2>/dev/null || true
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add desktop/mac-preview
-          git commit -m "Mac preview screenshots [skip ci]" || exit 0
-          for i in 1 2 3 4; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break; sleep 5; done
       - name: Keep the photos
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,3 +90,28 @@ jobs:
           name: mac-preview
           path: mac-preview
           retention-days: 30
+
+  # The photos go to desktop/mac-preview on this branch (only after a fully passing run, never an empty set), from a separate
+  # small job: the build above, which runs npm installs, never holds a token that can push.
+  photos:
+    needs: build
+    if: success() && github.event_name == 'push' && github.ref != 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: mac-preview
+          path: mac-preview
+      - name: Save the photos on this branch
+        run: |
+          ls mac-preview/*.png >/dev/null 2>&1 || { echo "no photos: nothing saved"; exit 0; }
+          rm -rf desktop/mac-preview && mkdir -p desktop/mac-preview && cp mac-preview/*.png desktop/mac-preview/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add desktop/mac-preview
+          git commit -m "Mac preview screenshots [skip ci]" || exit 0
+          for i in 1 2 3 4; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && exit 0; sleep 5; done
+          exit 1

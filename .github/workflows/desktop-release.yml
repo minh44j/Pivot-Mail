@@ -18,6 +18,7 @@ jobs:
   # The Mac app (one .dmg for Apple Silicon and Intel), built and tested on a Mac, then attached to the same release.
   mac:
     runs-on: macos-latest
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: desktop
@@ -35,6 +36,12 @@ jobs:
           cache-dependency-path: |
             desktop/package-lock.json
             web/package-lock.json
+      - name: Refuse a version that was already released
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v is already released: raise the version in desktop/package.json first."; exit 1; fi
       - run: npm ci
       - name: Build the Mac app
         env:
