@@ -59,8 +59,27 @@ An independent code review of the desktop app plus hands-on testing. Fixed:
 
 The same desktop tests run on a real Windows machine (GitHub Actions) against the packaged app before each installer is published.
 
+## Windows app audit, round 2 (2026-11-18, version 0.10.0: updates, alerts, faster sync)
+
+Three independent review rounds, each re-checked after its fixes, plus real Windows runs.
+
+| Finding | Fix | Test |
+|---|---|---|
+| The update address was missing from the build: installed copies could never update, the release would have failed | Publish setting added; the release checks the update files exist before publishing | `e2e.cjs` D55, release workflow |
+| Updates could come from any branch's code | Release refused unless run from `main`; the tag is pinned to the tested commit | `desktop-release.yml` |
+| Updates installed only on a full quit (rare: closing hides to the tray) | Installs after 20 idle minutes when the screen is locked or Pivot Mail is not on screen; reopens as it was (tray / minimised) | review |
+| An emoji at the cut point or a forbidden character could make Windows drop an alert | Whole-character cuts, forbidden characters removed, plain alert if Windows refuses the rich one | `e2e.cjs` D57 |
+| "Mark as read" on an alert popped the window open | Quiet | `e2e.cjs` D56 |
+| Gmail rate limits during fast sync | Smaller batches, busy messages retried in a later batch, batching paused (not dropped) after network errors | `speed.js` busy case |
+| The update test could leave an installer running on the test machine | Ends without installing; check that nothing is left | `e2e.cjs` D59 |
+
+Updates are downloaded only from this repository's GitHub Releases over HTTPS and checked against the release's SHA-512
+checksum. A local test feed is accepted only for `localhost`. **Open:** the app is not code-signed (needs a paid
+certificate); Windows may show "unknown publisher" on first install, and updates are not checked against a publisher name.
+
 ## Still open
 
 - **Backups**: the Pivot Mail database (people, mailbox connections, cases, audit log) has no automatic backup on the free plan. Losing it means reconnecting every mailbox and losing case notes. Options: upgrade the project, or a nightly backup job (needs a database connection secret in GitHub).
 - **Pilot**: 3 staff for 2 weeks (Phase 6).
+- **Code signing** of the Windows app (certificate, paid): removes the "unknown publisher" warning and lets updates check the publisher.
 - The weather in the top bar sends the city name to Open-Meteo (no account, no personal data beyond the city).
