@@ -108,7 +108,8 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   // The new message window opens at the size of the reading pane. The corner button switches to a small floating window.
   const [rect, setRect] = useState<Box | null>(readerBox)
   const [expanded, setExpanded] = useState(() => readerBox() !== null)
-  const [showBcc, setShowBcc] = useState(Boolean(init.bcc))
+  const [showCc, setShowCc] = useState(Boolean(init.cc.trim()))
+  const [showBcc, setShowBcc] = useState(Boolean(init.bcc.trim()))
   const [fmt, setFmt] = useState({ bold: false, italic: false, underline: false, ul: false, ol: false })
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
@@ -174,7 +175,8 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
       const body = sanitizeHtml(parsed.body ?? '')
       if (ed.current) ed.current.innerHTML = body
       setD({ ...parsed, to: asChips(parsed.to), cc: asChips(parsed.cc), bcc: asChips(parsed.bcc), body })
-      setShowBcc(Boolean(parsed.bcc))
+      setShowCc(Boolean(parsed.cc?.trim()))
+      setShowBcc(Boolean(parsed.bcc?.trim()))
       onToast('Unsent draft restored')
     } catch {
       platform.storage.remove(DRAFT_KEY)
@@ -450,29 +452,10 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             <Icon name="clock" size={16} tone="orange" /> Send later
           </button>
         )}
-        <button type="button" onClick={() => fileInput.current?.click()}>
-          <Icon name="clip" size={16} tone="blue" /> Attach
-        </button>
-        <select
-          aria-label="Insert template"
-          value=""
-          onChange={(e) => {
-            const t = templates.find((x) => x.id === e.target.value)
-            if (t) insertTemplate(t)
-          }}
-        >
-          <option value="">Templates…</option>
-          {templates.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.category} – {t.name}
-            </option>
-          ))}
-        </select>
         <span className="grow" />
         <button type="button" onClick={discard} aria-label="Discard draft">
           <Icon name="trash" size={16} tone="red" />
         </button>
-        <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
       </div>
       <div className="composer-body">
         <label className="field">
@@ -485,20 +468,30 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             ))}
           </select>
         </label>
-        <RecipientField label="To" value={d.to} onChange={(v) => setD((p) => ({ ...p, to: v }))} autoFocus={!d.to} />
         <RecipientField
-          label="Cc"
-          value={d.cc}
-          onChange={(v) => setD((p) => ({ ...p, cc: v }))}
+          label="To"
+          value={d.to}
+          onChange={(v) => setD((p) => ({ ...p, to: v }))}
+          autoFocus={!d.to}
           rightSlot={
-            !showBcc ? (
-              <button type="button" className="link" onClick={() => setShowBcc(true)}>
-                Bcc
-              </button>
+            !showCc || !showBcc ? (
+              <span className="field-links">
+                {!showCc && (
+                  <button type="button" className="link" onClick={() => setShowCc(true)}>
+                    Cc
+                  </button>
+                )}
+                {!showBcc && (
+                  <button type="button" className="link" onClick={() => setShowBcc(true)}>
+                    Bcc
+                  </button>
+                )}
+              </span>
             ) : undefined
           }
         />
-        {showBcc && <RecipientField label="Bcc" value={d.bcc} onChange={(v) => setD((p) => ({ ...p, bcc: v }))} />}
+        {showCc && <RecipientField label="Cc" value={d.cc} onChange={(v) => setD((p) => ({ ...p, cc: v }))} autoFocus={!d.cc} />}
+        {showBcc && <RecipientField label="Bcc" value={d.bcc} onChange={(v) => setD((p) => ({ ...p, bcc: v }))} autoFocus={!d.bcc} />}
         <label className="field">
           <span>Subject</span>
           <input value={d.subject} onChange={(e) => setD({ ...d, subject: e.target.value })} />
@@ -534,6 +527,29 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           <span className="fsep" />
           <FBtn label="Insert link (Ctrl+K)" icon="link" onClick={openLink} />
           <FBtn label="Clear formatting" icon="clearFormat" onClick={() => exec('removeFormat')} />
+          <span className="fsep" />
+          <button type="button" className="fchip fchip-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}>
+            <Icon name="clip" size={16} tone="blue" /> Attach
+          </button>
+          <label className="fchip sig-pick tpl-pick">
+            <span className="sr-only">Insert template</span>
+            <select
+              aria-label="Insert template"
+              value=""
+              onChange={(e) => {
+                const tpl = templates.find((x) => x.id === e.target.value)
+                if (tpl) insertTemplate(tpl)
+              }}
+            >
+              <option value="">Templates…</option>
+              {templates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.category} – {tpl.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
           <span className="grow" />
           {(mySigs.length > 0 || sigNow !== '') && (
             <label className={`fchip sig-pick${sigNow ? ' on' : ''}`}>
