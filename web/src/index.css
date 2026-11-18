@@ -4629,3 +4629,39 @@ button.ref-chip:hover { background: #cdeee1; }
 .ref-tag b { font-weight: 700; font-variant-numeric: tabular-nums; }
 .ref-tag em { overflow: hidden; text-overflow: ellipsis; font-style: normal; font-weight: 500; opacity: 0.85; }
 .row .preview .ref-tag { margin-right: 6px; }
+
+/* ---- Reference number panel: compact (about two-thirds the width, about half the height). Same layout, tighter scale. ---- */
+.ref-panel #ref-title { font-size: 15px; }
+.ref-panel .modal-head { padding: 10px 14px 0; }
+.ref-panel .notice { margin: 6px 14px 0; font-size: 12px; }
+.ref-panel .co-tabs { margin: 8px 14px 0; padding: 2px; }
+.ref-panel .co-tabs button { min-height: 28px; font-size: 12px; gap: 5px; }
+.ref-panel .rg-form { gap: 10px; padding: 10px 14px 14px; }
+.ref-panel .rg-sec { gap: 5px; }
+.ref-panel .rg-h { gap: 6px; }
+.ref-panel .rg-h strong { font-size: 13px; }
+.ref-panel .rg-hi { width: 18px; height: 18px; }
+.ref-panel .rg-hint { margin: -2px 0 0; font-size: 11.5px; }
+.ref-panel .rg-input { min-height: 32px; padding: 0 12px; font-size: 13px; }
+.ref-panel .rg-route { gap: 8px; }
+.ref-panel .rg-cards { gap: 6px; }
+.ref-panel .rg-card { gap: 3px; padding: 8px 9px; border-radius: 12px; }
+.ref-panel .rg-card strong { font-size: 12.5px; }
+.ref-panel .rg-card small { font-size: 11px; line-height: 1.25; }
+.ref-panel .rg-ci { width: 26px; height: 26px; margin-bottom: 1px; }
+.ref-panel .rg-ci svg { width: 14px; height: 14px; }
+.ref-panel .rg-tick { top: 7px; right: 7px; width: 16px; height: 16px; }
+.ref-panel .rg-modes { gap: 6px; }
+.ref-panel .rg-mode { min-height: 30px; gap: 6px; font-size: 12.5px; }
+.ref-panel .rg-area { border-radius: 12px; }
+.ref-panel .rg-area textarea { min-height: 40px; padding: 7px 11px 18px; border-radius: 12px; font-size: 13px; }
+.ref-panel .rg-area small { right: 10px; bottom: 5px; font-size: 11px; }
+.ref-panel .rg-people { gap: 2px; padding: 0; }
+.ref-panel .rg-person { width: 58px; gap: 2px; padding: 2px; }
+.ref-panel .rg-person .avatar { width: 30px; height: 30px; font-size: 11px; }
+.ref-panel .rg-person small { max-width: 54px; font-size: 11px; }
+.ref-panel .rg-go { min-height: 36px; font-size: 13.5px; }
+.ref-panel .rg-suggest { padding: 4px; border-radius: 12px; }
+.ref-panel .rg-suggest button { padding: 6px 10px; font-size: 13px; }
+.ref-panel .rg-ok { font-size: 11.5px; }
+.ref-panel .rg-existing { font-size: 12.5px; }

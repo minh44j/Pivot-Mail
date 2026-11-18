@@ -76,7 +76,7 @@ function readLast(): { ref: string; by: string } | null {
 
 export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Props) {
   const panel = Boolean(anchor) && window.innerWidth >= 900
-  const PANEL_W = Math.min(640, window.innerWidth - 16)
+  const PANEL_W = Math.min(420, window.innerWidth - 16)
   const [company, setCompany] = useState<Company>(real ? (real.company === 'tmc' ? 'travel' : 'shipping') : 'shipping')
   const coCode: 'scl' | 'tmc' = company === 'travel' ? 'tmc' : 'scl'
   const [existing, setExisting] = useState('')
