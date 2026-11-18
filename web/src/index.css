@@ -5072,3 +5072,14 @@ button.ref-chip:hover { background: #cdeee1; }
 
 /* both top rows share one white background (dark mode: the page colour) */
 .topbar { background: var(--ob); }
+
+/* pill shapes, like the name bar: New mail (with its arrow) and the Ref No. / Templates group */
+@media (min-width: 900px) {
+  .nm-btn { border-radius: 999px 0 0 999px; padding: 0 12px 0 15px; }
+  .newsplit-more { border-radius: 0 999px 999px 0; width: 30px; padding-right: 3px; }
+  .cb-tools { border-radius: 999px; overflow: hidden; }
+  .cb-tools .cb:first-child { border-radius: 999px 0 0 999px; padding-left: 14px; }
+  .cb-tools .cb:last-child { border-radius: 0 999px 999px 0; padding-right: 14px; }
+}
+.nm-btn { border-radius: 999px 0 0 999px; }
+.newsplit-more { border-radius: 0 999px 999px 0; }
