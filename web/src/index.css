@@ -31,7 +31,7 @@
   --accent-fill: #0072c6; /* prominent button, white label (5.1:1) */
   --accent-fill-hover: #106ebe;
   --selection: #cde6f7; /* selected row / folder, like Outlook */
-  --ob: #2b4c7e; /* top bar: calm Office-style blue */
+  --ob: #ffffff; /* top bar (title row): white */
 
   /* brand (from the Pivot Mail logo). Not used for text: green on white is below 4.5:1 */
   --brand-navy: #162328;
@@ -92,7 +92,7 @@
   --accent-text: #6cb4ff;
   --accent-fill: #1f6fb2;
   --accent-fill-hover: #2a82cc;
-  --ob: #16263d;
+  --ob: var(--content);
   --selection: #1f3a5c;
   --warn-bg: #3a2c12;
   --bad-bg: #3c1f1d;
@@ -4948,14 +4948,13 @@ button.ref-chip:hover { background: #cdeee1; }
    Outlook classic look: blue title bar, light-grey ribbon and folder pane, white message list, light-blue selection,
    unread mail in bold blue. Icon colours are unchanged. (Tokens are at the top of this file.)
    ===================================================================================================================== */
-.topbar .brand-word { color: #fff; }
-.topbar .tp-icon { color: #fff; }
-.topbar .tp-icon:hover, .topbar .tp-icon[aria-expanded='true'] { background: rgba(255, 255, 255, 0.18); }
+.topbar .brand-word { color: var(--label); }
+.topbar .tp-icon { color: var(--label); }
+.topbar .tp-icon:hover, .topbar .tp-icon[aria-expanded='true'] { background: var(--fill); }
 .topbar .tp-dot { border-color: var(--ob); }
-.topbar .tb-search { border-color: transparent; background: #fff; }
-.topbar .tb-search:focus-within { border-color: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.45); }
-:root[data-theme='dark'] .topbar .tb-search { background: var(--surface); }
-.topbar .tp-avatar { border-color: transparent; }
+.topbar .tb-search { border-color: var(--separator); background: var(--toolbar); }
+.topbar .tb-search:focus-within { border-color: var(--accent); background: var(--surface); box-shadow: 0 0 0 3px rgba(0, 114, 198, 0.2); }
+.topbar .tp-avatar { border-color: var(--separator); }
 .nm-btn, .newsplit-more { background: var(--accent-fill); }
 .nm-btn:hover, .newsplit-more:hover { background: var(--accent-fill-hover); }
 .folder.active { background: var(--selection); color: var(--label); font-weight: 600; }
@@ -4999,3 +4998,6 @@ button.ref-chip:hover { background: #cdeee1; }
 @media (max-width: 899px) {
   .topbar { background: linear-gradient(var(--ob) 0, var(--ob) calc(48px + env(safe-area-inset-top)), var(--toolbar) calc(48px + env(safe-area-inset-top))); }
 }
+.si-mini-lines em { color: #3f4b5c; }
+:root[data-theme='dark'] .nm-btn, :root[data-theme='dark'] .newsplit-more { background: #1f6fb2; }
+:root[data-theme='dark'] .nm-btn:hover, :root[data-theme='dark'] .newsplit-more:hover { background: #1a5f9a; }
