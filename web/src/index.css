@@ -1030,10 +1030,14 @@ small {
   text-decoration: underline;
 }
 .editor blockquote {
-  margin: 8px 0;
-  padding-left: 12px;
-  border-left: 3px solid var(--separator);
-  color: var(--label-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.editor .gmail_quote {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--separator);
 }
 .editor ul,
 .editor ol {

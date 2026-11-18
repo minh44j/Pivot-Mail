@@ -150,6 +150,15 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
     }
   }
   clean(doc.body)
+  // Quoted history reads like Outlook: flush left, no side bar. Gmail, Apple Mail and others draw a bar and indent with inline styles on the blockquote.
+  for (const q of Array.from(doc.body.querySelectorAll('blockquote'))) {
+    const kept = (q.getAttribute('style') ?? '')
+      .split(';')
+      .filter((d) => d.trim() && !/^\s*(border|padding|margin)/i.test(d))
+      .join(';')
+    if (kept) q.setAttribute('style', kept)
+    else q.removeAttribute('style')
+  }
   return { html: doc.body.innerHTML, blocked }
 }
 

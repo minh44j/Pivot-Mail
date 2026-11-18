@@ -12,7 +12,8 @@ img{max-width:100%;height:auto}
 table{max-width:100%;border-collapse:collapse}
 a{color:#0a58b8}
 a[data-mismatch]{outline:2px solid #d9480f;outline-offset:1px}
-blockquote{margin:8px 0;padding-left:10px;border-left:2px solid #d2d2d7;color:#515154}
+blockquote{margin:0;padding:0;border:0}
+.gmail_quote{margin-top:14px;padding-top:10px;border-top:1px solid #d2d2d7}
 .blocked-img{display:inline-block;padding:2px 8px;border:1px dashed #b0b0b8;border-radius:4px;color:#6e6e73;font-size:12px}
 `
 
