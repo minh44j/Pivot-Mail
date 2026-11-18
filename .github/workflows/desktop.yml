@@ -39,6 +39,14 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       # ---- tests on Windows, against the packaged app
+      - name: Build Pivot Mail Setup (the installer people double-click)
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          du -sb release/win-unpacked | cut -f1 > release/expected-bytes.txt
+          dotnet build setup/PivotMailSetup.csproj -c Release -nologo -p:Version=$v -p:PayloadPath=../release/PivotMail-Package-$v.exe -p:ExpectedBytesPath=../release/expected-bytes.txt
+          cp setup/bin/Release/net48/PivotMailSetup.exe "release/PivotMail-Setup-$v.exe"
+          ls -la release/*.exe
       - name: Web app for the test (built from this commit)
         working-directory: web
         run: |
@@ -58,6 +66,29 @@ jobs:
           ELECTRON_RUN_AS_NODE=1 npx electron test/store.test.cjs
           echo "== the packaged app, end to end"
           PIVOT_MAIL_EXE="release/win-unpacked/Pivot Mail.exe" node test/e2e.cjs
+      - name: Install with Setup on Windows, check everything, uninstall
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json | ConvertFrom-Json).version
+          $p = Start-Process -FilePath "release/PivotMail-Setup-$v.exe" -ArgumentList '/silent' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Setup ended with code $($p.ExitCode)" }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\pivot-mail-desktop'
+          $exe = Join-Path $dir 'Pivot Mail.exe'
+          $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Pivot Mail.lnk'
+          $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+          if (!(Test-Path $exe)) { throw 'Pivot Mail was not installed' }; 'PASS installed for this person (no administrator rights)'
+          if (!(Get-ChildItem (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs') -Recurse -Filter 'Pivot Mail.lnk')) { throw 'no Start menu entry' }; 'PASS Start menu entry'
+          if (!(Test-Path $lnk)) { throw 'no desktop shortcut' }; 'PASS desktop shortcut'
+          $run = (Get-ItemProperty $runKey -ErrorAction SilentlyContinue).'com.pivot.mail'
+          if (-not $run -or $run -notlike '*--hidden*') { throw "not set to run at startup ($run)" }; 'PASS runs at startup (quietly, in the tray)'
+          $set = Get-Content (Join-Path $env:APPDATA 'Pivot Mail\settings.json') -Raw
+          if ($set -notmatch '"startWithWindows":\s*true') { throw "setting not recorded: $set" }; 'PASS the app''s own setting agrees (tray tick)'
+          Start-Process (Join-Path $dir 'Uninstall Pivot Mail.exe') -ArgumentList '/S' -Wait
+          Start-Sleep -Seconds 4
+          if (Test-Path $exe) { throw 'uninstall left the app behind' }
+          if (Test-Path $lnk) { throw 'uninstall left the desktop shortcut' }
+          if ((Get-ItemProperty $runKey -ErrorAction SilentlyContinue).'com.pivot.mail') { throw 'uninstall left the startup entry' }
+          'PASS uninstall removes the app, the desktop shortcut and the startup entry'
       - name: Test server log (on failure)
         if: failure()
         shell: bash
@@ -65,6 +96,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: PivotMail-Windows
-          path: desktop/release/*.exe
+          path: desktop/release/PivotMail-Setup-*.exe
           if-no-files-found: error
           retention-days: 30

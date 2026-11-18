@@ -1,0 +1,124 @@
+<Application x:Class="PivotMailSetup.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+  <Application.Resources>
+    <FontFamily x:Key="Text">Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="Display">Segoe UI Variable Display, Segoe UI</FontFamily>
+    <SolidColorBrush x:Key="Ink" Color="#0F1F35" />
+    <SolidColorBrush x:Key="Ink2" Color="#5B6676" />
+    <SolidColorBrush x:Key="Line" Color="#E3E8EF" />
+
+    <!-- The dark primary button (Install, Finish) -->
+    <Style x:Key="Primary" TargetType="Button">
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontFamily" Value="{StaticResource Text}" />
+      <Setter Property="FontSize" Value="16" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Height" Value="50" />
+      <Setter Property="Width" Value="340" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+      <Setter Property="RenderTransform"><Setter.Value><ScaleTransform /></Setter.Value></Setter>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" CornerRadius="11" BorderThickness="1" BorderBrush="#0B0F14">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                  <GradientStop x:Name="top" Color="#3A424D" Offset="0" />
+                  <GradientStop Color="#171C23" Offset="1" />
+                </LinearGradientBrush>
+              </Border.Background>
+              <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.22" /></Border.Effect>
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="top" Property="Color" Value="#4A5462" /></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#4AA6EC" /><Setter TargetName="b" Property="BorderThickness" Value="2" /></Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.985" ScaleY="0.985" /></Setter.Value></Setter>
+              </Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter TargetName="b" Property="Opacity" Value="0.5" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- The light outline button (Quit, Try again) -->
+    <Style x:Key="Secondary" TargetType="Button" BasedOn="{StaticResource Primary}">
+      <Setter Property="Foreground" Value="#1B2A41" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" CornerRadius="11" BorderThickness="1" BorderBrush="#D5DCE5" Background="#FFFFFF">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#9FB3CB" /><Setter TargetName="b" Property="Background" Value="#F7F9FC" /></Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#4AA6EC" /><Setter TargetName="b" Property="BorderThickness" Value="2" /></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.985" ScaleY="0.985" /></Setter.Value></Setter></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Title-bar buttons (minimise, close) -->
+    <Style x:Key="Caption" TargetType="Button">
+      <Setter Property="Width" Value="46" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Foreground" Value="#1B2A41" />
+      <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+      <Setter Property="FontSize" Value="11" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="b" Background="Transparent" CornerRadius="6" Margin="2,4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="#140F1F35" /></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.35" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Dark rounded tick boxes -->
+    <Style x:Key="Tick" TargetType="CheckBox">
+      <Setter Property="Foreground" Value="#0F1F35" />
+      <Setter Property="FontFamily" Value="{StaticResource Text}" />
+      <Setter Property="FontSize" Value="15" />
+      <Setter Property="Margin" Value="0,6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="IsChecked" Value="True" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="CheckBox">
+            <StackPanel Orientation="Horizontal" Background="Transparent">
+              <Border x:Name="box" Width="21" Height="21" CornerRadius="5" Background="#1B222B" BorderBrush="#1B222B" BorderThickness="1.5">
+                <Path x:Name="tick" Data="M 4.5 10.5 L 8.5 14.5 L 16 6.5" Stroke="White" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+              </Border>
+              <ContentPresenter Margin="14,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsChecked" Value="False">
+                <Setter TargetName="box" Property="Background" Value="White" />
+                <Setter TargetName="box" Property="BorderBrush" Value="#A3AFBE" />
+                <Setter TargetName="tick" Property="Visibility" Value="Hidden" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="box" Property="BorderBrush" Value="#4AA6EC" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+  </Application.Resources>
+</Application>

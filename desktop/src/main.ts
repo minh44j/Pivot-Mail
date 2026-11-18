@@ -700,6 +700,14 @@ Menu.setApplicationMenu(null) // no hidden menu shortcuts (Ctrl+R must reach the
 app.whenReady().then(() => {
   if (!primary) return
   settings = readSettings()
+  // "Run at startup" chosen in the installer (or the tray): Windows' own start-up list is kept in step with the setting.
+  if (process.platform === 'win32' && typeof settings.startWithWindows === 'boolean') {
+    try {
+      app.setLoginItemSettings({ openAtLogin: settings.startWithWindows, args: ['--hidden'] })
+    } catch {
+      /* ignored */
+    }
+  }
   try {
     cleanDragFolders(true) // copies left behind by a crash or a forced shutdown
   } catch {

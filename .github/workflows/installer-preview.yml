@@ -1,6 +1,5 @@
-# Shows what installing Pivot Mail looks like: builds three variants of the Windows installer (today's wizard, a Pivot-branded
-# wizard, one-click), runs each one on a real Windows machine pressing Enter like a person, photographs every screen, and
-# saves the photos to desktop/installer-preview/ on this branch. Preview only: the published installer is unchanged.
+# Shows what installing Pivot Mail looks like: builds Pivot Mail Setup, runs it on a real Windows machine pressing Enter like a
+# person, photographs every screen, and saves the photos to desktop/installer-preview/ on this branch.
 name: Installer preview (screenshots)
 
 on:
@@ -8,7 +7,7 @@ on:
   push:
     paths:
       - '.github/workflows/installer-preview.yml'
-      - 'desktop/build/brand/**'
+      - 'desktop/setup/**'
       - 'desktop/test/installer-shots.ps1'
 
 permissions:
@@ -28,24 +27,23 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
-      - run: npm run build
-      - name: Build three installer variants
+      - name: Package and Setup
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
-          npx electron-builder --win nsis --publish never -c.artifactName='A-Today-${version}.${ext}'
-          npx electron-builder --win nsis --publish never -c.artifactName='B-Branded-${version}.${ext}' -c.nsis.installerSidebar=build/brand/installerSidebar.bmp -c.nsis.uninstallerSidebar=build/brand/installerSidebar.bmp -c.nsis.installerHeader=build/brand/installerHeader.bmp -c.nsis.include=build/brand/per-user.nsh
-          npx electron-builder --win nsis --publish never -c.artifactName='C-OneClick-${version}.${ext}' -c.nsis.oneClick=true -c.nsis.perMachine=false
-      - name: Run each installer and photograph it
+          npm run dist
+          v=$(node -p "require('./package.json').version")
+          du -sb release/win-unpacked | cut -f1 > release/expected-bytes.txt
+          dotnet build setup/PivotMailSetup.csproj -c Release -nologo -p:Version=$v -p:PayloadPath=../release/PivotMail-Package-$v.exe -p:ExpectedBytesPath=../release/expected-bytes.txt
+          cp setup/bin/Release/net48/PivotMailSetup.exe "release/PivotMail-Setup-$v.exe"
+      - name: Run Setup and photograph it
         shell: pwsh
         run: |
           $v = (Get-Content package.json | ConvertFrom-Json).version
           $out = Join-Path (Get-Location) 'installer-preview'
           Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
-          ./test/installer-shots.ps1 -Installer "release/A-Today-$v.exe" -Name 'A-today' -Out $out
-          ./test/installer-shots.ps1 -Installer "release/B-Branded-$v.exe" -Name 'B-branded' -Out $out
-          ./test/installer-shots.ps1 -Installer "release/C-OneClick-$v.exe" -Name 'C-oneclick' -Out $out
+          ./test/installer-shots.ps1 -Installer "release/PivotMail-Setup-$v.exe" -Out $out
           Get-ChildItem $out | Format-Table Name, Length
       - name: Save the photos on this branch
         shell: bash

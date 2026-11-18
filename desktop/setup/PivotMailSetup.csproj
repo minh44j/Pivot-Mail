@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pivot Mail Setup: the installer people double-click. A small WPF window (.NET Framework 4.8 is part of Windows 10/11, so
+       nothing extra is needed) that carries the real installer (electron-builder's NSIS package) inside and runs it out of sight.
+       Build: dotnet build -c Release -p:PayloadPath=..\release\PivotMail-Package-X.exe -p:ExpectedBytesPath=..\release\expected-bytes.txt -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>PivotMailSetup</AssemblyName>
+    <RootNamespace>PivotMailSetup</RootNamespace>
+    <ApplicationIcon>..\build\icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Product>Pivot Mail</Product>
+    <Company>Pivot</Company>
+    <AssemblyTitle>Pivot Mail Setup</AssemblyTitle>
+    <Version Condition="'$(Version)' == ''">0.9.0</Version>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Reference Include="Microsoft.CSharp" />
+    <Resource Include="..\build\icon.png" Link="icon.png" />
+    <EmbeddedResource Include="$(PayloadPath)" LogicalName="Payload" Condition="'$(PayloadPath)' != ''" />
+    <EmbeddedResource Include="$(ExpectedBytesPath)" LogicalName="ExpectedBytes" Condition="'$(ExpectedBytesPath)' != ''" />
+  </ItemGroup>
+</Project>
