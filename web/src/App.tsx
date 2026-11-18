@@ -1,7 +1,7 @@
 /* oxlint-disable react/preserve-manual-memoization -- the React Compiler is not part of this build; the rule only notes that it would skip this large component */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row } from './types'
+import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row, Signature } from './types'
 import { TEMPLATES } from './data/templates'
 import type { Template } from './data/templates'
 import { ACCOUNTS, INITIAL_MESSAGES, LABELS } from './data/mock'
@@ -143,6 +143,15 @@ const isFolderMap = (v: unknown): v is Record<string, string[]> => typeof v === 
 const isAccounts = (v: unknown): v is Account[] => Array.isArray(v) && v.every((x) => typeof x === 'object' && x !== null && typeof (x as Account).id === 'string' && typeof (x as Account).email === 'string')
 type PaneSizes = { folders?: number; list?: number; height?: number }
 const isPanes = (v: unknown): v is PaneSizes => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'number' && Number.isFinite(x) && x > 0 && x < 4000)
+type SigSet = { list: Signature[]; newId: string; replyId: string }
+const isSigStore = (v: unknown): v is Record<string, SigSet> =>
+  typeof v === 'object' &&
+  v !== null &&
+  !Array.isArray(v) &&
+  Object.values(v).every((s) => {
+    const x = s as SigSet
+    return typeof x === 'object' && x !== null && Array.isArray(x.list) && typeof x.newId === 'string' && typeof x.replyId === 'string' && x.list.every((g) => typeof g?.id === 'string' && typeof g.name === 'string' && typeof g.body === 'string')
+  })
 const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
@@ -205,7 +214,8 @@ export default function App() {
     else next[k] = v
     setPanes(next)
   }
-  const [signatures, setSignatures] = useStored<Record<string, string>>('pm.signatures', {}, isRecord)
+  const [signatures] = useStored<Record<string, string>>('pm.signatures', {}, isRecord) // the earlier single-signature store, still read for people who have not edited their signatures yet
+  const [sigStore, setSigStore] = useStored<Record<string, SigSet>>('pm.sigs', {}, isSigStore)
   const [customTemplates, setCustomTemplates] = useStored<Template[]>('pm.templates', [], isTemplates)
   const [colourNames, setColourNames] = useStored<Record<string, string>>('pm.colours', {}, isRecord)
   const [roleState, setRole] = usePersisted<'admin' | 'staff'>('pm.role', 'admin', (v) => v === 'admin' || v === 'staff')
@@ -737,7 +747,19 @@ export default function App() {
     return () => window.clearTimeout(t)
   }, [realMode, hasReal, selKey, syncTarget])
 
-  const accounts = useMemo<Account[]>(() => accountList.map((a) => ({ ...a, signature: signatures[a.id] ?? a.signature })), [accountList, signatures])
+  const accounts = useMemo<Account[]>(
+    () =>
+      accountList.map((a) => {
+        const s = sigStore[a.id]
+        // Not edited yet: the one signature the mailbox always had (or its default) becomes the only entry.
+        const legacy = signatures[a.id] ?? a.signature
+        const list: Signature[] = s ? s.list : legacy.trim() ? [{ id: 'main', name: 'Main', body: legacy }] : []
+        const newId = s ? s.newId : (list[0]?.id ?? '')
+        const replyId = s ? s.replyId : newId
+        return { ...a, signature: list.find((g) => g.id === newId)?.body ?? '', signatures: list, sigNew: newId, sigReply: replyId }
+      }),
+    [accountList, signatures, sigStore],
+  )
   const [accDlg, setAccDlg] = useState<AccountDialogState | null>(null)
   const addAccount = (n: NewAccount) => {
     const local = n.email.split('@')[0] ?? n.email
@@ -2064,7 +2086,7 @@ export default function App() {
         <SettingsPage
           role={role}
           accounts={accounts}
-          onSignature={(id, text) => setSignatures({ ...signatures, [id]: text })}
+          onSignatures={(id, list, newId, replyId) => setSigStore({ ...sigStore, [id]: { list, newId, replyId } })}
           templates={settingsValue.templates}
           onSaveTemplate={(t) => setCustomTemplates(customTemplates.some((x) => x.id === t.id) ? customTemplates.map((x) => (x.id === t.id ? t : x)) : [...customTemplates, t])}
           onDeleteTemplate={(id) => setCustomTemplates(customTemplates.filter((x) => x.id !== id))}

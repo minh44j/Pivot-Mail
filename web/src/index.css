@@ -4788,3 +4788,34 @@ button.ref-chip:hover { background: #cdeee1; }
 /* ---- dark theme: the logo is dark navy, so flip it to light; keep its green ---- */
 :root[data-theme='dark'] .logo-bar,
 :root[data-theme='dark'] .logo-lockup { filter: invert(1) hue-rotate(180deg) brightness(1.15); }
+
+/* ---- several signatures per mailbox ---- */
+.sigset { margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--separator); }
+.sigset:first-of-type { border-top: 0; padding-top: 0; }
+.sigset-head { margin: 0 0 8px; font-size: 15px; font-weight: 600; }
+.sigset-head small { font-weight: 400; color: var(--label-2); }
+.sigset-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.sigset-tab, .sigset-add { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 14px; border: 1px solid var(--separator); border-radius: 999px; background: var(--surface); color: var(--label); font-size: 13px; transition: background 0.18s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.sigset-tab:hover, .sigset-add:hover { background: var(--fill); }
+.sigset-tab.on { border-color: var(--accent); background: var(--sel-bg); font-weight: 600; }
+.sigset-add { border-style: dashed; color: var(--accent-text); }
+.sigset-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c-green); }
+.sigset-body { display: flex; flex-direction: column; gap: 10px; animation: sigset-in 0.22s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes sigset-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.sigset-name { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.sigset-name .fld { flex: 1; min-width: 200px; max-width: 320px; }
+.sigset-confirm { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.sigset-confirm .sig-tool { border: 1px solid var(--separator); }
+.sig-tool.danger { color: var(--ink-red); }
+.sigset-defaults { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+.sigset-defaults .fld { flex: 1; min-width: 200px; max-width: 320px; }
+.sigset-defaults .input { width: 100%; }
+@media (prefers-reduced-motion: reduce) { .sigset-body { animation: none; } .sigset-tab, .sigset-add { transition: none; } }
+
+/* ---- signature picker in the composer ---- */
+.sig-pick { display: inline-flex; align-items: center; }
+.sig-pick select { max-width: 180px; min-height: 30px; padding: 0 4px; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-overflow: ellipsis; }
+.sig-pick select:focus-visible { outline: 2px solid var(--accent); border-radius: 6px; }
+.sig-pick-label { padding-left: 8px; color: var(--label-2); font-size: 12px; }
+.sigset-tablist { display: contents; }
+.sig-pick-label { color: var(--label); }

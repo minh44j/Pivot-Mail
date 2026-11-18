@@ -18,12 +18,24 @@ export interface Attachment {
   file?: File
 }
 
+/** One named signature of a mailbox (text, or HTML with pictures: see richtext.ts). */
+export interface Signature {
+  id: string
+  name: string
+  body: string
+}
+
 export interface Account {
   id: string
   name: string
   email: string
   shared: boolean
+  /** The signature used for new messages (kept for templates and older code). */
   signature: string
+  /** All the mailbox's signatures, and which one is added to new messages / to replies and forwards ('' = none) */
+  signatures?: Signature[]
+  sigNew?: string
+  sigReply?: string
   /** Real mailboxes only: 'needs_reconnect' when Google no longer accepts the saved permission */
   status?: 'active' | 'needs_reconnect' | 'disabled'
   /** Real mailboxes: which company's Workspace it belongs to (cases are shared per company) */

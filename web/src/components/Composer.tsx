@@ -53,14 +53,31 @@ function asChips(v: string | undefined): string {
   return t ? `${t}, ` : ''
 }
 
-function sigFor(accounts: Account[], id: string): string {
-  return signatureHtml(accounts.find((a) => a.id === id)?.signature ?? '')
+/** A reply or a forward carries the quoted original; those use the mailbox's "replies and forwards" signature. */
+const isReplyLike = (init: ComposeInit): boolean => Boolean(init.reply) || init.body.includes('data-quote') || /^(re|fwd?):/i.test(init.subject)
+
+/** The signature chosen by default for this mailbox and kind of message ('' = none). */
+function defaultSigId(accounts: Account[], accountId: string, reply: boolean): string {
+  const a = accounts.find((x) => x.id === accountId)
+  return (reply ? a?.sigReply : a?.sigNew) ?? ''
+}
+
+function sigFor(accounts: Account[], accountId: string, sigId: string): string {
+  return signatureHtml(accounts.find((a) => a.id === accountId)?.signatures?.find((g) => g.id === sigId)?.body ?? '')
 }
 
 /** New mail: caret line, then signature. Reply or forward: caret line, signature, then the quoted message. */
 function initialBody(init: ComposeInit, accounts: Account[]): string {
   if (init.draftId) return init.body
-  return `<div><br></div>${sigFor(accounts, init.accountId)}${init.body}`
+  return `<div><br></div>${sigFor(accounts, init.accountId, defaultSigId(accounts, init.accountId, isReplyLike(init)))}${init.body}`
+}
+
+/** Which of the mailbox's signatures is in a body already: '' none, the id when it matches one, '*' when it is something else (an older draft). */
+function sigInBody(html: string, accounts: Account[], accountId: string): string {
+  if (!html.includes('data-sig')) return ''
+  const a = accounts.find((x) => x.id === accountId)
+  const hit = a?.signatures?.find((g) => html.includes(signatureHtml(g.body)))
+  return hit ? hit.id : '*'
 }
 
 /** Files cannot be stored in the saved draft; only their names and sizes are. */
@@ -244,20 +261,21 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingTemplate])
 
-  const toggleSignature = () => {
+  /** Put the chosen signature in the message (replacing the one there, or adding it before the quoted original). '' removes it. */
+  const applySignature = (sigId: string) => {
     const el = ed.current
     if (!el) return
     const cur = el.querySelector('[data-sig]')
-    if (cur) cur.remove()
-    else {
-      const tmp = document.createElement('div')
-      tmp.innerHTML = sigFor(accounts, d.accountId)
-      const node = tmp.firstElementChild
-      if (node) {
-        const quote = el.querySelector('[data-quote]')
-        if (quote) el.insertBefore(node, quote)
-        else el.appendChild(node)
-      }
+    const tmp = document.createElement('div')
+    tmp.innerHTML = sigFor(accounts, d.accountId, sigId)
+    const node = tmp.firstElementChild
+    if (cur) {
+      if (node) cur.replaceWith(node)
+      else cur.remove()
+    } else if (node) {
+      const quote = el.querySelector('[data-quote]')
+      if (quote) el.insertBefore(node, quote)
+      else el.appendChild(node)
     }
     sync()
   }
@@ -266,8 +284,9 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     const el = ed.current
     const cur = el?.querySelector('[data-sig]')
     if (el && cur) {
+      // Another mailbox has its own signatures: use its default for this kind of message.
       const tmp = document.createElement('div')
-      tmp.innerHTML = sigFor(accounts, id)
+      tmp.innerHTML = sigFor(accounts, id, defaultSigId(accounts, id, isReplyLike(init)))
       if (tmp.firstElementChild) cur.replaceWith(tmp.firstElementChild)
       else cur.remove()
     }
@@ -313,7 +332,8 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   }
 
   const canSend = d.to.trim().length > 0
-  const sigOn = d.body.includes('data-sig')
+  const sigNow = sigInBody(d.body, accounts, d.accountId)
+  const mySigs = accounts.find((a) => a.id === d.accountId)?.signatures ?? []
 
   const send = (sendAt?: string) => {
     if (!canSend) {
@@ -515,9 +535,22 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           <FBtn label="Insert link (Ctrl+K)" icon="link" onClick={openLink} />
           <FBtn label="Clear formatting" icon="clearFormat" onClick={() => exec('removeFormat')} />
           <span className="grow" />
-          <button type="button" className={`fchip${sigOn ? ' on' : ''}`} aria-pressed={sigOn} onClick={toggleSignature} onMouseDown={(e) => e.preventDefault()}>
-            Signature
-          </button>
+          {(mySigs.length > 0 || sigNow !== '') && (
+            <label className={`fchip sig-pick${sigNow ? ' on' : ''}`}>
+              <span className="sig-pick-label" aria-hidden="true">
+                Signature:
+              </span>
+              <select aria-label="Signature" value={sigNow} onChange={(e) => applySignature(e.target.value)}>
+                <option value="">No signature</option>
+                {sigNow === '*' && <option value="*" disabled>Current signature</option>}
+                {mySigs.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name || 'Untitled'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         {linkOpen && (
           <div className="link-row">

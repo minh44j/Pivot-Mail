@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Account, Colour, Density, PaneLayout } from '../types'
+import type { Account, Colour, Density, PaneLayout, Signature } from '../types'
 import { COLOURS } from '../data/colours'
 import type { Template } from '../data/templates'
 import { mergeColours } from '../settings'
@@ -8,7 +8,7 @@ import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
 import { RealUsers } from './RealUsers'
-import { SignatureEditor } from './SignatureEditor'
+import { SignatureSet } from './SignatureSet'
 import { UsersPanel } from './UsersPanel'
 import { PROBLEMS } from '../problems'
 import type { Problem } from '../problems'
@@ -18,7 +18,7 @@ type Section = 'general' | 'signatures' | 'templates' | 'colours' | 'users' | 'p
 interface Props {
   role: 'admin' | 'staff'
   accounts: Account[]
-  onSignature: (accountId: string, text: string) => void
+  onSignatures: (accountId: string, list: Signature[], newId: string, replyId: string) => void
   templates: Template[]
   onSaveTemplate: (t: Template) => void
   onDeleteTemplate: (id: string) => void
@@ -329,9 +329,9 @@ export function SettingsPage(p: Props) {
               <h2 id="h-sig" className="card-title">
                 Signatures
               </h2>
-              <p className="muted">One signature per mailbox. It is added to new messages sent from that mailbox and can be turned off in the composer.</p>
+              <p className="muted">Each mailbox can have several signatures. Choose which one is added to new messages and which to replies and forwards. You can still pick another one, or none, in each message.</p>
               {p.accounts.map((a) => (
-                <SignatureEditor key={a.id} label={`${a.name} · ${a.email}`} value={a.signature} onChange={(v) => p.onSignature(a.id, v)} />
+                <SignatureSet key={a.id} account={a} onChange={(list, newId, replyId) => p.onSignatures(a.id, list, newId, replyId)} />
               ))}
               <small>Saved automatically. Pictures go in at their real size. Click one and drag its corner to resize it, or press Delete to remove it.</small>
             </section>
