@@ -164,8 +164,8 @@ export default function App() {
   const [smart, setSmart] = useState<SmartKey[]>([])
   const [showSmart, setShowSmart] = usePersisted<boolean>('pm.smart', true, (v) => v === 'true' || v === 'false')
   const [threaded, setThreaded] = usePersisted<boolean>('pm.threaded', true, (v) => v === 'true' || v === 'false')
-  // Light or dark: the person's choice if they made one, otherwise the computer's setting. Applied to the page itself, so every screen follows.
-  const [theme, setTheme] = usePersisted<'light' | 'dark'>('pm.theme', typeof matchMedia === 'function' && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', (v) => v === 'light' || v === 'dark')
+  // Light unless the person switched to dark in the avatar menu (their choice is remembered). Applied to the page itself, so every screen follows.
+  const [theme, setTheme] = usePersisted<'light' | 'dark'>('pm.theme', 'light', (v) => v === 'light' || v === 'dark')
   useEffect(() => {
     document.documentElement.dataset.theme = theme
   }, [theme])
