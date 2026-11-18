@@ -1,0 +1,87 @@
+# Builds Pivot Mail for Mac on a real Mac (GitHub's macOS machine), tests it, photographs it, and keeps the installer
+# (PivotMail-<version>-mac.dmg, one app for Apple Silicon and Intel Macs) as a download on the run's page for 30 days.
+# Not a release: nothing is published and no installed copy is touched.
+name: Mac app
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'desktop/**'
+      - 'web/src/**'
+      - '.github/workflows/mac.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - name: Build the Mac app (Apple Silicon + Intel in one, self-signed)
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist:mac
+      - name: Check the app and the installer
+        run: |
+          v=$(node -p "require('./package.json').version")
+          app="release/mac-universal/Pivot Mail.app"
+          ls -la release
+          test -s "release/PivotMail-$v-mac.dmg"
+          echo "--- runs on:"; lipo -archs "$app/Contents/MacOS/Pivot Mail" | tee /dev/stderr | grep -q "x86_64 arm64"
+          echo "--- signature:"; codesign --verify --deep --strict --verbose=2 "$app"
+          echo "--- link handling:"; /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$app/Contents/Info.plist" | grep -qx pivotmail
+          echo "--- identity:"; /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Contents/Info.plist" | grep -qx com.pivot.mail
+          echo "--- menu bar symbol:"; node -e "const l=require('@electron/asar').listPackage(process.argv[1]); if(!l.some(f=>f.endsWith('trayTemplate@2x.png'))) process.exit(1)" "$app/Contents/Resources/app.asar"
+          mkdir -p ../mac-preview
+          # The installer window as the person sees it after double-clicking the .dmg
+          hdiutil attach "release/PivotMail-$v-mac.dmg" -nobrowse -mountpoint /tmp/pmdmg
+          test -d "/tmp/pmdmg/Pivot Mail.app" && test -L /tmp/pmdmg/Applications
+          open /tmp/pmdmg; sleep 4; screencapture -x ../mac-preview/0-mac-installer.png || true
+          osascript -e 'tell application "Finder" to close every window' || true
+          hdiutil detach /tmp/pmdmg
+          echo "PASS installer holds Pivot Mail.app and the Applications shortcut"
+      - name: Test the Mac app
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: |
+          (cd ../web && npm ci && npm run build)
+          npm install --no-save playwright@1.63.0
+          (cd ../web && nohup npx tsx ../desktop/test/server.mts > "$GITHUB_WORKSPACE/server.log" 2>&1 &)
+          for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:4310/ && break; sleep 1; done
+          ELECTRON_RUN_AS_NODE=1 npx electron test/store.test.cjs
+          PIVOT_MAIL_EXE="$PWD/release/mac-universal/Pivot Mail.app/Contents/MacOS/Pivot Mail" PIVOT_MAIL_SHOTS="$PWD/../mac-preview" node test/e2e.cjs
+      - name: Server log
+        if: failure()
+        run: cat "$GITHUB_WORKSPACE/server.log" || true
+      - name: Keep the Mac installer (download from this run's page)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PivotMail-mac
+          path: desktop/release/PivotMail-*-mac.dmg
+          retention-days: 30
+          compression-level: 0
+      - name: Keep the photos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-preview
+          path: mac-preview
+          retention-days: 30

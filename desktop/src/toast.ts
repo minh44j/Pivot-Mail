@@ -95,3 +95,14 @@ export function toastXml(t: MailToast, link: (action: 'open' | 'read' | 'inbox',
     `</toast>`
   )
 }
+
+/** The same alert for a Mac (macOS draws title / subtitle / text itself: no pictures or custom layout in a native alert). */
+export function macAlert(t: MailToast): { title: string; subtitle: string; body: string } {
+  if (t.kind === 'one') return { title: t.sender, subtitle: t.subject, body: [t.preview, t.mailbox].filter(Boolean).join('\n') }
+  const more = t.count - t.lines.length
+  return {
+    title: `${t.count} new messages`,
+    subtitle: t.mailbox,
+    body: t.lines.map((l) => `${l.sender} — ${l.subject}`).join('\n') + (more > 0 ? `\n+ ${more} more` : ''),
+  }
+}

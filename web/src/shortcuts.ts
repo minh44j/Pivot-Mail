@@ -8,6 +8,8 @@
 
 export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
 export const MOD = isMac ? '⌘' : 'Ctrl'
+/** A key with the command key, written the way this computer does: "⌘V" on a Mac, "Ctrl+V" elsewhere. */
+export const combo = (key: string) => (isMac ? `⌘${key}` : `Ctrl+${key}`)
 
 export interface ShortcutItem {
   /** Alternatives, e.g. ['Ctrl+F', 'Ctrl+E']. "Ctrl" shows as ⌘ on Mac (⌘ or Control both work). */

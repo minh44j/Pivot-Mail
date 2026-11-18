@@ -8,7 +8,7 @@
  *    so without this most staff would stay on the old version for weeks). Drafts are saved every few seconds, so nothing is lost.
  * Only releases published from this repository's "Desktop release" workflow are used.
  */
-import { app, powerMonitor } from 'electron'
+import { app, net, powerMonitor } from 'electron'
 import { autoUpdater } from 'electron-updater'
 
 export interface UpdateEvents {
@@ -85,4 +85,39 @@ export function restartToUpdate(): boolean {
   } catch {
     return false
   }
+}
+
+/* ---------- Mac: "a newer version can be downloaded" (no self-install without Apple's paid certificate) ---------- */
+
+let macVersion: string | null = null
+export const macUpdateVersion = () => macVersion
+
+/** "1.2.10" > "1.2.9": numbers compared part by part. */
+export function isNewer(candidate: string, current: string): boolean {
+  const a = candidate.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0)
+  const b = current.replace(/^v/, '').split('.').map((x) => parseInt(x, 10) || 0)
+  for (let i = 0; i < Math.max(a.length, b.length); i++) if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) > (b[i] ?? 0)
+  return false
+}
+
+/** Checks GitHub (this repository's latest release, the Mac download in it) 1 minute after start and every 6 hours. */
+export function startMacUpdateCheck(onFound: (version: string) => void): void {
+  if (!app.isPackaged || process.env.PIVOT_MAIL_NO_UPDATES === '1') return
+  const check = async () => {
+    try {
+      const res = await net.fetch('https://api.github.com/repos/minh44j/Pivot-Mail/releases/latest', { headers: { accept: 'application/vnd.github+json' } })
+      if (!res.ok) return
+      const r = (await res.json()) as { tag_name?: string; assets?: { name?: string }[] }
+      const v = String(r.tag_name ?? '').replace(/^v/, '')
+      const hasMac = (r.assets ?? []).some((x) => /\.dmg$/i.test(String(x.name ?? '')))
+      if (hasMac && /^\d+\.\d+\.\d+$/.test(v) && isNewer(v, app.getVersion()) && v !== macVersion) {
+        macVersion = v
+        onFound(v)
+      }
+    } catch {
+      /* offline: next time */
+    }
+  }
+  setTimeout(() => void check(), 60_000)
+  setInterval(() => void check(), 6 * 60 * 60_000)
 }

@@ -8,6 +8,7 @@ import { ensureBytes, isReady, mockBlob, mockBytes } from '../data/mockfile'
 import { desktop } from '../desktop'
 import { makeZip } from '../zip'
 import { AttachmentPreview } from './AttachmentPreview'
+import { combo } from '../shortcuts'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
 
@@ -130,8 +131,8 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
       if (n === files.length)
         onToast(
           n === 1
-            ? `Copied ${first.name}. Paste it with Ctrl+V into a folder, an email or a chat.`
-            : `Copied ${n} files. Paste them with Ctrl+V into a folder, an email or a chat.`,
+            ? `Copied ${first.name}. Paste it with ${combo('V')} into a folder, an email or a chat.`
+            : `Copied ${n} files. Paste them with ${combo('V')} into a folder, an email or a chat.`,
         )
       else onToast('Windows did not accept the copy. Please try again, or drag the files out instead.')
       return
@@ -388,7 +389,7 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
               }}
             >
               {canCopyFiles ? `Copy${files.length > 1 ? ` ${files.length} files` : ''}` : `Copy${files.length > 1 ? ' file names' : ''}`}
-              <kbd>Ctrl+C</kbd>
+              <kbd>{combo('C')}</kbd>
             </button>
             <button
               type="button"

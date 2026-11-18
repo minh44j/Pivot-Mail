@@ -71,7 +71,7 @@ import { SignIn } from './components/SignIn'
 import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
 import { SettingsContext, mergeColours } from './settings'
-import { MOD } from './shortcuts'
+import { MOD, combo } from './shortcuts'
 import { rememberCopiedEmail } from './emailClipboard'
 import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
@@ -1566,7 +1566,7 @@ export default function App() {
             realUndo.current.push({ before, inverse: async () => void (await call(['UNREAD'], [])) })
             inboxUnreadStale.current = true
             void pollRef.current()
-            showToast(`${total} message${total === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
+            showToast(`${total} message${total === 1 ? '' : 's'} marked as read. ${combo('Z')} to undo.`)
           },
           () => {
             restoreLocal(before)
@@ -1576,7 +1576,7 @@ export default function App() {
       return
     }
     patch(ids, { unread: false })
-    showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
+    showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. ${combo('Z')} to undo.`)
   }
   const emptyDeleted = () => {
     if (realMode) {
@@ -1695,7 +1695,7 @@ export default function App() {
     const text = msgs.map(plainEmail).join('\n________________________________\n')
     rememberCopiedEmail(text, html)
     const ok = await platform.copyRich(html, text)
-    showToast(ok ? 'Email copied. Paste it into a message with Ctrl+V.' : 'Copy was blocked by the browser')
+    showToast(ok ? `Email copied. Paste it into a message with ${combo('V')}.` : 'Copy was blocked by the browser')
   }
   const last = thread[thread.length - 1]
   /** Reply to a specific message (default: the last one in the open conversation). Replying to your own message writes to its recipients. */

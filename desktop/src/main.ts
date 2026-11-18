@@ -1,5 +1,9 @@
 /**
- * Pivot Mail for Windows.
+ * Pivot Mail for Windows and Mac.
+ *
+ * On a Mac the same app follows Mac habits: a menu bar with Pivot Mail / Edit / Window menus (⌘C, ⌘V, ⌘Q, ⌘W work), the dock
+ * icon reopens the window and carries the unread number, a symbol in the menu bar replaces the Windows tray icon, alerts are
+ * the Mac's own, copied attachments paste in Finder, and links arrive through the Mac's "open-url" (see the isMac parts).
  *
  * The app window shows the same Pivot Mail as the website (so every screen, fix and feature is shared), and adds what a browser tab
  * cannot do well: a tray icon that keeps mail checking while the window is closed, real Windows alerts with the Pivot icon, the unread
@@ -19,9 +23,9 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { safeFileName, uniqueName } from './files'
-import { cleanToast, toastXml } from './toast'
+import { cleanToast, macAlert, toastXml } from './toast'
 import type { MailToast } from './toast'
-import { restartToUpdate, startUpdates, updateReadyVersion } from './updater'
+import { macUpdateVersion, restartToUpdate, startMacUpdateCheck, startUpdates, updateReadyVersion } from './updater'
 
 type Company = 'scl' | 'tmc'
 const HOSTS: Record<Company, string> = { scl: 'https://mail.pivotscl.com', tmc: 'https://mail.pivottmc.com' }
@@ -29,6 +33,9 @@ const HOSTS: Record<Company, string> = { scl: 'https://mail.pivotscl.com', tmc: 
 const DEV_URL = process.env.PIVOT_MAIL_URL?.replace(/\/+$/, '') || null
 const APP_ID = 'com.pivot.mail'
 const SCHEME = 'pivotmail'
+const isMac = process.platform === 'darwin'
+/** Where a Mac downloads a newer version (a Mac app without Apple's paid certificate cannot replace itself). */
+const MAC_DOWNLOAD_PAGE = 'https://github.com/minh44j/Pivot-Mail/releases/latest'
 
 interface Settings {
   company?: Company
@@ -243,6 +250,33 @@ function avatarFile(dataUrl: unknown): string | undefined {
     return file
   } catch {
     return undefined
+  }
+}
+
+/** A new-mail alert on a Mac: the Mac's own alert (sender, subject, first line); a click opens the mail, "Mark as read" too. */
+function showMacAlert(payload: unknown): boolean {
+  const t = cleanToast(payload)
+  if (!t || !Notification.isSupported()) return false
+  const c = macAlert(t)
+  ;(global as unknown as { __pmLastMacAlert?: unknown }).__pmLastMacAlert = c // read by the Mac test
+  try {
+    const n = new Notification({ ...c, silent: false, actions: t.kind === 'one' ? [{ type: 'button', text: 'Mark as read' }] : [] })
+    const act = (action: 'open' | 'read' | 'inbox') => {
+      const item = { action, accountId: t.accountId, messageId: t.kind === 'one' ? t.messageId : '' }
+      if (action !== 'read') showWindow()
+      if (win && actionsReady) win.webContents.send('pm:mail-action', item)
+      else queuedActions.push(item)
+    }
+    n.on('click', () => act(t.kind === 'one' ? 'open' : 'inbox'))
+    n.on('action', () => act('read'))
+    n.on('failed', (_e, err) => {
+      ;(global as unknown as { __pmToastError?: string }).__pmToastError = String(err)
+    })
+    keep(n)
+    n.show()
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -482,8 +516,12 @@ function createWindow(hidden = false, load = true): void {
     if (quitting) return
     // Closing the window keeps Pivot Mail running in the tray, so new mail still arrives.
     e.preventDefault()
-    win?.hide()
-    if (!settings.trayHintShown && tray) {
+    if (isMac && win?.isFullScreen()) {
+      // A full-screen window hidden directly leaves a black space on its own desktop: leave full screen first.
+      win.once('leave-full-screen', () => win?.hide())
+      win.setFullScreen(false)
+    } else win?.hide()
+    if (!isMac && !settings.trayHintShown && tray) {
       settings.trayHintShown = true
       saveSettings()
       tray.displayBalloon?.({ title: 'Pivot Mail is still running', content: 'New mail alerts keep coming. Right-click the tray icon to quit.', iconType: 'info' })
@@ -575,38 +613,92 @@ function manualRestartToUpdate(): void {
   restartToUpdate()
 }
 
+/** Start Pivot Mail when the person signs in to the computer: quietly in the tray (Windows) or with its window hidden (Mac). */
+function setStartAtLogin(on: boolean): void {
+  try {
+    if (isMac) app.setLoginItemSettings({ openAtLogin: on })
+    else app.setLoginItemSettings({ openAtLogin: on, args: ['--hidden'] })
+  } catch {
+    /* ignored */
+  }
+}
+
+/** Rebuilds the tray / menu bar menu (it shows the update and start-at-login state). */
+let refreshTray: () => void = () => {}
+
 function buildTray(): void {
-  tray = new Tray(nativeImage.createFromPath(asset('build', 'tray.png')))
+  // Mac: a black-and-clear "template" symbol that macOS tints for light and dark menu bars (trayTemplate@2x.png is picked up too).
+  tray = new Tray(nativeImage.createFromPath(asset('build', isMac ? 'trayTemplate.png' : 'tray.png')))
   tray.setToolTip('Pivot Mail')
-  tray.on('click', showWindow)
+  if (!isMac) tray.on('click', showWindow) // (on a Mac a click opens the menu, as with every menu bar symbol)
   const menu = () =>
     Menu.buildFromTemplate([
       { label: 'Open Pivot Mail', click: showWindow },
       ...(updateReadyVersion() ? [{ label: `Restart to update (version ${updateReadyVersion()})`, click: () => manualRestartToUpdate() }] : []),
+      ...(macUpdateVersion() ? [{ label: `Download Pivot Mail ${macUpdateVersion()}…`, click: () => void shell.openExternal(MAC_DOWNLOAD_PAGE) }] : []),
       { type: 'separator' },
       {
-        label: 'Start with Windows',
+        label: isMac ? 'Open at Login' : 'Start with Windows',
         type: 'checkbox',
         checked: !!settings.startWithWindows,
         click: (item) => {
           settings.startWithWindows = item.checked
           saveSettings()
-          app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] })
+          setStartAtLogin(item.checked)
         },
       },
       { type: 'separator' },
       {
         label: 'Quit Pivot Mail',
+        accelerator: isMac ? 'Command+Q' : undefined,
         click: () => {
           quitting = true
           app.quit()
         },
       },
     ])
-  tray.setContextMenu(menu())
-  tray.on('right-click', () => tray?.setContextMenu(menu()))
+  refreshTray = () => tray?.setContextMenu(menu())
+  refreshTray()
+  tray.on('right-click', refreshTray)
 }
 
+/**
+ * The Mac's menu bar (Pivot Mail, Edit, Window). Without it ⌘C, ⌘V, ⌘A, ⌘Z, ⌘Q and ⌘W would not work at all on a Mac.
+ * Deliberately no View menu: ⌘R must reach Pivot Mail as "Reply", not reload the page. Windows keeps no menu (Ctrl+R = Reply).
+ */
+function macMenu(): Menu {
+  return Menu.buildFromTemplate([
+    {
+      label: 'Pivot Mail',
+      submenu: [
+        { role: 'about', label: 'About Pivot Mail' },
+        { type: 'separator' },
+        {
+          label: 'Open at Login',
+          type: 'checkbox',
+          checked: !!settings.startWithWindows,
+          click: (item) => {
+            settings.startWithWindows = item.checked
+            saveSettings()
+            setStartAtLogin(item.checked)
+            refreshTray()
+          },
+        },
+        { type: 'separator' },
+        { role: 'hide', label: 'Hide Pivot Mail' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit', label: 'Quit Pivot Mail' },
+      ],
+    },
+    { role: 'editMenu' },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }, { type: 'separator' }, { label: 'Pivot Mail', accelerator: 'Command+0', click: showWindow }, { role: 'close' }, { type: 'separator' }, { role: 'front' }],
+    },
+  ])
+}
 
 /* ------------------------------------------------------------------ the bridge (see preload.ts) */
 
@@ -634,6 +726,22 @@ function writeTempFiles(files: unknown): string[] {
  * clipboard by itself). The paths travel in an environment variable, never inside the command text.
  */
 function filesToClipboard(paths: string[]): Promise<boolean> {
+  if (isMac) {
+    // The same as copying files in Finder (file addresses on the Mac's clipboard): ⌘V pastes them in Finder, Mail, Teams,
+    // WhatsApp and the rest. Done by the Mac's own scripting (osascript); the paths travel in an environment variable, never
+    // inside the script text.
+    const jxa =
+      'ObjC.import("AppKit");' +
+      'const list = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey("PM_CLIP_FILES")).split("\\n");' +
+      'const urls = $.NSMutableArray.array; for (const p of list) urls.addObject($.NSURL.fileURLWithPath(p));' +
+      'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; pb.writeObjects(urls) ? "ok" : "no"'
+    return new Promise((resolve) => {
+      execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { timeout: 20_000, env: { ...process.env, PM_CLIP_FILES: paths.join('\n') } }, (err, out) => {
+        ;(global as unknown as { __pmClipboardFiles?: string[] }).__pmClipboardFiles = paths // read by the Mac test
+        resolve(!err && String(out).trim() === 'ok')
+      })
+    })
+  }
   if (process.platform !== 'win32') {
     ;(global as unknown as { __pmClipboardFiles?: string[] }).__pmClipboardFiles = paths // automated tests on other systems
     return Promise.resolve(true)
@@ -720,6 +828,12 @@ function bridge(): void {
   // New-mail alert drawn by Windows (false: not available here, the page then uses its own simpler alert).
   ipcMain.handle('pm:notify', (e, payload: unknown, avatar: unknown) => {
     if (!fromApp(e)) return false
+    if (isMac) {
+      // (the tests compare the alert's content with Windows': the same cleaned text, sender, subject and links)
+      const t = cleanToast(payload)
+      if (t) (global as unknown as { __pmLastToast?: string }).__pmLastToast = toastXml(t, (action, messageId) => mailLink(action, t.accountId, messageId))
+      return showMacAlert(payload)
+    }
     if (process.platform !== 'win32') {
       // Automated tests on other systems: keep what would have been shown.
       const t = cleanToast(payload)
@@ -756,6 +870,10 @@ function bridge(): void {
     if (!win || !fromApp(e)) return
     const n = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
     tray?.setToolTip(n > 0 ? `Pivot Mail · ${n} unread` : 'Pivot Mail')
+    if (isMac) {
+      app.dock?.setBadge(n > 0 ? (n > 99 ? '99+' : String(n)) : '')
+      return
+    }
     if (n > 0 && typeof png === 'string' && png.startsWith('data:image/png;base64,')) win.setOverlayIcon(nativeImage.createFromDataURL(png), `${n} unread`)
     else win.setOverlayIcon(null, '')
   })
@@ -856,22 +974,52 @@ function storeBridge(): void {
 
 /* ------------------------------------------------------------------ start */
 
+/** Mac: started by "Open at Login" (the window stays hidden; the dock and menu bar icons are there, mail is checked). */
+function openedHiddenAtLogin(): boolean {
+  if (!isMac) return false
+  try {
+    const l = app.getLoginItemSettings()
+    return !!l.wasOpenedAtLogin
+  } catch {
+    return false
+  }
+}
+
 // Automated tests only: a separate settings folder per run.
 if (process.env.PIVOT_MAIL_USER_DATA) app.setPath('userData', process.env.PIVOT_MAIL_USER_DATA)
 app.setAppUserModelId(APP_ID) // Windows alerts carry the Pivot Mail name and icon
-Menu.setApplicationMenu(null) // no hidden menu shortcuts (Ctrl+R must reach the app as "Reply", not reload the page)
+Menu.setApplicationMenu(null) // no hidden menu shortcuts (Ctrl+R must reach the app as "Reply", not reload the page); Mac: macMenu()
+
+// Mac: pivotmail:// links (sign-in hand-back, alert clicks) arrive here, not as a second copy of the app. They can arrive before
+// the app is ready (a link that started Pivot Mail): kept until then.
+let ready = false
+let earlyLink: string | null = null
+app.on('open-url', (e, url) => {
+  e.preventDefault()
+  if (!url.startsWith(`${SCHEME}://`)) return
+  if (!ready) {
+    earlyLink = url
+    return
+  }
+  void handleLink(url)
+  if (!url.startsWith(`${SCHEME}://read`)) showWindow()
+})
+// Mac: clicking the dock icon brings the window back (it stays in the dock while the window is closed).
+app.on('activate', () => {
+  if (ready && primary) showWindow()
+})
 
 app.whenReady().then(() => {
   if (!primary) return
   settings = readSettings()
-  // "Run at startup" chosen in the installer (or the tray): Windows' own start-up list is kept in step with the setting.
-  if (process.platform === 'win32' && typeof settings.startWithWindows === 'boolean') {
-    try {
-      app.setLoginItemSettings({ openAtLogin: settings.startWithWindows, args: ['--hidden'] })
-    } catch {
-      /* ignored */
-    }
+  // Mac: no installer asks, so "Open at Login" starts on, like the ticked box in the Windows installer (untick it in the menu).
+  if (isMac && typeof settings.startWithWindows !== 'boolean' && !process.env.PIVOT_MAIL_USER_DATA) {
+    settings.startWithWindows = true
+    saveSettings()
   }
+  // "Run at startup" chosen in the installer (or the tray): the system's own start-up list is kept in step with the setting.
+  if ((process.platform === 'win32' || isMac) && typeof settings.startWithWindows === 'boolean') setStartAtLogin(settings.startWithWindows)
+  if (isMac) Menu.setApplicationMenu(macMenu())
   try {
     cleanDragFolders(true) // copies left behind by a crash or a forced shutdown
   } catch {
@@ -884,7 +1032,20 @@ app.whenReady().then(() => {
   bridge()
   storeBridge()
   buildTray()
-  startUpdates({
+  // Mac: without Apple's paid certificate the app cannot replace itself, so it only says when a newer version can be downloaded.
+  if (isMac)
+    startMacUpdateCheck((version) => {
+      refreshTray()
+      try {
+        const n = new Notification({ title: `Pivot Mail ${version} is available`, body: 'Click to download it. Your mail and settings stay as they are.' })
+        n.on('click', () => void shell.openExternal(MAC_DOWNLOAD_PAGE))
+        keep(n)
+        n.show()
+      } catch {
+        /* ignored */
+      }
+    })
+  else startUpdates({
     onReady(version) {
       tray?.displayBalloon?.({ title: 'Pivot Mail update ready', content: `Version ${version} installs when Pivot Mail restarts.`, iconType: 'info' })
       if (win && actionsReady) win.webContents.send('pm:update-ready', version)
@@ -900,15 +1061,17 @@ app.whenReady().then(() => {
     },
   })
   // Started by Windows at sign-in (--hidden), or reopened by an update that installed itself while Pivot Mail sat in the tray.
-  const hidden = process.argv.includes('--hidden') || (process.argv.includes('--updated') && !!settings.resumeHidden)
+  const hidden = process.argv.includes('--hidden') || (process.argv.includes('--updated') && !!settings.resumeHidden) || openedHiddenAtLogin()
   startMinimized = process.argv.includes('--updated') && !!settings.resumeMinimized
   if (settings.resumeHidden || settings.resumeMinimized) {
     settings.resumeHidden = false
     settings.resumeMinimized = false
     saveSettings()
   }
+  ready = true
   void start(hidden).then(() => {
-    const link = process.argv.find((a) => a.startsWith(`${SCHEME}://`))
+    const link = earlyLink ?? process.argv.find((a) => a.startsWith(`${SCHEME}://`))
+    earlyLink = null
     if (link) void handleLink(link)
   })
 })

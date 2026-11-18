@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "npm run build && electron .",
-    "dist": "npm run build && electron-builder --win nsis --publish never"
+    "dist": "npm run build && electron-builder --win nsis --publish never",
+    "dist:mac": "npm run build && electron-builder --mac dmg --universal --publish never"
   },
   "devDependencies": {
     "electron": "45.2.2",
@@ -29,6 +30,8 @@
       "static/**",
       "build/icon.png",
       "build/tray.png",
+      "build/trayTemplate.png",
+      "build/trayTemplate@2x.png",
       "package.json"
     ],
     "asarUnpack": [
@@ -56,6 +59,47 @@
         "nsis"
       ],
       "icon": "build/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "artifactName": "PivotMail-${version}-mac.${ext}",
+      "icon": "build/icon-mac.png",
+      "category": "public.app-category.productivity",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "darkModeSupport": true,
+      "minimumSystemVersion": "12.0",
+      "extendInfo": {
+        "NSUserNotificationAlertStyle": "alert"
+      }
+    },
+    "dmg": {
+      "title": "Pivot Mail",
+      "writeUpdateInfo": false,
+      "window": {
+        "width": 540,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 140,
+          "y": 180
+        },
+        {
+          "x": 400,
+          "y": 180,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
     },
     "nsis": {
       "oneClick": true,

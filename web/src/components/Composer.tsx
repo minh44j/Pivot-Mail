@@ -1,3 +1,4 @@
+import { combo } from '../shortcuts'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Account, Attachment, ComposeInit } from '../types'
@@ -512,20 +513,20 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
         )}
 
         <div className="format-bar" role="toolbar" aria-label="Formatting">
-          <FBtn label="Bold (Ctrl+B)" active={fmt.bold} onClick={() => exec('bold')}>
+          <FBtn label={`Bold (${combo('B')})`} active={fmt.bold} onClick={() => exec('bold')}>
             <b>B</b>
           </FBtn>
-          <FBtn label="Italic (Ctrl+I)" active={fmt.italic} onClick={() => exec('italic')}>
+          <FBtn label={`Italic (${combo('I')})`} active={fmt.italic} onClick={() => exec('italic')}>
             <i>I</i>
           </FBtn>
-          <FBtn label="Underline (Ctrl+U)" active={fmt.underline} onClick={() => exec('underline')}>
+          <FBtn label={`Underline (${combo('U')})`} active={fmt.underline} onClick={() => exec('underline')}>
             <u>U</u>
           </FBtn>
           <span className="fsep" />
           <FBtn label="Bulleted list" icon="listBullet" active={fmt.ul} onClick={() => exec('insertUnorderedList')} />
           <FBtn label="Numbered list" icon="listNumber" active={fmt.ol} onClick={() => exec('insertOrderedList')} />
           <span className="fsep" />
-          <FBtn label="Insert link (Ctrl+K)" icon="link" onClick={openLink} />
+          <FBtn label={`Insert link (${combo('K')})`} icon="link" onClick={openLink} />
           <FBtn label="Clear formatting" icon="clearFormat" onClick={() => exec('removeFormat')} />
           <span className="fsep" />
           <button type="button" className="fchip fchip-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}>

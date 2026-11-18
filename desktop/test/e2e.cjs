@@ -31,6 +31,8 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const EXE = process.env.PIVOT_MAIL_EXE ? path.resolve(D, process.env.PIVOT_MAIL_EXE) : null
   // Linux test machines run as root, where Chromium's sandbox cannot start; Windows keeps it on.
   const flags = process.platform === 'linux' ? ['--no-sandbox'] : []
+  // Mac: photographs of the real screens for Minhaj (the mac workflow sets PIVOT_MAIL_SHOTS)
+  const macShot = (name) => { if (process.platform === 'darwin' && process.env.PIVOT_MAIL_SHOTS) try { require('node:child_process').execFileSync('/usr/sbin/screencapture', ['-x', path.join(process.env.PIVOT_MAIL_SHOTS, name)]) } catch (e) { console.log('   (screenshot failed: ' + e.message + ')') } }
   const launch = (env) => _electron.launch({ executablePath: EXE ?? require(path.join(D, 'node_modules', 'electron')), args: EXE ? flags : [...flags, D], cwd: D, env: { ...process.env, PIVOT_MAIL_NO_UPDATES: '1', ...env } }) // tests never update the app on the test computer, except D54
   console.log(`   running ${EXE ? 'the packaged app ' + EXE : 'from source'} on ${process.platform}`)
   const app = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })
@@ -51,6 +53,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   console.log('   buttons:', JSON.stringify(fit.buttons))
   ok('D41 ...the logo and the two company buttons (each "Continue with Google"), all of it fits (no scrolling)', fit.sw <= fit.iw && fit.sh <= fit.ih && fit.buttons.join('|') === 'Pivot Shipping Continue with Google · @pivotscl.com|Pivot Travel Management Continue with Google · @pivottmc.com', JSON.stringify(fit))
   await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin.png') })
+  macShot('1-mac-sign-in.png')
 
   // ---- the page itself is locked down
   ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'notifyMail', 'onMailAction', 'onSignInState', 'onUpdateReady', 'restartToUpdate', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
@@ -61,6 +64,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D2 a Google button opens the normal browser (Google refuses sign-in inside app windows); the small window waits', !!startUrl && (await si.locator('#waiting').isVisible()) && (await si.locator('#domain').innerText()) === '@pivotscl.com')
   ok('D3 ...carrying only the hash of the app\'s secret, and the company', /[?&]desktop=[A-Za-z0-9_-]{43}(&|$)/.test(startUrl) && /[?&]company=scl/.test(startUrl))
   await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin-waiting.png') })
+  macShot('2-mac-sign-in-waiting.png')
   const n0 = (await opened()).length
   await si.locator('#reopen').click(); await si.waitForTimeout(300)
   ok('D42 "Open the browser again" opens the same sign-in once more', (await opened()).length === n0 + 1 && (await opened()).pop() === startUrl)
@@ -90,6 +94,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D6 signed in as that person (even after a bogus link arrived mid-way)', s.status === 200 && s.body.user && s.body.user.email === 'ann@pivotscl.com')
   ok('D44 the small window closes and the full Pivot Mail window opens', after.length === 1 && after[0].visible && after[0].url.startsWith(BASE) && after[0].size[0] >= 900)
   ok('D7 ...showing Pivot Mail (the welcome screen for a person with no mailbox yet)', (await win.getByRole('heading', { name: /Welcome, Ann/ }).count()) === 1)
+  macShot('3-mac-main-window.png')
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0]
     w.setOverlayIcon = (img, desc) => global.__overlay.push(img ? desc : null)
@@ -111,7 +116,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await win.evaluate(() => window.pivotDesktop.setBadge(0)); await win.waitForTimeout(200)
   const ov = await app.evaluate(() => global.__overlay)
   console.log('   overlay calls:', JSON.stringify(ov))
-  ok('D11 the unread number goes on the taskbar icon, and clears at 0', ov.includes('7 unread') && ov[ov.length - 1] === null && ov.indexOf('7 unread') < ov.length - 1)
+  if (process.platform !== 'darwin') ok('D11 the unread number goes on the taskbar icon, and clears at 0', ov.includes('7 unread') && ov[ov.length - 1] === null && ov.indexOf('7 unread') < ov.length - 1)
 
   // ---- dragging attachments out
   await win.evaluate(() => window.pivotDesktop.startDrag([{ name: '..\\..\\Windows\\evil.exe', mime: 'application/octet-stream', bytes: new Uint8Array([104, 105]) }, { name: 'rates Q4.pdf', mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) }]))
@@ -156,6 +161,25 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await win.evaluate((o) => window.pivotDesktop.notifyMail(o), oddMail)
   const xml3 = await app.evaluate(() => global.__pmLastToast || '')
   ok('D57 an emoji cut at the limit or a forbidden character does not break the alert', !/[\uD800-\uDFFF\uFFFE\uFFFF]/.test(xml3.replace(/\uD83D\uDEA2/g, '')) && xml3.includes('Ship ok') && xml3.includes('A'.repeat(79) + '\u{1F6A2}<'), xml3.slice(0, 260))
+  if (process.platform === 'darwin') {
+    const mac = await app.evaluate(() => global.__pmLastMacAlert || null)
+    ok('D60 Mac: the alert is the Mac\'s own, with the sender, subject and first line', shownWin === true || (mac && typeof mac.title === 'string'), JSON.stringify(mac))
+    await win.evaluate((o) => window.pivotDesktop.notifyMail(o), one); await win.waitForTimeout(1500)
+    const m1 = await app.evaluate(() => global.__pmLastMacAlert || {})
+    ok('D61 Mac alert content: "Maersk Line <script>&" / "Arrival notice — MSKU 765432-1 at \"Jeddah\"" / first line + mailbox', m1.title === 'Maersk Line <script>&' && m1.subtitle === 'Arrival notice — MSKU 765432-1 at "Jeddah"' && m1.body.startsWith('Your container has arrived') && m1.body.endsWith('ops@pivotscl.com'), JSON.stringify(m1))
+    const err = await app.evaluate(() => global.__pmToastError || null)
+    ok('D62 ...and the Mac accepted it (no error)', err === null, err)
+    macShot('5-mac-alert.png')
+    const menu = await app.evaluate(({ Menu }) => (Menu.getApplicationMenu()?.items ?? []).map((i) => i.label))
+    ok('D63 Mac menu bar: Pivot Mail, Edit and Window menus (so ⌘C, ⌘V, ⌘Q, ⌘W work); no View menu (⌘R is Reply)', JSON.stringify(menu) === JSON.stringify(['Pivot Mail', 'Edit', 'Window']), JSON.stringify(menu))
+    await win.evaluate(() => window.pivotDesktop.setBadge(7)); await win.waitForTimeout(300)
+    ok('D64 the unread number shows on the dock icon', (await app.evaluate(({ app }) => app.dock?.getBadge() ?? '')) === '7')
+    await win.evaluate(() => window.pivotDesktop.setBadge(0))
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await win.waitForTimeout(500)
+    const hiddenAfterClose = !(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
+    await app.evaluate(({ app }) => app.emit('activate')); await win.waitForTimeout(600)
+    ok('D65 closing the window keeps Pivot Mail running; clicking the dock icon brings it back', hiddenAfterClose && (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible())))
+  }
   if (process.platform === 'win32') {
     ok('D52 on Windows the alert is drawn by Windows itself', shownWin === true)
     await win.waitForTimeout(1500)
@@ -236,6 +260,10 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
     // Ask Windows itself what is on the clipboard now: the same list Explorer pastes.
     const out = require('node:child_process').execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', 'Get-Clipboard -Format FileDropList | ForEach-Object { $_.FullName }'], { encoding: 'utf8' })
     onClipboard = out.split(/\r?\n/).filter(Boolean)
+  } else if (process.platform === 'darwin') {
+    // Ask the Mac itself what is on the clipboard now: the same file list Finder pastes.
+    const out = require('node:child_process').execFileSync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', 'ObjC.import("AppKit"); const a = $.NSPasteboard.generalPasteboard.readObjectsForClassesOptions($([$.NSURL]), $({})); const r = []; for (let i = 0; i < a.count; i++) r.push(ObjC.unwrap(a.objectAtIndex(i).path)); r.join("\\n")'], { encoding: 'utf8' })
+    onClipboard = out.split(/\r?\n/).filter(Boolean)
   } else onClipboard = await app.evaluate(() => global.__pmClipboardFiles || [])
   console.log('   on the clipboard:', JSON.stringify(onClipboard.map((f) => path.basename(f))))
   ok('D34 Copy puts the real files on the Windows clipboard (3 files, same-name files kept apart, right content)', copied === 3 && onClipboard.length === 3 && JSON.stringify(onClipboard.map((f) => path.basename(f))) === JSON.stringify(['B-L MEDU1234567.pdf', 'packing list.xlsx', 'packing list (2).xlsx']) && fs.readFileSync(onClipboard[0]).subarray(0, 4).toString() === '%PDF' && fs.readFileSync(onClipboard[2], 'utf8') === 'PL')
@@ -288,6 +316,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
     console.log('   offline screen:', JSON.stringify(page1))
     ok('D35 no internet at start: a clear built-in screen (not a blank window), with the reason for IT', page1.url === 'file:' && page1.h1 === 'No internet connection' && /\(-\d+\)/.test(page1.code || '') && page1.sh <= page1.ih)
     ok('D36 a person who chose dark mode gets a dark window and a dark screen from the first moment', page1.dark && (await a.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getBackgroundColor().toLowerCase())) === '#141416')
+    macShot('4-mac-no-internet.png')
     await w.screenshot({ path: path.join(os.tmpdir(), 'pm-offline-dark.png') })
     // the connection comes back: it opens by itself (checked every 5 s)
     await listen(); mode = 'up'
