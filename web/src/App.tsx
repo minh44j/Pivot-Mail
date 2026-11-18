@@ -18,7 +18,7 @@ import type { DayStat, StaffMember } from './data/performance'
 import { CASE_ERRORS, fetchCasesInfo, fetchOsFacts, fetchPicks, openCase, updateCase } from './cases'
 import type { OsFacts } from './cases'
 import type { CaseRecord, NewCase } from './cases'
-import { GmailError, SESSION_ENDED, findSentByMessageId, getLabel, listMessageIds, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
+import { GmailError, SESSION_ENDED, findSentByMessageId, getLabel, listMessageIds, getMetadataMany, getProfile, getThreadFull, listLabels } from './gmail/client'
 import type { GLabel } from './gmail/client'
 import { toMessage } from './gmail/map'
 import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
@@ -443,6 +443,8 @@ export default function App() {
   const labelsRef = useRef<Record<string, GLabel[]>>({})
   const realAccountsRef = useRef<AuthAccount[]>([])
   const lastSynced = useRef(new Map<string, number>())
+  /** Folders whose newest mail was fully re-read this session (see syncTarget). */
+  const freshened = useRef(new Set<string>())
   const runId = useRef(0)
   /** Search results for one search (key: the words + where it searches). Local hits (desktop app) and Gmail's hits add up. */
   const [liveSearch, setLiveSearch] = useState<{ key: string; ids: Set<string> } | null>(null)
@@ -551,12 +553,19 @@ export default function App() {
             known,
             labelNames: Object.fromEntries(labels.map((l) => [l.id, l.name])),
             isCancelled: () => runId.current !== my,
+            // The newest 100 are re-read the first time a folder is synced in this session (catches anything changed while the
+            // app was closed; batched, a few requests). After that Gmail's change log, followed every few seconds, brings
+            // read/flag/move changes, so re-reading them on every visit would only repeat that work.
+            refreshNewest: historyIds.current.has(accountId) && freshened.current.has(key) ? 0 : 100,
             onBatch: mergeIn,
             // A folder view also checks that nothing is listed here which Gmail has moved or deleted.
             reconcile: t.kind === 'folder' && ['inbox', 'sent', 'drafts', 'deleted', 'archive'].includes(t.id) ? { folder: t.id as Message['folder'], windowDays: t.id === 'drafts' ? 0 : acc.syncWindowDays } : undefined,
             onGone: dropGone,
           })
-          if (runId.current === my) lastSynced.current.set(key, stamp())
+          if (runId.current === my) {
+            lastSynced.current.set(key, stamp())
+            freshened.current.add(key)
+          }
         }
         if (runId.current === my) {
           setLastSync(new Date())
@@ -730,7 +739,7 @@ export default function App() {
 
       let added: Message[] = []
       if (fetchIds.length > 0) {
-        const got = await pool(fetchIds, 4, (i) => getMetadata(accountId, i))
+        const got = await getMetadataMany(accountId, fetchIds)
         added = got.map((g) => toMessage(accountId, g, names)).filter((x): x is Message => x !== null)
         mergeIn(added)
         lastSynced.current.delete(`${accountId}/folder/inbox`)
@@ -763,6 +772,7 @@ export default function App() {
         // Gmail no longer remembers that point: read the open folders again from scratch.
         setHistory(a.id, (await getProfile(a.id)).historyId)
         lastSynced.current.clear()
+        freshened.current.clear() // nothing can be assumed: re-read the newest mail of every folder
         const s = selRef.current
         void syncTarget(s, true)
         return
@@ -1102,6 +1112,12 @@ export default function App() {
             known,
             labelNames: Object.fromEntries(labels.map((l) => [l.id, l.name])),
             cap: 100,
+            // Results already on this computer are shown as they are; only mail not seen before is fetched.
+            refreshNewest: 0,
+            onIds: (all) => {
+              for (const id of all) if (known.has(id)) ids.add(id)
+              addLiveHits(liveKey, ids)
+            },
             onBatch: (ms) => {
               mergeIn(ms)
               for (const m of ms) ids.add(m.id)

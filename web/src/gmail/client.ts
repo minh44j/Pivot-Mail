@@ -137,6 +137,108 @@ const META: Params = [['format', 'metadata'], ...['From', 'To', 'Cc', 'Subject',
 
 export const getMetadata = (accountId: string, id: string): Promise<GMessage> => gget<GMessage>(accountId, `/messages/${encodeURIComponent(id)}`, META)
 
+/* ---------- many message headers in one request (Gmail batch) ---------- */
+
+const BATCH_URL = 'https://gmail.googleapis.com/batch/gmail/v1'
+/** Gmail allows up to 100 requests per batch; 25 keeps each one well inside the per-person speed limit with two in flight. */
+const BATCH_SIZE = 25
+/** Set when batching does not work here (an unexpected answer): this session then fetches one by one, as before. */
+let batchUnavailable = false
+
+/** The body of a batch: one plain GET per message, numbered so the answers can be matched back. */
+export function buildBatch(boundary: string, paths: string[]): string {
+  return paths.map((p, i) => `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <item${i}>\r\n\r\nGET ${p}\r\n\r\n`).join('') + `--${boundary}--\r\n`
+}
+
+/** Reads a batch answer: for each request (by its number) the status and the JSON body; null where Gmail gave no answer. */
+export function parseBatch(contentType: string, text: string, count: number): ({ status: number; body: unknown } | null)[] {
+  const m = /boundary=(?:"([^"]+)"|([^;\s]+))/i.exec(contentType)
+  const boundary = m?.[1] ?? m?.[2]
+  if (!boundary) throw new Error('batch answer without a boundary')
+  const out: ({ status: number; body: unknown } | null)[] = new Array(count).fill(null)
+  for (const part of text.split(`--${boundary}`)) {
+    const id = /Content-ID:\s*<response-item(\d+)>/i.exec(part)
+    const at = part.indexOf('HTTP/1.1 ')
+    if (!id || at < 0) continue
+    const i = Number(id[1])
+    const inner = part.slice(at)
+    const status = Number(inner.slice(9, 12))
+    const sep = inner.search(/\r?\n\r?\n/)
+    const raw = sep >= 0 ? inner.slice(sep).trim() : ''
+    let body: unknown = null
+    try {
+      body = raw ? JSON.parse(raw) : null
+    } catch {
+      body = null
+    }
+    if (i >= 0 && i < count) out[i] = { status, body }
+  }
+  return out
+}
+
+/** One batch request. Messages that are gone (404) are left out; anything else that failed is returned for a retry one by one. */
+async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessage[]; retry: string[] }> {
+  const qs = new URLSearchParams(META).toString()
+  const paths = ids.map((id) => `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?${qs}`)
+  const boundary = `pm_batch_${Math.random().toString(36).slice(2)}`
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const token = await accessToken(accountId, attempt > 0)
+    const res = await fetch(BATCH_URL, { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': `multipart/mixed; boundary=${boundary}` }, body: buildBatch(boundary, paths) })
+    if (res.status === 401 && attempt === 0) continue
+    if (!res.ok) {
+      if (res.status >= 400 && res.status < 500 && res.status !== 429) batchUnavailable = true
+      throw new Error(`batch ${res.status}`)
+    }
+    const parts = parseBatch(res.headers.get('content-type') ?? '', await res.text(), ids.length)
+    if (parts.every((x) => x === null)) {
+      batchUnavailable = true
+      throw new Error('batch answer not understood')
+    }
+    const ok: GMessage[] = []
+    const retry: string[] = []
+    parts.forEach((x, i) => {
+      if (x && x.status === 200 && x.body) ok.push(x.body as GMessage)
+      else if (!(x && x.status === 404)) retry.push(ids[i] as string)
+    })
+    return { ok, retry }
+  }
+  throw new Error('batch not authorised')
+}
+
+async function metadataOneByOne(accountId: string, ids: string[]): Promise<GMessage[]> {
+  const got = await pool(ids, 4, async (id) => {
+    try {
+      return await getMetadata(accountId, id)
+    } catch (e) {
+      if (e instanceof GmailError && e.status === 404) return null // deleted meanwhile
+      throw e
+    }
+  })
+  return got.filter((g): g is GMessage => g !== null)
+}
+
+/**
+ * Headers of many messages, fast: 25 per request (two requests in flight) instead of one request each. Falls back to one by one
+ * if batching is not available. Messages deleted meanwhile are simply left out. Results keep the order of `ids`.
+ */
+export async function getMetadataMany(accountId: string, ids: string[]): Promise<GMessage[]> {
+  if (ids.length === 0) return []
+  if (batchUnavailable || ids.length === 1) return metadataOneByOne(accountId, ids)
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += BATCH_SIZE) chunks.push(ids.slice(i, i + BATCH_SIZE))
+  const parts = await pool(chunks, 2, async (chunk) => {
+    try {
+      const r = await batchOnce(accountId, chunk)
+      return r.retry.length > 0 ? [...r.ok, ...(await metadataOneByOne(accountId, r.retry))] : r.ok
+    } catch (e) {
+      if (e instanceof GmailError) throw e
+      return metadataOneByOne(accountId, chunk)
+    }
+  })
+  const byId = new Map(parts.flat().map((g) => [g.id, g]))
+  return ids.map((id) => byId.get(id)).filter((g): g is GMessage => g !== undefined)
+}
+
 /** The whole conversation with bodies and attachment details. */
 export async function getThreadFull(accountId: string, threadId: string): Promise<GMessage[]> {
   return (await gget<{ messages?: GMessage[] }>(accountId, `/threads/${encodeURIComponent(threadId)}`, [['format', 'full']])).messages ?? []

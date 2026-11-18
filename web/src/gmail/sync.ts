@@ -1,5 +1,5 @@
 import type { Message } from '../types'
-import { GmailError, listMessageIds, getMetadata, pool } from './client'
+import { listMessageIds, getMetadataMany } from './client'
 import type { GLabel } from './client'
 import { toMessage } from './map'
 
@@ -68,17 +68,22 @@ export async function syncQuery(p: {
   reconcile?: { folder: Message['folder']; windowDays: number }
   /** Messages that no longer exist (or are spam, which is never shown): remove them from the list and the local copy */
   onGone?: (ids: string[]) => void
+  /** Every message the query matched (as "account:id"), including ones already known and therefore not fetched again */
+  onIds?: (ids: string[]) => void
 }): Promise<number> {
   const cap = p.cap ?? 500
-  const ids = await pageIds(p.accountId, p.query, cap)
+  // The list and the "with attachments" list are asked for together (one wait instead of two).
+  const [ids, att] = await Promise.all([pageIds(p.accountId, p.query, cap), pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap)])
   if (p.isCancelled?.()) return 0
-  const withAtt = new Set((await pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap)).map((x) => x.id))
+  p.onIds?.(ids.map((x) => `${p.accountId}:${x.id}`))
+  const withAtt = new Set(att.map((x) => x.id))
   const refresh = p.refreshNewest ?? 100
   const need = ids.filter((x, i) => i < refresh || !p.known.has(`${p.accountId}:${x.id}`))
-  for (let i = 0; i < need.length; i += 20) {
+  // Headers arrive 50 at a time (batched requests): the list fills in batch by batch.
+  for (let i = 0; i < need.length; i += 50) {
     if (p.isCancelled?.()) return i
-    const chunk = need.slice(i, i + 20)
-    const got = await pool(chunk, 4, (x) => getMetadata(p.accountId, x.id))
+    const chunk = need.slice(i, i + 50)
+    const got = await getMetadataMany(p.accountId, chunk.map((x) => x.id))
     const msgs = got.map((g) => toMessage(p.accountId, g, p.labelNames)).filter((m): m is Message => m !== null)
     for (const m of msgs) m.hasAttachments = withAtt.has(m.id.split(':')[1] ?? '')
     p.onBatch(msgs)
@@ -90,16 +95,14 @@ export async function syncQuery(p: {
     const stale = [...p.known.values()].filter((m) => m.accountId === p.accountId && m.folder === p.reconcile?.folder && !live.has(m.id) && Date.parse(m.date) >= since).slice(0, 60)
     const gone: string[] = []
     const fresh: Message[] = []
-    await pool(stale, 4, async (m) => {
-      try {
-        const g = await getMetadata(p.accountId, m.id.split(':')[1] ?? '')
-        const next = toMessage(p.accountId, g, p.labelNames)
-        if (next) fresh.push(next)
-        else gone.push(m.id)
-      } catch (e) {
-        if (e instanceof GmailError && e.status === 404) gone.push(m.id)
-      }
-    })
+    const got = await getMetadataMany(p.accountId, stale.map((m) => m.id.split(':')[1] ?? ''))
+    const back = new Map(got.map((g) => [`${p.accountId}:${g.id}`, g]))
+    for (const m of stale) {
+      const g = back.get(m.id)
+      const next = g ? toMessage(p.accountId, g, p.labelNames) : null
+      if (next) fresh.push(next)
+      else gone.push(m.id) // deleted (not returned) or spam (never shown)
+    }
     if (fresh.length > 0) p.onBatch(fresh)
     if (gone.length > 0) p.onGone?.(gone)
   }

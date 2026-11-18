@@ -1,6 +1,7 @@
 import { decodeWords, extractBodies, folderOf, parseAddresses, b64urlToBytes } from '../src/gmail/mime'
 import type { GMessage, GPart } from '../src/gmail/mime'
 import { toMessage, unescapeSnippet } from '../src/gmail/map'
+import { buildBatch, parseBatch } from '../src/gmail/client'
 
 let pass = 0, fail = 0
 const ok = (n: string, c: boolean) => { if (c) pass++; else fail++; console.log((c ? 'PASS ' : 'FAIL ') + n) }
@@ -100,6 +101,48 @@ rt = toMessage('acc', mk([{ name: 'From', value: 'Ann <ann@x.example>' }, { name
 ok('no Reply-To, nothing set', rt?.replyTo === undefined)
 rt = toMessage('acc', mk([{ name: 'From', value: 'L <list@x.example>' }, { name: 'Reply-To', value: 'a@x.example, B <b@x.example>' }, { name: 'Subject', value: 'Two' }]))
 ok('several Reply-To addresses are all kept', rt?.replyTo?.length === 2)
+
+// ---- batched requests (many message headers in one request)
+{
+  const body = buildBatch('B1', ['/gmail/v1/users/me/messages/a?format=metadata', '/gmail/v1/users/me/messages/b?format=metadata'])
+  ok('batch: one numbered GET per message, closed properly', body.includes('Content-ID: <item0>\r\n\r\nGET /gmail/v1/users/me/messages/a?format=metadata') && body.includes('<item1>') && body.trimEnd().endsWith('--B1--'))
+  // The answer exactly as Google documents it: parts in any order, each an HTTP response with its own headers.
+  const answer = [
+    '--batch_xyz',
+    'Content-Type: application/http',
+    'Content-ID: <response-item1>',
+    '',
+    'HTTP/1.1 404 Not Found',
+    'Content-Type: application/json; charset=UTF-8',
+    '',
+    '{"error":{"code":404,"message":"Requested entity was not found."}}',
+    '--batch_xyz',
+    'Content-Type: application/http',
+    'Content-ID: <response-item0>',
+    '',
+    'HTTP/1.1 200 OK',
+    'Content-Type: application/json; charset=UTF-8',
+    'Vary: Origin',
+    '',
+    '{"id":"a","threadId":"t","labelIds":["INBOX"],"payload":{"headers":[{"name":"Subject","value":"Hi --batch inside text"}]}}',
+    '--batch_xyz',
+    'Content-Type: application/http',
+    'Content-ID: <response-item2>',
+    '',
+    'HTTP/1.1 429 Too Many Requests',
+    '',
+    '{"error":{"code":429}}',
+    '--batch_xyz--',
+    '',
+  ].join('\r\n')
+  const parts = parseBatch('multipart/mixed; boundary=batch_xyz', answer, 4)
+  ok('batch answer: matched back by number, whatever the order', (parts[0]?.body as { id?: string })?.id === 'a' && parts[0]?.status === 200)
+  ok('batch answer: a deleted message shows as 404, a busy one as 429, a missing answer as nothing', parts[1]?.status === 404 && parts[2]?.status === 429 && parts[3] === null)
+  ok('batch answer: quoted boundary is understood too', parseBatch('multipart/mixed; boundary="batch_xyz"', answer, 1)[0]?.status === 200)
+  let threw = false
+  try { parseBatch('application/json', '{}', 1) } catch { threw = true }
+  ok('batch answer without a boundary is refused (the app then falls back to one by one)', threw)
+}
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

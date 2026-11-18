@@ -19,7 +19,7 @@ namespace PivotMailSetup
             Fine.Text = $"Installs for you only · no administrator rights needed · version {v.Major}.{v.Minor}.{v.Build}";
             // The card's corners also clip the waves.
             Root.SizeChanged += (s, e) => Root.Clip = new RectangleGeometry(new Rect(0, 0, Root.ActualWidth, Root.ActualHeight), 17, 17);
-            Loaded += (s, e) => { Show(Welcome); InstallBtn.Focus(); };
+            Loaded += (s, e) => Show(Welcome); // Enter presses the dark button (IsDefault); its outline only shows when someone uses Tab
         }
 
         /// <summary>Shows one screen with a short fade and rise (the others are hidden).</summary>
@@ -60,7 +60,6 @@ namespace PivotMailSetup
                 Show(Ready);
                 DrawTick();
                 FinishBtn.IsDefault = true;
-                FinishBtn.Focus();
             }
             else
             {
