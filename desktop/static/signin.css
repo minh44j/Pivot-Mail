@@ -128,21 +128,20 @@ button:focus-visible { outline: 3px solid rgba(0, 114, 198, 0.45); outline-offse
 body.dark .error { background: #3a1c1a; border-color: #6b2e29; color: #ffb4ab; }
 
 /* ---------- waiting: the hand-off picture ---------- */
-.handoff { display: flex; align-items: flex-start; justify-content: center; gap: 10px; margin: 0 0 16px; }
-.pc, .goo { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.pc small, .goo small { font-size: 11px; color: var(--ink-3); }
-.laptop { display: block; filter: drop-shadow(0 8px 14px rgba(15, 31, 53, 0.16)); }
-.laptop .bezel { fill: #1f2a3a; }
-.laptop .deck { fill: #c9d3df; }
-.laptop .notch { fill: #9aa8b8; }
-.laptop .env { animation: send 2.2s var(--ease) infinite; transform-origin: 42px 21px; }
-body.dark .laptop .bezel { fill: #323b4a; }
-body.dark .laptop .deck { fill: #3a3f48; }
-body.dark .laptop .notch { fill: #5a616d; }
-.goo { padding-top: 3px; }
-.gcircle { position: relative; display: grid; place-items: center; width: 54px; height: 54px; border-radius: 50%; background: #fff; box-shadow: 0 8px 18px rgba(15, 31, 53, 0.14), 0 0 0 1px rgba(15, 31, 53, 0.06); }
-.gcircle::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid #4285f4; opacity: 0; animation: ping 2.2s var(--ease) 0.7s infinite; }
-.track { display: flex; gap: 7px; margin-top: 24px; }
+.handoff { display: flex; align-items: flex-start; justify-content: center; gap: 12px; margin: 0 0 16px; }
+.nodewrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.nodewrap small { font-size: 11px; color: var(--ink-3); }
+.node { position: relative; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 19px; background: var(--btn); border: 1px solid var(--btn-line); box-shadow: 0 8px 20px rgba(15, 31, 53, 0.08); }
+.node.pc { background: linear-gradient(160deg, #f4f9ff, #e4effa); }
+body.dark .node.pc { background: linear-gradient(160deg, #1d2633, #18202b); }
+.lap { display: block; margin-top: 2px; }
+.lap .new { transform-box: fill-box; transform-origin: center; animation: blink 2.2s var(--ease) infinite; }
+.node.web .g { position: absolute; right: -6px; bottom: -6px; width: 24px; height: 24px; padding: 4px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(15, 31, 53, 0.2); }
+.node.web .g::after { content: none; }
+body.dark .node.web .browser rect:first-child { fill: #262a31; stroke: #3a3f48; }
+body.dark .node.web .browser path { stroke: #3a3f48; }
+body.dark .node.web .browser rect:not(:first-child) { fill: #343a44; }
+.track { display: flex; gap: 7px; margin-top: 31px; }
 .track i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); opacity: 0.18; animation: hop 2.2s var(--ease) infinite; }
 .track i:nth-child(2) { animation-delay: 0.12s; } .track i:nth-child(3) { animation-delay: 0.24s; } .track i:nth-child(4) { animation-delay: 0.36s; } .track i:nth-child(5) { animation-delay: 0.48s; }
 .actions { display: flex; flex-direction: column; align-items: center; }
@@ -177,6 +176,7 @@ footer svg { flex: none; }
 @keyframes drift2 { to { transform: translate(-50px, 30px) scale(1.15); } }
 @keyframes drift3 { to { transform: translate(-40px, -30px) scale(0.9); } }
 @keyframes hop { 0%, 60%, 100% { opacity: 0.18; transform: translateY(0); } 20% { opacity: 1; transform: translateY(-4px); } }
+@keyframes blink { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.75; } }
 @keyframes send { 0%, 70%, 100% { transform: none; } 10% { transform: scale(0.9); } 22% { transform: translateX(3px) scale(1.04); } }
 @keyframes ping { 0% { opacity: 0.7; transform: scale(0.9); } 60%, 100% { opacity: 0; transform: scale(1.35); } }
 @keyframes draw { to { stroke-dashoffset: 0; } }

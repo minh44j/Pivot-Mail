@@ -50,18 +50,27 @@ body.dark .logo img { box-shadow: 0 12px 26px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba
 .sheet { position: relative; display: flex; flex-direction: column; align-items: center; margin-top: 20px; padding: 24px 30px 18px; border-radius: 24px 24px 0 0; background: var(--sheet); box-shadow: 0 -10px 30px rgba(15, 31, 53, 0.05); text-align: center; }
 
 /* the picture: this computer - (broken) line - the internet / the Pivot Mail server */
-.scene { display: flex; align-items: flex-start; justify-content: center; gap: 8px; margin-bottom: 14px; }
+.scene { display: flex; align-items: flex-start; justify-content: center; gap: 10px; margin-bottom: 14px; }
+.end small { margin-top: 2px; }
 .end { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .end small { font-size: 11px; color: var(--ink-3); }
-.laptop { display: block; filter: drop-shadow(0 8px 14px rgba(15, 31, 53, 0.16)); }
-.laptop .bezel { fill: #1f2a3a; } .laptop .deck { fill: #c9d3df; } .laptop .notch { fill: #9aa8b8; }
-body.dark .laptop .bezel { fill: #323b4a; } body.dark .laptop .deck { fill: #3a3f48; } body.dark .laptop .notch { fill: #5a616d; }
-.farbox { display: grid; place-items: center; width: 58px; height: 58px; border-radius: 50%; background: var(--far-bg); color: var(--far); box-shadow: inset 0 0 0 1px rgba(15, 31, 53, 0.06); transition: color 0.3s var(--ease), background 0.3s var(--ease); }
-.far { width: 30px; height: 30px; }
+.node { position: relative; display: grid; place-items: center; width: 68px; height: 68px; border-radius: 19px; background: var(--sheet); border: 1px solid var(--btn-line); box-shadow: 0 8px 20px rgba(15, 31, 53, 0.08); }
+.node.pc { background: linear-gradient(160deg, #f4f9ff, #e4effa); }
+body.dark .node.pc { background: linear-gradient(160deg, #1d2633, #18202b); }
+.lap { display: block; margin-top: 2px; }
+.lap .new { transform-box: fill-box; transform-origin: center; animation: blink 2.2s var(--ease) infinite; }
+.farbox { background: var(--far-bg); color: var(--far); transition: color 0.3s var(--ease); }
+.far { width: 46px; height: 46px; transition: filter 0.4s var(--ease), opacity 0.4s var(--ease); }
+/* no internet: the world is greyed out; trying again brings its colour back */
+.far.globe { filter: grayscale(0.85); opacity: 0.75; }
+body.trying .far.globe { filter: none; opacity: 1; }
+.led-warn { transform-box: fill-box; transform-origin: center; animation: blink 1.6s var(--ease) infinite; }
+.farbox { background: linear-gradient(160deg, #f6f8fb, #eaeef3); }
+body.dark .farbox { background: linear-gradient(160deg, #1f232a, #191c22); }
 .far.server { display: none; }
 body.server .far.globe { display: none; }
 body.server .far.server { display: block; }
-.link-line { position: relative; display: grid; place-items: center; margin-top: 22px; }
+.link-line { position: relative; display: grid; place-items: center; margin-top: 31px; }
 .track { display: flex; gap: 6px; }
 .track i { width: 6px; height: 6px; border-radius: 50%; background: var(--far); opacity: 0.35; }
 body.server .track i { background: var(--accent); opacity: 0.18; animation: hop 2.2s var(--ease) infinite; }
@@ -89,6 +98,7 @@ button:focus-visible { outline: 3px solid rgba(0, 114, 198, 0.45); outline-offse
 .code { display: block; min-height: 16px; margin-top: 14px; font-size: 11.5px; color: var(--ink-3); }
 footer { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 30px; padding: 12px 0 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--ink-3); }
 
+@keyframes blink { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.35); opacity: 0.75; } }
 @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(0.98); } to { opacity: 1; transform: none; } }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes drift1 { to { transform: translate(60px, 40px) scale(1.1); } }
