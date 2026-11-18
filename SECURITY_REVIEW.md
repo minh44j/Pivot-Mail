@@ -43,6 +43,22 @@ dependency audit; each finding reproduced with a test that **fails on the old co
   on sign-out and when a different person signs in on the same computer. Only the Pivot Mail page itself can read the app's database
   (not the first-run screen, previews or any other site); the file is protected by the Windows account, like Outlook's own data file.
 
+## Windows app audit (2026-11-18, version 0.3.0)
+
+An independent code review of the desktop app plus hands-on testing. Fixed:
+
+| Finding | Fix | Test |
+|---|---|---|
+| After sign-out, a mail check still running could carry on (and alert) for the person who left, on a shared PC | One check loop only, stopped with sign-out; sign-out restarts the page clean; writes to the mail copy locked during a wipe | `deskserch.js` A4, A5 |
+| Deleted mail stayed readable in the database's journal file after "forget this device" | VACUUM plus journal checkpoint | `store.test.cjs` |
+| Older stored copies could undo a just-made change (read, deleted) | Stored copies only fill gaps | `deskserch.js` A3 |
+| A page other than Pivot Mail (after a redirect) could reach the app's bridge | Every bridge call checked for the Pivot Mail page; redirects to other sites open in the browser | `e2e.cjs` D25, D31 |
+| A website could post a sign-in hand-off for its own account (login forgery) | Posts from other sites refused | `desktop.test.mts` |
+| Any website could open a `pivotmail://` link and spoil a sign-in in progress | The app's secret is used up only by a sign-in that worked | `e2e.cjs` D6 |
+| Dragged attachments: duplicate names overwrote each other, Windows-reserved names failed, copies stayed in the temp folder | Unique names, safe names, copies deleted on quit | `e2e.cjs` D30, D32 |
+
+The same desktop tests run on a real Windows machine (GitHub Actions) against the packaged app before each installer is published.
+
 ## Still open
 
 - **Backups**: the Pivot Mail database (people, mailbox connections, cases, audit log) has no automatic backup on the free plan. Losing it means reconnecting every mailbox and losing case notes. Options: upgrade the project, or a nightly backup job (needs a database connection secret in GitHub).
