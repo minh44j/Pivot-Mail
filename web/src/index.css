@@ -5001,3 +5001,17 @@ button.ref-chip:hover { background: #cdeee1; }
 .si-mini-lines em { color: #3f4b5c; }
 :root[data-theme='dark'] .nm-btn, :root[data-theme='dark'] .newsplit-more { background: #1f6fb2; }
 :root[data-theme='dark'] .nm-btn:hover, :root[data-theme='dark'] .newsplit-more:hover { background: #1a5f9a; }
+
+/* ---- ribbon row, smaller: New mail and every command button are 28px on one centre line ---- */
+@media (min-width: 900px) {
+  .topbar { gap: 4px 0; padding: 5px 0 3px; background: linear-gradient(var(--ob) 0, var(--ob) 49px, var(--toolbar) 49px); }
+  .tp-new, .cmdbar { height: 30px; align-items: center; }
+  .cb { height: 28px; padding: 0 9px; font-size: 13px; line-height: 1; }
+  .cb svg { flex: none; }
+  .cb-tools { height: 28px; align-items: stretch; }
+  .cb-tools .cb { height: 26px; align-self: center; }
+  .cb-hamburger { height: 28px; }
+  .nm-btn { height: 28px; padding: 0 10px; font-size: 13px; line-height: 1; gap: 5px; border-radius: 5px 0 0 5px; }
+  .newsplit-more { width: 24px; height: 28px; border-radius: 0 5px 5px 0; }
+  .newsplit { height: 28px; align-items: stretch; }
+}
