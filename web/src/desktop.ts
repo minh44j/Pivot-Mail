@@ -35,6 +35,8 @@ export interface DesktopBridge {
   copyFiles?(files: DesktopFile[]): Promise<number>
   /** Light or dark: the window's own background follows it from the next start. From 0.5.0. */
   setTheme?(theme: 'light' | 'dark'): void
+  /** Nobody is signed in: the app shows its own small sign-in window instead of this page. From 0.6.0. */
+  signedOut?(): void
   /** Bring the window to the front, also when it is hidden in the tray (present from desktop version 0.2.0). */
   show?(): void
 }

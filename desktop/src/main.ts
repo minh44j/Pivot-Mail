@@ -5,8 +5,9 @@
  * cannot do well: a tray icon that keeps mail checking while the window is closed, real Windows alerts with the Pivot icon, the unread
  * number on the taskbar icon, dragging attachments out to the desktop or a folder, and a local mail database for instant search (store.ts).
  *
+ * Start: signed in, the full Pivot Mail window opens; not signed in, a small sign-in window (like Outlook's) with the two Google buttons.
  * Sign-in: Google does not allow its sign-in page inside an app's own window, so sign-in happens in the person's normal browser and is
- * handed back to the app (see beginSignIn / redeem, and web/api/_lib/auth/desktop.ts on the server).
+ * handed back to the app (see beginSignIn / handleLink, and web/api/_lib/auth/desktop.ts on the server).
  */
 import { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, net, session, shell } from 'electron'
 import type { Event as ElectronEvent, WebContents } from 'electron'
@@ -56,6 +57,8 @@ const baseUrl = (): string | null => DEV_URL ?? (settings.company ? HOSTS[settin
 const asset = (...p: string[]) => path.join(app.getAppPath(), ...p)
 
 let win: BrowserWindow | null = null
+/** The small sign-in window, while nobody is signed in (static/signin.html). */
+let signin: BrowserWindow | null = null
 let tray: Tray | null = null
 let quitting = false
 /** The mail database's own thread (store-worker.ts); null if it could not start (the page then keeps its smaller browser copy). */
@@ -64,6 +67,8 @@ let seq = 0
 const waiting = new Map<number, { resolve: (v: unknown) => void; fallback: unknown }>()
 /** The secret of a sign-in in progress (its hash went to the browser; the secret itself never leaves this app). */
 let pending: { verifier: string; at: number } | null = null
+/** The browser address of the sign-in in progress ("Open the browser again"). */
+let pendingStart: string | null = null
 
 /* ------------------------------------------------------------------ single instance and the pivotmail:// link */
 
@@ -89,17 +94,27 @@ function registerScheme(): void {
 
 const b64url = (b: Buffer) => b.toString('base64url')
 
-/** The web app asked to sign in: open the person's browser with the hash of a fresh secret. */
-function beginSignIn(from: URL): void {
+/** A Google button was pressed: open the person's browser with the hash of a fresh secret; the small window waits. */
+function beginSignIn(company: Company): void {
+  settings.company = company
+  saveSettings()
   const base = baseUrl()
   if (!base) return
   const verifier = b64url(randomBytes(32))
   pending = { verifier, at: Date.now() }
   const url = new URL('/api/auth/start', base)
-  const company = from.searchParams.get('company')
-  if (company === 'scl' || company === 'tmc') url.searchParams.set('company', company)
+  url.searchParams.set('company', company)
   url.searchParams.set('desktop', b64url(createHash('sha256').update(verifier).digest()))
+  pendingStart = url.href
   void shell.openExternal(url.href)
+  openSignIn({ state: 'waiting', co: company })
+}
+
+/** The full window asked to sign in again (an old page, an ended session): back to the small window, sign-in started. */
+function toSignIn(company: string | null): void {
+  closeMain()
+  const co: Company = company === 'tmc' || company === 'scl' ? company : (settings.company ?? 'scl')
+  beginSignIn(co)
 }
 
 /** The browser handed the sign-in back (pivotmail://auth?t=…): trade the ticket and our secret for this window's session. */
@@ -115,23 +130,46 @@ async function handleLink(link: string): Promise<void> {
   const base = baseUrl()
   // Only a sign-in this app started (in the last 10 minutes) is accepted: a link arriving out of the blue is ignored.
   if (!t || !base || !pending || Date.now() - pending.at > 10 * 60_000) {
-    showWindow()
-    if (win && t) void dialog.showMessageBox(win, { type: 'info', message: 'Please sign in again', detail: 'That sign-in was not started from this app, or took too long.' })
+    if (t && signin) openSignIn({ error: 'expired' })
+    else {
+      showWindow()
+      if (win && t) void dialog.showMessageBox(win, { type: 'info', message: 'Please sign in again', detail: 'That sign-in was not started from this app, or took too long.' })
+    }
     return
   }
   const body = new URLSearchParams({ t, v: pending.verifier }).toString()
-  showWindow()
+  // The full window is prepared out of sight and signs in; the small window stays until that has worked.
+  if (!win) createWindow(true, false)
+  const w = win as BrowserWindow | null
+  if (!w) return
   try {
-    await win?.loadURL(`${base}/api/auth/desktop`, {
+    await w.loadURL(`${base}/api/auth/desktop`, {
       postData: [{ type: 'rawData', bytes: Buffer.from(body) }],
       extraHeaders: 'Content-Type: application/x-www-form-urlencoded',
     })
   } catch {
-    /* the page shows its own error */
+    /* judged by where the window ended up, below */
   }
-  // The secret is used up only by a sign-in that worked: a bogus pivotmail:// link (any website can open one) must not spoil the
-  // real sign-in still in progress in the browser.
-  if (win && !win.webContents.getURL().includes('auth_error')) pending = null
+  let landed: URL | null = null
+  try {
+    landed = new URL(w.webContents.getURL())
+  } catch {
+    landed = null
+  }
+  const problem = !landed || !isSameSite(landed) ? 'unavailable' : landed.searchParams.get('auth_error')
+  if (problem) {
+    // The secret is used up only by a sign-in that worked: a bogus pivotmail:// link (any website can open one) must not spoil
+    // the real sign-in still in progress in the browser, so "expired" leaves the small window waiting as it was.
+    if (signin) {
+      closeMain()
+      if (problem !== 'state') openSignIn({ error: /^[a-z_]{1,20}$/.test(problem) ? problem : 'unavailable' })
+    }
+    return
+  }
+  pending = null
+  pendingStart = null
+  reveal(w)
+  signin?.close()
 }
 
 /* ------------------------------------------------------------------ navigation rules */
@@ -150,11 +188,11 @@ function guard(contents: WebContents): void {
       e.preventDefault()
       return
     }
-    if (u.protocol === 'file:' && /\/static\/(choose|offline)\.html$/.test(u.pathname)) return
+    if (u.protocol === 'file:' && /\/static\/(signin|offline)\.html$/.test(u.pathname)) return
     if (isSameSite(u)) {
       if (u.pathname === '/api/auth/start') {
         e.preventDefault()
-        beginSignIn(u)
+        toSignIn(u.searchParams.get('company'))
       } else if (u.pathname.startsWith('/api/accounts/connect')) {
         // "Add account" asks Google for mailbox permission: that happens in the browser too; the new mailbox shows here afterwards.
         e.preventDefault()
@@ -198,14 +236,85 @@ function guard(contents: WebContents): void {
 /* ------------------------------------------------------------------ the window */
 
 function showWindow(): void {
-  if (!win) createWindow()
-  if (!win) return
-  if (win.isMinimized()) win.restore()
-  win.show()
-  win.focus()
+  const w = win ?? signin
+  if (!w) {
+    void start(false)
+    return
+  }
+  reveal(w)
 }
 
-function createWindow(hidden = false): void {
+/** Shows a window (maximised again if it was last time; Windows shows a hidden window the moment it is maximised, so only now). */
+function reveal(w: BrowserWindow): void {
+  if (w === win && !w.isVisible() && settings.bounds?.maximized) w.maximize()
+  if (w.isMinimized()) w.restore()
+  w.show()
+  w.focus()
+}
+
+/** Signed in: the full window. Not signed in: the small sign-in window. No connection: the full window explains and retries. */
+async function start(hidden: boolean): Promise<void> {
+  const base = baseUrl()
+  const state = base ? await sessionState(base) : 'out'
+  if (state === 'out') openSignIn()
+  else createWindow(hidden)
+}
+
+/** Asks Pivot Mail whether this computer's session is still valid (with the app's own cookies). */
+async function sessionState(base: string): Promise<'in' | 'out' | 'unknown'> {
+  try {
+    const r = await session.defaultSession.fetch(new URL('/api/auth/session', base).href, { cache: 'no-store', credentials: 'include', signal: AbortSignal.timeout(6000) })
+    if (r.status === 200) return 'in'
+    if (r.status === 401) return 'out'
+    return 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** The small sign-in window (about 440 x 600, fixed size, centred), like Outlook's. */
+function openSignIn(query: Record<string, string> = {}): void {
+  const q = { ...query, dark: settings.dark ? '1' : '0' }
+  if (!signin) {
+    signin = new BrowserWindow({
+      width: 440,
+      height: 600,
+      useContentSize: true,
+      resizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      center: true,
+      show: false,
+      title: 'Pivot Mail',
+      icon: nativeImage.createFromPath(asset('build', 'icon.png')),
+      backgroundColor: settings.dark ? '#1b1b1e' : '#ffffff',
+      autoHideMenuBar: true,
+      webPreferences: { preload: asset('dist', 'preload.js'), contextIsolation: true, sandbox: true, nodeIntegration: false },
+    })
+    signin.once('ready-to-show', () => signin?.show())
+    signin.on('closed', () => {
+      signin = null
+      // Closing the sign-in window without signing in ends the app (there is no mail to check yet), like Outlook.
+      if (!win) {
+        pending = null
+        quitting = true
+        app.quit()
+      }
+    })
+  } else showWindow()
+  void signin.loadFile(asset('static', 'signin.html'), { query: q }).catch(() => {})
+}
+
+/** Removes the full window for good (sign-out, or before signing in again); its size and place are remembered. */
+function closeMain(): void {
+  if (!win) return
+  if (win.isVisible()) rememberBounds()
+  const w = win
+  win = null
+  w.destroy()
+}
+
+function createWindow(hidden = false, load = true): void {
   const b = settings.bounds
   win = new BrowserWindow({
     width: b?.width ?? 1360,
@@ -229,10 +338,9 @@ function createWindow(hidden = false): void {
       backgroundThrottling: false,
     },
   })
-  if (b?.maximized) win.maximize()
   win.webContents.setUserAgent(`${win.webContents.getUserAgent()} PivotMailDesktop/${app.getVersion()}`)
   win.once('ready-to-show', () => {
-    if (!hidden) win?.show()
+    if (!hidden && win) reveal(win)
   })
   win.on('close', (e) => {
     rememberBounds()
@@ -271,8 +379,7 @@ function createWindow(hidden = false): void {
     }
   })
   const base = baseUrl()
-  if (base) openApp(base)
-  else void win.loadFile(asset('static', 'choose.html'))
+  if (base && load) openApp(base)
 }
 
 /* ------------------------------------------------------------------ cannot connect: explain, keep trying, open by itself */
@@ -337,7 +444,6 @@ function buildTray(): void {
           app.setLoginItemSettings({ openAtLogin: item.checked, args: ['--hidden'] })
         },
       },
-      { label: 'Change company…', enabled: !DEV_URL, click: chooseAgain },
       { type: 'separator' },
       {
         label: 'Quit Pivot Mail',
@@ -351,12 +457,6 @@ function buildTray(): void {
   tray.on('right-click', () => tray?.setContextMenu(menu()))
 }
 
-function chooseAgain(): void {
-  settings.company = undefined
-  saveSettings()
-  showWindow()
-  void win?.loadFile(asset('static', 'choose.html'))
-}
 
 /* ------------------------------------------------------------------ the bridge (see preload.ts) */
 
@@ -416,23 +516,35 @@ function fromApp(e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolea
   }
 }
 
-/** The first-run company screen (a file inside the app). */
-function fromChooser(e: Electron.IpcMainEvent): boolean {
-  if (!win || e.sender !== win.webContents) return false
+/** The small sign-in window's own page (a file inside the app). */
+function fromSignIn(e: Electron.IpcMainEvent): boolean {
+  if (!signin || e.sender !== signin.webContents) return false
   try {
     const u = new URL(e.senderFrame?.url ?? e.sender.getURL())
-    return u.protocol === 'file:' && u.pathname.endsWith('/static/choose.html')
+    return u.protocol === 'file:' && u.pathname.endsWith('/static/signin.html')
   } catch {
     return false
   }
 }
 
 function bridge(): void {
-  ipcMain.on('pm:choose-company', (e, company: unknown) => {
-    if (!win || !fromChooser(e) || (company !== 'scl' && company !== 'tmc')) return
-    settings.company = company
-    saveSettings()
-    void win.loadURL(HOSTS[company])
+  ipcMain.on('pm:signin', (e, company: unknown) => {
+    if (fromSignIn(e) && (company === 'scl' || company === 'tmc')) beginSignIn(company)
+  })
+  ipcMain.on('pm:signin-reopen', (e) => {
+    if (fromSignIn(e) && pending && pendingStart) void shell.openExternal(pendingStart)
+  })
+  ipcMain.on('pm:signin-back', (e) => {
+    if (!fromSignIn(e)) return
+    pending = null
+    pendingStart = null
+    openSignIn()
+  })
+  // The page found nobody signed in (signed out here, or the session ended): back to the small sign-in window.
+  ipcMain.on('pm:signed-out', (e) => {
+    if (!fromApp(e)) return
+    closeMain()
+    openSignIn()
   })
 
   ipcMain.on('pm:theme', (e, theme: unknown) => {
@@ -585,9 +697,10 @@ app.whenReady().then(() => {
   storeBridge()
   buildTray()
   const hidden = process.argv.includes('--hidden')
-  createWindow(hidden)
-  const link = process.argv.find((a) => a.startsWith(`${SCHEME}://`))
-  if (link) void handleLink(link)
+  void start(hidden).then(() => {
+    const link = process.argv.find((a) => a.startsWith(`${SCHEME}://`))
+    if (link) void handleLink(link)
+  })
 })
 
 app.on('before-quit', () => {

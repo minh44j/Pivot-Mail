@@ -259,6 +259,12 @@ export default function App() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   /** False until the server has said whether someone is signed in, so the sign-in page does not flash first. */
   const [sessionChecked, setSessionChecked] = useState(false)
+  // Windows app: nobody signed in (after sign-out, or a session that ended) means the app's small sign-in window, like Outlook's,
+  // instead of this page's large sign-in screen.
+  const desktopSignedOut = sessionChecked && !authUser && !entered && typeof desktop()?.signedOut === 'function'
+  useEffect(() => {
+    if (desktopSignedOut) desktop()?.signedOut?.()
+  }, [desktopSignedOut])
   /** False until the first list of mailboxes has arrived (or failed), so the app opens ready instead of empty. */
   const [accountsTried, setAccountsTried] = useState(false)
   const [authConfig, setAuthConfig] = useState<AuthConfig | null>(null)
@@ -2231,7 +2237,8 @@ export default function App() {
   const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? 'All inboxes' : sel.id
   const showReader = pane !== 'off'
 
-  if ((!sessionChecked || (authUser && !accountsTried)) && !entered)
+  // Windows app with nobody signed in: the app's own small sign-in window takes over (see the effect above); show only the splash.
+  if ((!sessionChecked || (authUser && !accountsTried) || desktopSignedOut) && !entered)
     return (
       <div className="splash" role="status" aria-live="polite">
         <BrandLogo size="lg" />

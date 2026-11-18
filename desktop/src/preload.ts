@@ -1,7 +1,7 @@
 /**
  * The only door between the Pivot Mail web app and Windows. Sandboxed, context-isolated, and deliberately tiny:
- * the page can ask for a taskbar number, start a file drag, use the local mail database, and (on the first-run screen) pick the
- * company. Nothing else. The main process checks every call again (who is asking, and what).
+ * the page can ask for a taskbar number, start a file drag, use the local mail database, and (on the small sign-in window) start
+ * a sign-in. Nothing else. The main process checks every call again (who is asking, and what).
  */
 import { contextBridge, ipcRenderer } from 'electron'
 
@@ -28,7 +28,7 @@ function badgePng(n: number): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.5.0',
+  version: '0.6.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
@@ -68,7 +68,18 @@ contextBridge.exposeInMainWorld('pivotDesktop', {
   show() {
     ipcRenderer.send('pm:show')
   },
-  chooseCompany(company: 'scl' | 'tmc') {
-    ipcRenderer.send('pm:choose-company', company)
+  // The small sign-in window (static/signin.html)
+  signIn(company: 'scl' | 'tmc') {
+    ipcRenderer.send('pm:signin', company)
+  },
+  signInReopen() {
+    ipcRenderer.send('pm:signin-reopen')
+  },
+  signInBack() {
+    ipcRenderer.send('pm:signin-back')
+  },
+  // The Pivot Mail page found nobody signed in: the app switches to the small sign-in window.
+  signedOut() {
+    ipcRenderer.send('pm:signed-out')
   },
 })

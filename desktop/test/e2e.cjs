@@ -39,41 +39,60 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
     shell.openExternal = async (u) => { global.__opened.push(u) }
     dialog.showMessageBox = async (_w, o) => { global.__dialogs.push(o && o.message); return { response: 0 } }
   })
-  const win = await app.firstWindow()
-  await win.waitForSelector('.si', { timeout: 20000 })
+  const opened = () => app.evaluate(() => global.__opened)
+  // ---- not signed in: a small sign-in window, like Outlook's
+  const si = await app.firstWindow()
+  await si.waitForSelector('button[data-co]', { timeout: 20000 })
+  const box0 = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; const [cw, ch] = w.getContentSize(); return { n: BrowserWindow.getAllWindows().length, cw, ch, resizable: w.isResizable(), maximizable: w.isMaximizable() } })
+  console.log('   sign-in window:', JSON.stringify(box0))
+  ok('D40 not signed in: only a small sign-in window opens (440 x 600, fixed size), not the big one', box0.n === 1 && box0.cw === 440 && box0.ch === 600 && !box0.resizable && (process.platform === 'linux' || !box0.maximizable) && si.url().startsWith('file:'))
+  const fit = await si.evaluate(() => ({ sw: document.documentElement.scrollWidth, sh: document.documentElement.scrollHeight, iw: innerWidth, ih: innerHeight, buttons: [...document.querySelectorAll('button[data-co]')].map((b) => b.innerText.replace(/\s+/g, ' ').trim()) }))
+  ok('D41 ...just the logo and the two Google buttons, all of it fits (no scrolling)', fit.sw <= fit.iw && fit.sh <= fit.ih && fit.buttons.join('|') === 'Pivot Shipping @pivotscl.com|Pivot Travel Management @pivottmc.com', JSON.stringify(fit))
+  await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin.png') })
+
+  // ---- the page itself is locked down
+  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
+
+  // ---- sign-in goes to the browser, not into the window
+  await si.locator('button[data-co="scl"]').click(); await si.waitForTimeout(800)
+  const startUrl = (await opened()).find((u) => u.includes('/api/auth/start')) || ''
+  ok('D2 a Google button opens the normal browser (Google refuses sign-in inside app windows); the small window waits', !!startUrl && (await si.locator('#waiting').isVisible()) && (await si.locator('#domain').innerText()) === '@pivotscl.com')
+  ok('D3 ...carrying only the hash of the app\'s secret, and the company', /[?&]desktop=[A-Za-z0-9_-]{43}(&|$)/.test(startUrl) && /[?&]company=scl/.test(startUrl))
+  await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin-waiting.png') })
+  const n0 = (await opened()).length
+  await si.locator('#reopen').click(); await si.waitForTimeout(300)
+  ok('D42 "Open the browser again" opens the same sign-in once more', (await opened()).length === n0 + 1 && (await opened()).pop() === startUrl)
+
+  // a forged ticket is refused: nothing signed in, the small window keeps waiting
+  const bad = 'pivotmail://auth?t=' + encodeURIComponent('eyJmYWtlIjoxfQ.bad')
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), bad); await si.waitForTimeout(1500)
+  const sess = () => app.evaluate(async ({ session }, base) => (await session.defaultSession.fetch(base + '/api/auth/session', { credentials: 'include' })).status, BASE)
+  ok('D4 a forged ticket does not sign the app in (and no big window appears)', (await sess()) === 401 && (await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 1 && (await si.locator('#waiting').isVisible()))
+
+  // Back, then the real thing
+  await si.locator('#back').click(); await si.waitForTimeout(400)
+  ok('D43 "Back" returns to the two buttons', await si.locator('#choose').isVisible())
+  await si.locator('button[data-co="scl"]').click(); await si.waitForTimeout(600)
+  const start2 = (await opened()).filter((u) => u.includes('/api/auth/start')).pop()
+  // Any website can open a pivotmail:// link: a bogus one arriving now must not spoil the real sign-in under way.
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=bogus.ticket'); await si.waitForTimeout(1200)
+  const { location, ticket } = await browserSignIn(start2)
+  ok('D5 the browser finishes on the hand-back page with a ticket', location.startsWith('/desktop-signed-in.html#t=') && ticket.length > 20)
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=' + encodeURIComponent(ticket))
+  let win = null
+  for (let i = 0; i < 50 && !win; i++) { await new Promise((r) => setTimeout(r, 200)); win = app.windows().find((w) => w.url().startsWith(BASE)) || null }
+  await win.waitForSelector('h1, h2', { timeout: 15000 }).catch(() => {}); await win.waitForTimeout(800)
+  const after = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => ({ visible: w.isVisible(), url: w.webContents.getURL().slice(0, 30), size: w.getContentSize() })))
+  console.log('   after sign-in:', JSON.stringify(after))
+  const s = await win.evaluate(async () => { const r = await fetch('/api/auth/session'); return { status: r.status, body: await r.json() } })
+  ok('D6 signed in as that person (even after a bogus link arrived mid-way)', s.status === 200 && s.body.user && s.body.user.email === 'ann@pivotscl.com')
+  ok('D44 the small window closes and the full Pivot Mail window opens', after.length === 1 && after[0].visible && after[0].url.startsWith(BASE) && after[0].size[0] >= 900)
+  ok('D7 ...showing Pivot Mail (the welcome screen for a person with no mailbox yet)', (await win.getByRole('heading', { name: /Welcome, Ann/ }).count()) === 1)
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0]
     w.setOverlayIcon = (img, desc) => global.__overlay.push(img ? desc : null)
     w.webContents.startDrag = (item) => global.__drags.push(item)
   })
-  const opened = () => app.evaluate(() => global.__opened)
-
-  // ---- the page itself is locked down
-  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'copyFiles', 'retry', 'setBadge', 'setTheme', 'show', 'startDrag', 'store', 'version'])))
-
-  // ---- sign-in goes to the browser, not into the window
-  await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
-  const startUrl = (await opened()).find((u) => u.includes('/api/auth/start')) || ''
-  ok('D2 "Continue with Google" opens the normal browser (Google refuses sign-in inside app windows)', !!startUrl && win.url().startsWith(BASE))
-  ok('D3 ...carrying only the hash of the app\'s secret, and the company', /[?&]desktop=[A-Za-z0-9_-]{43}(&|$)/.test(startUrl) && /[?&]company=scl/.test(startUrl))
-
-  // a forged ticket is refused, and the window stays signed out
-  const bad = 'pivotmail://auth?t=' + encodeURIComponent('eyJmYWtlIjoxfQ.bad')
-  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), bad); await win.waitForTimeout(1500)
-  ok('D4 a forged ticket does not sign the app in', (await win.evaluate(async () => (await fetch('/api/auth/session')).status)) === 401)
-
-  // the real thing
-  await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
-  const start2 = (await opened()).filter((u) => u.includes('/api/auth/start')).pop()
-  // Any website can open a pivotmail:// link: a bogus one arriving now must not spoil the real sign-in under way.
-  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=bogus.ticket'); await win.waitForTimeout(1200)
-  const { location, ticket } = await browserSignIn(start2)
-  ok('D5 the browser finishes on the hand-back page with a ticket', location.startsWith('/desktop-signed-in.html#t=') && ticket.length > 20)
-  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=' + encodeURIComponent(ticket))
-  await win.waitForTimeout(2500)
-  const s = await win.evaluate(async () => { const r = await fetch('/api/auth/session'); return { status: r.status, body: await r.json() } })
-  ok('D6 the app window is signed in as that person (even after a bogus link arrived mid-way)', s.status === 200 && s.body.user && s.body.user.email === 'ann@pivotscl.com')
-  ok('D7 ...and shows Pivot Mail (the welcome screen for a person with no mailbox yet)', (await win.getByRole('heading', { name: /Welcome, Ann/ }).count()) === 1)
 
   // the same link again, after it was used: refused politely, nothing changes
   await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=' + encodeURIComponent(ticket)); await win.waitForTimeout(800)
@@ -185,11 +204,21 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const app3 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })
   const w3 = await app3.firstWindow()
   await w3.waitForLoadState('domcontentloaded'); await w3.waitForTimeout(1500)
+  ok('D45 already signed in: the full Pivot Mail window opens straight away (no sign-in window)', w3.url().startsWith(BASE) && (await app3.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 1)
   const kept = await w3.evaluate(async () => { const s = window.pivotDesktop.store; return { ids: (await s.load('acc1')).map((m) => m.id), meta: await s.getMeta('hist:acc1'), gone: (await s.load('acc3')).length } })
   ok('D23 stored mail and sync position are still there after quitting and reopening', JSON.stringify(kept.ids) === '["m2","m1"]' && kept.meta === '999' && kept.gone === 0)
   const wiped = await w3.evaluate(async () => { const s = window.pivotDesktop.store; await s.clearAll(); return [(await s.load('acc1')).length, (await s.load('acc2')).length, await s.getMeta('hist:acc1'), (await s.search(['acc1', 'acc2'], 'jeddah')).length] })
   ok('D24 "forget this device" (sign-out, another person) empties the whole database', JSON.stringify(wiped) === '[0,0,null,0]')
-  await app3.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
+  // sign out: the full window goes, the small sign-in window comes back
+  await w3.evaluate(async () => { await fetch('/api/auth/logout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }); location.replace('/') })
+  let back = null
+  for (let i = 0; i < 40 && !back; i++) { await new Promise((r) => setTimeout(r, 200)); back = app3.windows().find((w) => w.url().includes('signin.html')) || null }
+  const wins3 = await app3.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => w.webContents.getURL().slice(-40)))
+  ok('D46 after signing out, the big window closes and the small sign-in window returns', !!back && wins3.length === 1 && wins3[0].includes('signin.html'), JSON.stringify(wins3))
+  // closing the small window without signing in ends the app (nothing to check yet), like Outlook
+  const exited = new Promise((r) => app3.process().once('exit', () => r(true)))
+  await app3.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
+  ok('D47 closing the sign-in window quits Pivot Mail', await Promise.race([exited, new Promise((r) => setTimeout(() => r(false), 8000))]))
   await app3.close().catch(() => {})
 
   // ---- starting without internet (or with the server down): explained, and Pivot Mail opens by itself when it can connect
@@ -229,14 +258,15 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   // ---- first run without a company: the chooser
   const fresh = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-'))
   const app2 = await launch({ PIVOT_MAIL_URL: '', PIVOT_MAIL_USER_DATA: fresh })
+  await app2.evaluate(({ shell }) => { global.__opened = []; shell.openExternal = async (u) => { global.__opened.push(u) } })
   const w2 = await app2.firstWindow()
   await w2.waitForSelector('button[data-co]', { timeout: 15000 })
-  ok('D15 first run asks which company (two choices)', (await w2.locator('button[data-co]').count()) === 2 && (await w2.locator('h1').innerText()).includes('Welcome to Pivot Mail'))
-  const fromChooser = await w2.evaluate(async () => [await window.pivotDesktop.store.load('acc1'), await window.pivotDesktop.store.search(['acc1'], 'jeddah')])
-  ok('D25 a page that is not Pivot Mail itself (here the first-run screen) gets nothing from the database', JSON.stringify(fromChooser) === '[null,null]')
-  await app2.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.webContents.loadURL = (u) => { global.__loaded = u; return Promise.resolve() } })
+  ok('D15 very first start: the small sign-in window with both companies (no separate company screen)', (await w2.locator('button[data-co]').count()) === 2 && (await w2.locator('h1').first().innerText()) === 'Sign in')
+  const fromSignin = await w2.evaluate(async () => [await window.pivotDesktop.store.load('acc1'), await window.pivotDesktop.store.search(['acc1'], 'jeddah')])
+  ok('D25 a page that is not Pivot Mail itself (here the sign-in window) gets nothing from the database', JSON.stringify(fromSignin) === '[null,null]')
   await w2.locator('button[data-co="tmc"]').click(); await w2.waitForTimeout(500)
-  ok('D16 choosing Pivot Travel Management opens mail.pivottmc.com and remembers it', (await app2.evaluate(() => global.__loaded)) === 'https://mail.pivottmc.com' && JSON.parse(fs.readFileSync(path.join(fresh, 'settings.json'), 'utf8')).company === 'tmc')
+  const tmc = (await app2.evaluate(() => global.__opened)).pop() || ''
+  ok('D16 Pivot Travel Management signs in at mail.pivottmc.com, and the choice is remembered', tmc.startsWith('https://mail.pivottmc.com/api/auth/start?') && /company=tmc/.test(tmc) && JSON.parse(fs.readFileSync(path.join(fresh, 'settings.json'), 'utf8')).company === 'tmc' && (await w2.locator('#domain').innerText()) === '@pivottmc.com')
   await app2.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
   await app2.close().catch(() => {})
 
