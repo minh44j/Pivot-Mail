@@ -8,6 +8,7 @@ import logoLockup from '../assets/brand/logo-lockup.png'
 import { Icon } from './Icon'
 
 import { RealUsers } from './RealUsers'
+import { SignatureEditor } from './SignatureEditor'
 import { UsersPanel } from './UsersPanel'
 import { PROBLEMS } from '../problems'
 import type { Problem } from '../problems'
@@ -330,14 +331,9 @@ export function SettingsPage(p: Props) {
               </h2>
               <p className="muted">One signature per mailbox. It is added to new messages sent from that mailbox and can be turned off in the composer.</p>
               {p.accounts.map((a) => (
-                <label key={a.id} className="fld sig-fld">
-                  <span>
-                    {a.name} <small>{a.email}</small>
-                  </span>
-                  <textarea rows={4} value={a.signature} onChange={(e) => p.onSignature(a.id, e.target.value)} aria-label={`Signature for ${a.email}`} />
-                </label>
+                <SignatureEditor key={a.id} label={`${a.name} · ${a.email}`} value={a.signature} onChange={(v) => p.onSignature(a.id, v)} />
               ))}
-              <small>Saved automatically. Plain text for now.</small>
+              <small>Saved automatically. Paste a picture (or a whole signature), drop one in, or use Add picture. Click a picture to resize it.</small>
             </section>
           )}
 

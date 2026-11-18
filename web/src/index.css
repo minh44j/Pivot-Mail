@@ -4665,3 +4665,17 @@ button.ref-chip:hover { background: #cdeee1; }
 .ref-panel .rg-suggest button { padding: 6px 10px; font-size: 13px; }
 .ref-panel .rg-ok { font-size: 11.5px; }
 .ref-panel .rg-existing { font-size: 12.5px; }
+
+/* ---- Signature editor (text and pictures) ---- */
+.sig-rich { display: flex; flex-direction: column; gap: 6px; }
+.sig-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.sig-tool { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 12px; border: 1px solid var(--separator); border-radius: 999px; background: var(--content); color: var(--label); font-size: 13px; transition: background 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.sig-tool:hover { background: var(--fill); }
+.sig-tool.danger { color: var(--c-red); }
+.sig-editor { position: relative; min-height: 96px; padding: 10px 12px; border-radius: var(--r-md); background: var(--fill); outline: none; line-height: 1.5; overflow-wrap: anywhere; }
+.sig-editor:focus { background: var(--content); box-shadow: 0 0 0 2px var(--accent); }
+.sig-editor.is-empty::before { content: attr(data-placeholder); color: var(--label-2); pointer-events: none; position: absolute; }
+.sig-editor img { max-width: 100%; height: auto; vertical-align: middle; border-radius: 4px; cursor: pointer; }
+.sig-editor img.sig-pic-on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sig-note { color: var(--c-red); }
+@media (prefers-reduced-motion: reduce) { .sig-tool { transition: none; } }

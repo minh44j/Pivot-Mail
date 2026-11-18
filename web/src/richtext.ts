@@ -35,7 +35,7 @@ export function safeUrl(raw: string): string | null {
 }
 
 /** Allow-list sanitiser for draft restore and any HTML we did not generate ourselves. */
-export function sanitizeHtml(html: string): string {
+export function sanitizeHtml(html: string, opts: { images?: boolean } = {}): string {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
   const clean = (node: Node): void => {
     for (const child of Array.from(node.childNodes)) {
@@ -54,6 +54,24 @@ export function sanitizeHtml(html: string): string {
         const inner = sanitizeEmailHtml(el.innerHTML, true).html
         for (const attr of Array.from(el.attributes)) if (attr.name !== 'data-quote') el.removeAttribute(attr.name)
         el.innerHTML = inner
+        continue
+      }
+      // Pictures: only inside a signature (or when the caller is the signature editor). Embedded or https sources only.
+      if (el.tagName === 'IMG') {
+        const src = el.getAttribute('src') ?? ''
+        const okSrc = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(src) || /^https:\/\//i.test(src)
+        if (!okSrc || !(opts.images || el.closest('[data-sig]'))) {
+          el.remove()
+          continue
+        }
+        const w = (el.getAttribute('width') ?? '').replace(/[^0-9]/g, '').slice(0, 4)
+        const h = (el.getAttribute('height') ?? '').replace(/[^0-9]/g, '').slice(0, 4)
+        const alt = el.getAttribute('alt') ?? ''
+        for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name)
+        el.setAttribute('src', src)
+        if (w) el.setAttribute('width', w)
+        if (h) el.setAttribute('height', h)
+        el.setAttribute('alt', alt.slice(0, 120))
         continue
       }
       if (!ALLOWED.has(el.tagName)) {
@@ -94,8 +112,26 @@ export function bodyText(html: string): string {
   return (doc.body.textContent ?? '').trim()
 }
 
+/** A signature is plain text, or (when it has pictures or formatting) HTML marked with this prefix. */
+export const SIG_HTML = '<!--pm-html-->'
+export const isHtmlSignature = (s: string): boolean => s.startsWith(SIG_HTML)
+
+/** The signature as HTML for the editor / composer (always cleaned). */
+export function signatureBody(signature: string): string {
+  return isHtmlSignature(signature) ? sanitizeHtml(signature.slice(SIG_HTML.length), { images: true }) : textToHtml(signature.trim())
+}
+
+/** The signature's text only (first line used as the sender's name in templates). */
+export function signatureText(signature: string): string {
+  if (!isHtmlSignature(signature)) return signature
+  const doc = new DOMParser().parseFromString(`<body>${signature.slice(SIG_HTML.length).replace(/<br\s*\/?>/gi, '\n').replace(/<\/(div|p|li)>/gi, '\n')}</body>`, 'text/html')
+  return (doc.body.textContent ?? '').replace(/^\s+/, '')
+}
+
 export function signatureHtml(signature: string): string {
-  return signature.trim() ? `<div data-sig="1" contenteditable="false"><br>-- <br>${textToHtml(signature.trim())}</div>` : ''
+  const body = signatureBody(signature)
+  const hasContent = isHtmlSignature(signature) ? /<img\b/i.test(body) || signatureText(signature).trim() !== '' : signature.trim() !== ''
+  return hasContent ? `<div data-sig="1" contenteditable="false"><br>-- <br>${body}</div>` : ''
 }
 
 /** Plain text of an HTML body (line breaks kept), for previews and plain-text copies. */

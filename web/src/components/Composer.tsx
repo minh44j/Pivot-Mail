@@ -5,7 +5,7 @@ import { applyTemplate } from '../data/templates'
 import { useSettings } from '../settings'
 import type { Template } from '../data/templates'
 import { platform } from '../platform'
-import { bodyText, escapeHtml, safeUrl, sanitizeHtml, signatureHtml, textToHtml } from '../richtext'
+import { bodyText, escapeHtml, safeUrl, sanitizeHtml, signatureHtml, signatureText, textToHtml } from '../richtext'
 import { formatSize } from '../util'
 import { EMAIL_RE, bareAddress } from '../data/contacts'
 import { matchCopiedEmail } from '../emailClipboard'
@@ -193,7 +193,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   const insertTemplate = (t: Template) => {
     const acc = accounts.find((a) => a.id === d.accountId)
     const filled = applyTemplate(t, {
-      sender: acc?.signature.split('\n')[0] ?? '',
+      sender: signatureText(acc?.signature ?? '').split('\n')[0] ?? '',
       subject: d.subject.replace(/^(re|fwd?):\s*/i, ''),
     })
     const html = textToHtml(filled.body.replace(/\n*Best regards,\n[^\n]*$/, '\n\nBest regards,'))
