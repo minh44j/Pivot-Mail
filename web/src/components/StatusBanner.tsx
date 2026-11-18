@@ -3,6 +3,8 @@ import { Icon } from './Icon'
 interface BannerProps {
   kind: 'offline' | 'syncfail' | 'ratelimit'
   detail?: string
+  /** Real mail: changes and sending need a connection (nothing is queued) */
+  real?: boolean
   last: Date
   seconds: number
   busy: boolean
@@ -10,11 +12,13 @@ interface BannerProps {
 }
 
 /** One slim banner under the toolbar. Polite live region so screen readers hear it once. */
-export function StatusBanner({ kind, detail, last, seconds, busy, onRetry }: BannerProps) {
+export function StatusBanner({ kind, detail, real, last, seconds, busy, onRetry }: BannerProps) {
   const time = last.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   const text =
     kind === 'offline'
-      ? 'You are offline. You can keep reading and organising. Changes sync when you reconnect, and sending waits until then.'
+      ? real
+        ? 'You are offline. You can keep reading the mail on this device. Moving, deleting and sending need a connection, so do those once you are back online.'
+        : 'You are offline. You can keep reading and organising. Changes sync when you reconnect, and sending waits until then.'
       : kind === 'syncfail'
         ? `Couldn't sync with Google${detail ? ` (${detail})` : ''}. Showing mail from ${time}.`
         : `Google is limiting requests. Sync is paused and retries automatically in ${seconds}s.`

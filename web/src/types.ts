@@ -38,6 +38,8 @@ export interface Message {
   labels: string[]
   from: Person
   to: Person[]
+  /** Where replies should go when it is not the sender (contact forms, notification systems) */
+  replyTo?: Person[]
   cc?: Person[]
   subject: string
   body: string

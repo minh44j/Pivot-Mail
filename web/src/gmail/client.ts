@@ -4,6 +4,9 @@ import type { GMessage } from './mime'
 
 const BASE = 'https://gmail.googleapis.com/gmail/v1/users/me'
 
+/** Status used when the person's Pivot Mail sign-in has ended (the server said "session"). */
+export const SESSION_ENDED = 440
+
 export class GmailError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -23,7 +26,8 @@ async function accessToken(accountId: string, force = false): Promise<string> {
   if (pending) return pending
   const p = (async () => {
     const r = await fetchGmailAccess(accountId)
-    if ('error' in r) throw new GmailError(r.error === 'reconnect' ? 401 : 503, r.error)
+    // 440: our own sign-in has ended (not Google's doing). 401: the mailbox permission was taken away. Anything else: try again later.
+    if ('error' in r) throw new GmailError(r.error === 'reconnect' ? 401 : r.error === 'session' ? SESSION_ENDED : 503, r.error)
     keys.set(accountId, { token: r.accessToken, expiresAt: r.expiresAt })
     return r.accessToken
   })().finally(() => inflight.delete(accountId))
@@ -173,6 +177,23 @@ export async function sendRaw(accountId: string, raw: string, threadId?: string)
   const bytes = atob(raw.replace(/-/g, '+').replace(/_/g, '/'))
   const data = [`--${b}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(threadId ? { threadId } : {}), `--${b}`, 'Content-Type: message/rfc822', '', bytes, `--${b}--`].join('\r\n')
   return greq<Sent>(accountId, '', { method: 'POST', url: 'https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart', raw: { type: `multipart/related; boundary=${b}`, data }, idempotent: false })
+}
+
+/**
+ * Did a send that seemed to fail actually go through? Looks for our own Message-ID in the mailbox
+ * (a few tries, because Gmail's search can take a moment to see a new message).
+ */
+export async function findSentByMessageId(accountId: string, messageId: string): Promise<{ id: string; threadId: string } | null> {
+  for (let i = 0; i < 3; i++) {
+    if (i > 0) await wait(2000)
+    try {
+      const r = await listMessageIds(accountId, { q: `rfc822msgid:${messageId}`, max: 1, includeSpamTrash: true })
+      if (r.ids[0]) return r.ids[0]
+    } catch {
+      /* try again, then give up */
+    }
+  }
+  return null
 }
 
 export interface GDraft {

@@ -16,7 +16,7 @@ import type { DayStat, StaffMember } from './data/performance'
 import { CASE_ERRORS, fetchCasesInfo, fetchOsFacts, fetchPicks, openCase, updateCase } from './cases'
 import type { OsFacts } from './cases'
 import type { CaseRecord, NewCase } from './cases'
-import { GmailError, getLabel, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
+import { GmailError, SESSION_ENDED, findSentByMessageId, getLabel, listMessageIds, getMetadata, getProfile, getThreadFull, listLabels, pool } from './gmail/client'
 import type { GLabel } from './gmail/client'
 import { toMessage } from './gmail/map'
 import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
@@ -88,6 +88,12 @@ function describeError(e: unknown): string {
 }
 
 const stamp = (): number => Date.now()
+
+/** What a person leaves on this device: the mail copy, an unsent draft, recent searches, personal templates. */
+async function forgetPersonalData(): Promise<void> {
+  await platform.cache.clearAll()
+  for (const k of ['pm.draft', 'pm.recent', 'pm.saved', 'pm.templates', 'pm.stats']) platform.storage.remove(k)
+}
 
 const EMPTY_PERF = { staff: [] as StaffMember[], days: new Map<string, DayStat[]>() }
 
@@ -229,7 +235,7 @@ export default function App() {
   /** One status card. Wording that says something went wrong is shown as an error without every caller having to say so. */
   const showToast = useCallback(
     (text: string, opts?: { kind?: NoticeKind; action?: Notice['action'] }) => {
-      const kind = opts?.kind ?? (/\b(couldn'?t|could not|can'?t|cannot|failed|not sent|not allowed|error|refused|blocked|over gmail|please attach)/i.test(text) ? 'error' : 'success')
+      const kind = opts?.kind ?? (/\b(couldn'?t|could not|can'?t|cannot|failed|not sent|not allowed|error|refused|blocked|over gmail|please attach|did not accept|didn'?t|not available|unavailable|is not a gmail|can only be|only mail that|put back|try again|offline, so)/i.test(text) ? 'error' : 'success')
       const id = ++noticeSeq.current
       setNotices((l) => [...l.filter((n) => n.text !== text).slice(-2), { id, kind, text, action: opts?.action }])
       setNoticeLog((l) => [{ id, kind, text, at: new Date() }, ...l].slice(0, 15))
@@ -455,7 +461,8 @@ export default function App() {
         }
       } catch (e) {
         if (runId.current === my) {
-          if (e instanceof GmailError && e.status === 401 && current) markReconnect(current)
+          if (e instanceof GmailError && e.status === SESSION_ENDED) setSim('expired')
+          else if (e instanceof GmailError && e.status === 401 && current) markReconnect(current)
           else {
             setSyncDetail(describeError(e))
             setSim('syncfail')
@@ -512,7 +519,18 @@ export default function App() {
     const connectError = q.get('connect_error')
     if (q.has('auth_error') || connected || connectError) window.history.replaceState(null, '', window.location.pathname)
     void fetchAuthConfig().then(setAuthConfig)
-    void fetchSession().then((u) => {
+    void fetchSession().then(async (u) => {
+      if (u) {
+        // Someone else on this device? Their mail copy and unsent draft must not stay behind.
+        const last = platform.storage.get('pm.lastuser')
+        if (last && last !== u.email.toLowerCase()) {
+          await forgetPersonalData()
+          platform.storage.set('pm.lastuser', u.email.toLowerCase())
+          window.location.reload() // start clean: nothing of the previous person is left in memory either
+          return
+        }
+        platform.storage.set('pm.lastuser', u.email.toLowerCase())
+      }
       setAuthUser(u)
       setSessionChecked(true)
       if (!u) return
@@ -627,7 +645,8 @@ export default function App() {
       setSim((v) => (v === 'syncfail' ? null : v))
     } catch (e) {
       failStreak.current += 1
-      if (e instanceof GmailError && e.status === 401) {
+      if (e instanceof GmailError && e.status === SESSION_ENDED) setSim('expired')
+      else if (e instanceof GmailError && e.status === 401) {
         /* the key is refreshed by the next call */
       } else if (failStreak.current >= 3) {
         setSyncDetail(describeError(e))
@@ -1017,7 +1036,7 @@ export default function App() {
   const upsert = (m: Message) => setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev.map((x) => (x.id === m.id ? m : x)) : [m, ...prev]))
 
   /** Everything the composer holds, as the raw email Gmail sends. */
-  const outgoing = async (d: ComposeInit, acc: AuthAccount, lenient = false): Promise<string> => {
+  const outgoing = async (d: ComposeInit, acc: AuthAccount, lenient = false, messageId?: string): Promise<string> => {
     const files: OutAttachment[] = []
     let total = 0
     for (const at of d.attachments) {
@@ -1046,6 +1065,7 @@ export default function App() {
         attachments: files,
         inReplyTo: d.reply?.messageId || undefined,
         references: d.reply?.references || undefined,
+        messageId,
       }),
     )
   }
@@ -1059,7 +1079,18 @@ export default function App() {
   const sendReal = async (d: ComposeInit) => {
     const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
     if (!acc) throw new Error('no account')
-    const sent = await sendRaw(acc.id, await outgoing(d, acc), d.reply?.threadId)
+    const mid = `pm-${crypto.randomUUID()}@pivotmail`
+    const raw = await outgoing(d, acc, false, mid)
+    let sent: { id: string; threadId: string }
+    try {
+      sent = await sendRaw(acc.id, raw, d.reply?.threadId)
+    } catch (e) {
+      // The connection dropped or Gmail hiccuped: the message may be sent already. Look before anyone repeats it.
+      const maybe = !(e instanceof GmailError) || e.status >= 500
+      const found = maybe ? await findSentByMessageId(acc.id, mid) : null
+      if (!found) throw e
+      sent = found
+    }
     if (d.gmailDraftId) void deleteDraft(acc.id, d.gmailDraftId).catch(() => undefined)
     mergeIn([fromCompose(d, `${acc.id}:${sent.id}`, 'sent', { threadId: sent.threadId, loaded: true })])
     lastSynced.current.delete(`${acc.id}/folder/sent`)
@@ -1216,24 +1247,47 @@ export default function App() {
   }
   const markAllRead = () => {
     const ids = scope.filter((m) => m.unread).map((m) => m.id)
-    if (ids.length === 0) return
+    if (ids.length === 0 && !(realMode && sel.kind !== 'label' && (sel.kind === 'all' || (sel.kind === 'folder' && sel.id === 'inbox')))) return
     if (realMode) {
       const before = scope.filter((m) => m.unread).map((m) => ({ ...m }))
       const set = new Set(ids)
       touch(ids)
       setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, unread: false } : m)))
-      const accounts = [...new Set(before.map((m) => m.accountId))]
-      const call = (add: string[], remove: string[]) => Promise.all(accounts.map((acc) => modifyMessages(acc, before.filter((m) => m.accountId === acc).map(gid), add, remove)))
-      void call([], ['UNREAD']).then(
-        () => {
-          realUndo.current.push({ before, inverse: async () => void (await call(['UNREAD'], [])) })
-          showToast(`${ids.length} message${ids.length === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
-        },
-        () => {
-          restoreLocal(before)
-          showToast('Gmail did not accept the change, so it was put back.')
-        },
-      )
+      // The Inbox: Gmail may hold more unread mail than this device has loaded, so ask Gmail for all of it (up to 2,000 a mailbox).
+      const wholeInbox = sel.kind === 'all' || (sel.kind === 'folder' && sel.id === 'inbox')
+      const accountsAll = [...new Set(before.map((m) => m.accountId))]
+      const inboxAccounts = wholeInbox ? (sel.kind === 'all' ? realAccountsRef.current.filter((x) => x.status !== 'needs_reconnect').map((x) => x.id) : [sel.accountId]) : []
+      const accounts = [...new Set([...accountsAll, ...inboxAccounts])]
+      const extra = new Map<string, string[]>()
+      const gather = async () => {
+        for (const acc of inboxAccounts) {
+          const found: string[] = []
+          let token: string | undefined
+          do {
+            const page = await listMessageIds(acc, { labelIds: ['INBOX', 'UNREAD'], pageToken: token, max: 500 })
+            found.push(...page.ids.map((x) => x.id))
+            token = page.next
+          } while (token && found.length < 2000)
+          extra.set(acc, found)
+        }
+      }
+      const gidsFor = (acc: string): string[] => [...new Set([...before.filter((m) => m.accountId === acc).map(gid), ...(extra.get(acc) ?? [])])]
+      const call = (add: string[], remove: string[]) => Promise.all(accounts.map((acc) => modifyMessages(acc, gidsFor(acc), add, remove)))
+      void gather()
+        .then(() => call([], ['UNREAD']))
+        .then(
+          () => {
+            const total = accounts.reduce((n, acc) => n + gidsFor(acc).length, 0)
+            realUndo.current.push({ before, inverse: async () => void (await call(['UNREAD'], [])) })
+            inboxUnreadStale.current = true
+            void pollRef.current()
+            showToast(`${total} message${total === 1 ? '' : 's'} marked as read. Ctrl+Z to undo.`)
+          },
+          () => {
+            restoreLocal(before)
+            showToast('Gmail did not accept the change, so it was put back.')
+          },
+        )
       return
     }
     patch(ids, { unread: false })
@@ -1365,7 +1419,8 @@ export default function App() {
     if (!t) return
     const acc = accountList.find((a) => a.id === t.accountId)
     const mine = t.from.email === acc?.email
-    const toList = mine && t.to.length > 0 ? t.to : [t.from]
+    // A reply goes where the sender asked (Reply-To: contact forms, notification systems), otherwise to the sender.
+    const toList = mine && t.to.length > 0 ? t.to : t.replyTo && t.replyTo.length > 0 ? t.replyTo : [t.from]
     const taken = new Set([acc?.email, ...toList.map((p) => p.email)])
     const cc = all
       ? [...t.to, ...(t.cc ?? [])]
@@ -1484,6 +1539,7 @@ export default function App() {
 
   /** Changes to real mail: shown at once, sent to Gmail, and put back (with a message) if Gmail refuses. */
   const runReal = async (rowIds: string[], op: BulkOp) => {
+    if (!online) return showToast('You are offline, so this cannot be done yet. Try again when you are back online.')
     const mids = rowsToMids(rowIds)
     const group = messages.filter((m) => mids.includes(m.id))
     if (group.length === 0) return
@@ -1525,6 +1581,7 @@ export default function App() {
         }
         const to: FolderId = op.kind === 'delete' ? 'deleted' : op.kind === 'archive' ? 'archive' : op.target.kind === 'folder' ? op.target.id : 'inbox'
         if (to !== 'inbox' && to !== 'archive' && to !== 'deleted') return showToast('Mail can only be moved to Inbox, Archive, Deleted Items or a label.')
+        if (op.kind === 'archive' && threads.some((t) => t.folder === 'sent' || t.folder === 'drafts')) return showToast('Only mail that is in the Inbox (or Deleted Items) can be archived. Sent mail and drafts stay where they are.')
         if (threads.every((t) => t.folder === to)) return
         label = to === 'deleted' ? 'Moved to Deleted Items' : to === 'archive' ? 'Archived' : 'Moved to Inbox'
         patchLocal(() => ({ folder: to }))
@@ -1588,9 +1645,10 @@ export default function App() {
       realUndo.current.push({ before, inverse })
       if (realUndo.current.length > 30) realUndo.current.shift()
       finish()
-    } catch {
+    } catch (e) {
       restoreLocal(before)
-      showToast('Gmail did not accept the change, so it was put back. Please try again.')
+      if (e instanceof GmailError && e.status === SESSION_ENDED) setSim('expired')
+      else showToast('Gmail did not accept the change, so it was put back. Please try again.')
     }
   }
 
@@ -1965,7 +2023,21 @@ export default function App() {
   if (!entered && !authUser) return <SignIn onPreview={() => setEntered(true)} config={authConfig} error={authError} />
 
   if (sim === 'expired' || sim === 'denied') {
-    return <StatusScreen kind={sim} account={accountList[0]?.email ?? ''} onAction={() => setSim(null)} />
+    return (
+      <StatusScreen
+        kind={sim}
+        account={accountList[0]?.email ?? ''}
+        onAction={() => {
+          setSim(null)
+          // A real sign-in that has ended: back to the sign-in page (mail kept on this device is not touched).
+          if (realMode && sim === 'expired') {
+            setAuthUser(null)
+            setRealAccounts(null)
+            setMessages([])
+          }
+        }}
+      />
+    )
   }
 
   if (screen === 'settings') {
@@ -2088,7 +2160,7 @@ export default function App() {
         signedInAs={authUser?.email}
         canSwitchRole={!authUser || authUser.role === 'admin'}
         onSignOut={() => {
-          if (authUser) void platform.cache.clearAll().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
+          if (authUser) void forgetPersonalData().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
           setEntered(false)
         }}
         role={role}
@@ -2125,7 +2197,7 @@ export default function App() {
         }}
       />
       {(!online || sim === 'syncfail' || sim === 'ratelimit') && (
-        <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} detail={syncDetail} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
+        <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} real={realMode} detail={syncDetail} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />
       )}
       <main className="workspace" data-pane={pane} data-view={noMailbox ? 'welcome' : view} data-folders={foldersOpen ? "on" : "off"}>
         <FolderPane

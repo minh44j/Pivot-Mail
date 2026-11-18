@@ -89,5 +89,17 @@ const htmlOnly = toMessage('acc1', { id: 'm3', threadId: 't3', labelIds: ['INBOX
 ok('html-only message still has plain text', htmlOnly.body === 'One\nTwo&Three')
 ok('missing subject and sender are handled', toMessage('a', { id: 'x', threadId: 'y', labelIds: ['INBOX'], payload: {} })?.subject === '(no subject)')
 
+
+// ---- Reply-To
+const mk = (headers: { name: string; value: string }[]): GMessage => ({ id: 'm1', threadId: 't1', labelIds: ['INBOX'], internalDate: '1700000000000', payload: { headers, parts: [{ mimeType: 'text/plain', body: { data: b64('hi') } }] } })
+let rt = toMessage('acc', mk([{ name: 'From', value: 'Website <noreply@pivotscl.com>' }, { name: 'Reply-To', value: 'Buyer Name <buyer@client.example>' }, { name: 'Subject', value: 'Enquiry' }]))
+ok('Reply-To is kept when it names someone else', rt?.replyTo?.length === 1 && rt.replyTo[0]?.email === 'buyer@client.example' && rt.replyTo[0]?.name === 'Buyer Name')
+rt = toMessage('acc', mk([{ name: 'From', value: 'Ann <ann@x.example>' }, { name: 'Reply-To', value: 'ann@x.example' }, { name: 'Subject', value: 'Same' }]))
+ok('Reply-To equal to the sender is dropped', rt?.replyTo === undefined)
+rt = toMessage('acc', mk([{ name: 'From', value: 'Ann <ann@x.example>' }, { name: 'Subject', value: 'None' }]))
+ok('no Reply-To, nothing set', rt?.replyTo === undefined)
+rt = toMessage('acc', mk([{ name: 'From', value: 'L <list@x.example>' }, { name: 'Reply-To', value: 'a@x.example, B <b@x.example>' }, { name: 'Subject', value: 'Two' }]))
+ok('several Reply-To addresses are all kept', rt?.replyTo?.length === 2)
+
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

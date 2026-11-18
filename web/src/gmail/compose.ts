@@ -34,6 +34,8 @@ export interface OutMessage {
   inReplyTo?: string
   references?: string
   date?: Date
+  /** Our own Message-ID (without brackets), so a send that seemed to fail can be looked up before it is repeated */
+  messageId?: string
 }
 
 const CRLF = '\r\n'
@@ -145,6 +147,7 @@ export function buildMime(m: OutMessage): string {
     `Date: ${(m.date ?? new Date()).toUTCString().replace('GMT', '+0000')}`,
     'MIME-Version: 1.0',
   ]
+  if (m.messageId) headers.push(`Message-ID: <${clean(m.messageId).replace(/[<>\s]/g, '')}>`)
   if (m.inReplyTo) headers.push(`In-Reply-To: ${clean(m.inReplyTo)}`)
   if (m.references) headers.push(`References: ${clean(m.references).split(/\s+/).join(`${CRLF} `)}`)
 

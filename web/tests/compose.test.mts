@@ -102,5 +102,13 @@ raw = buildMime({ ...base, attachments: [{ name: 'a.pdf', mime: 'application/pdf
 ok('with a file attached too: mixed outside, related inside', raw.indexOf('multipart/mixed') < raw.indexOf('multipart/related') && raw.includes('filename="a.pdf"'))
 ok('without pictures nothing changes', !buildMime({ ...base }).includes('multipart/related'))
 
+
+// ---- our own Message-ID (so a send that seemed to fail can be looked up before anyone repeats it)
+raw = buildMime({ ...base, messageId: 'pm-123@pivotmail' })
+ok('a Message-ID header is written when given, without doubled brackets', /\r\nMessage-ID: <pm-123@pivotmail>\r\n/.test(raw))
+raw = buildMime({ ...base, messageId: '<pm-9@pivotmail>\r\nBcc: evil@x.example' })
+ok('a Message-ID cannot be used to inject another header', !/\r\nBcc: evil/.test(raw))
+ok('without one, no Message-ID is written (Gmail adds its own)', !/Message-ID/i.test(buildMime({ ...base })))
+
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

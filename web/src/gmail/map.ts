@@ -28,6 +28,12 @@ function htmlToText(html: string): string {
     .trim()
 }
 
+/** Reply-To, when it names someone other than the sender. Metadata-only messages do not carry it, so it is undefined until the whole message is loaded. */
+function replyToOf(p: GMessage['payload'], senderEmail: string): Message['replyTo'] {
+  const list = parseAddresses(header(p, 'reply-to')).filter((x) => x.email)
+  return list.length > 0 && !(list.length === 1 && list[0]?.email === senderEmail) ? list : undefined
+}
+
 /**
  * One Gmail message (metadata or full format) as the app's Message.
  * `labelNames` maps Gmail label ids to names so custom labels can show as folders.
@@ -57,6 +63,7 @@ export function toMessage(accountId: string, g: GMessage, labelNames: Record<str
     labels,
     from,
     to: parseAddresses(header(p, 'to')),
+    replyTo: replyToOf(p, from.email),
     cc: parseAddresses(header(p, 'cc')),
     subject: decodeWords(header(p, 'subject') ?? '').trim() || '(no subject)',
     body: plain,
