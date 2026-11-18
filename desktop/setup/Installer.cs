@@ -153,6 +153,16 @@ namespace PivotMailSetup
 
         static void CloseRunningApp()
         {
+            // An automatic update of Pivot Mail may be installing right now: two installations at once would fail, so wait for it
+            // (up to a minute; it takes a few seconds).
+            foreach (var p in Process.GetProcesses())
+            {
+                try
+                {
+                    if (p.ProcessName.StartsWith("PivotMail-Package", StringComparison.OrdinalIgnoreCase)) p.WaitForExit(60000);
+                }
+                catch { /* not ours to wait for, or already gone */ }
+            }
             foreach (var p in Process.GetProcessesByName("Pivot Mail"))
             {
                 try

@@ -344,7 +344,13 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
     let got = null, err = null
     for (let i = 0; i < 90 && !got && !err; i++) { await new Promise((r) => setTimeout(r, 1000)); [got, err] = await a5.evaluate(() => [global.__pmUpdate || null, global.__pmUpdateError || null]) }
     ok('D54 automatic update: a newer version is found, downloaded and its checksum verified, ready to install on restart', got === '99.0.0', err || 'timed out')
-    a5.process().kill() // leave without installing the test "update"
+    // Leave without installing the test "update": an exit code other than 0 tells the updater not to install on quit.
+    const pid5 = a5.process().pid
+    await a5.evaluate(({ app }) => setTimeout(() => app.exit(1), 50)).catch(() => {})
+    await new Promise((r) => setTimeout(r, 3000))
+    try { require('node:child_process').execFileSync('taskkill', ['/PID', String(pid5), '/T', '/F'], { stdio: 'ignore' }) } catch { /* already gone */ }
+    const left = require('node:child_process').execFileSync('tasklist', ['/FO', 'CSV', '/NH'], { encoding: 'utf8' }).split(/\r?\n/).filter((l) => /PivotMail-Package/i.test(l))
+    ok('D59 ...and nothing installs it behind the test\'s back (no update installer left running)', left.length === 0, left.join(' | '))
     feed.close()
   }
 

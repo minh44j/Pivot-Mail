@@ -76,7 +76,7 @@ jobs:
         run: |
           $v = (Get-Content package.json | ConvertFrom-Json).version
           $p = Start-Process -FilePath "release/PivotMail-Setup-$v.exe" -ArgumentList '/silent' -PassThru -Wait
-          if ($p.ExitCode -ne 0) { throw "Setup ended with code $($p.ExitCode)" }
+          if ($p.ExitCode -ne 0) { Get-Content (Join-Path $env:TEMP 'PivotMailSetup.log') -ErrorAction SilentlyContinue; throw "Setup ended with code $($p.ExitCode)" }
           $dir = Join-Path $env:LOCALAPPDATA 'Programs\pivot-mail-desktop'
           $exe = Join-Path $dir 'Pivot Mail.exe'
           $lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Pivot Mail.lnk'
