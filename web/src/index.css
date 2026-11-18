@@ -5029,7 +5029,8 @@ button.ref-chip:hover { background: #cdeee1; }
 .users-list { border-top: 0; }
 .users-list .user { padding: 10px 12px; border-bottom: 1px solid var(--separator); transition: background 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
 .users-list .user:hover { background: var(--sel-bg); }
-.users-list .user.disabled { opacity: 0.62; }
+.users-list .user.disabled .seg, .users-list .user.disabled .user-access { opacity: 0.7; }
+.users-list .user.disabled .avatar { filter: saturate(0.5); }
 .user-id { display: flex; flex-direction: row; align-items: center; gap: 12px; min-width: 0; }
 .user-id .avatar { flex: none; width: 34px; height: 34px; font-size: 12px; }
 .user-text { display: flex; flex-direction: column; min-width: 0; }
