@@ -167,6 +167,15 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
       await win.evaluate((o) => window.pivotDesktop.notifyMail({ ...o, sender: 'Maersk Line' }, { name: 'Maersk Line', email: 'notify@maersk.com' }), one); await win.waitForTimeout(2500); shot('5-alert-one-mail.png')
       await win.waitForTimeout(6000)
       await win.evaluate((o) => window.pivotDesktop.notifyMail(o, { name: 'ops', email: 'ops@pivotscl.com' }), many); await win.waitForTimeout(2500); shot('6-alert-several.png')
+      // Did Windows keep them in its notification list (proof they were delivered even if "Do not disturb" hid the banner)?
+      const ps = (cmd) => { try { return require('node:child_process').execFileSync('powershell.exe', ['-NoProfile', '-Command', cmd], { encoding: 'utf8' }).trim() } catch (e) { return 'error: ' + String(e.message).slice(0, 200) } }
+      const kept = ps("[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]; ([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('com.pivot.mail')).Count")
+      console.log('   Windows notification list holds ' + kept + ' Pivot Mail alert(s)')
+      console.log('   settings: ' + ps("$a=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/PushNotifications' -ErrorAction SilentlyContinue; $b=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Notifications/Settings' -ErrorAction SilentlyContinue; $c=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Notifications/Settings/com.pivot.mail' -ErrorAction SilentlyContinue; 'ToastEnabled=' + $a.ToastEnabled + ' NOC_GLOBAL_SETTING_TOASTS_ENABLED=' + $b.NOC_GLOBAL_SETTING_TOASTS_ENABLED + ' app=' + ($c | Out-String).Trim().Replace([Environment]::NewLine, ' ')"))
+      ok('D58 Windows delivered the alerts to its notification list', Number(kept) >= 1, kept)
+      // The notification panel, opened the way a person would (Windows key + N), photographed with the alerts in it.
+      ps("Start-Process 'ms-actioncenter:'"); await win.waitForTimeout(2500); shot('8-notification-panel.png')
+      ps("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')")
     }
   }
 
