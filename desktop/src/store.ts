@@ -140,7 +140,9 @@ export class MailStore {
 
   /** Every stored message of one conversation, complete (opening a message: no wait for the internet). */
   thread(accountId: string, threadId: string): unknown[] {
-    const rows = this.db.prepare("SELECT json FROM messages WHERE account_id = ? AND json_extract(json, '$.threadId') = ? ORDER BY date").all(accountId, threadId) as { json: string }[]
+    // INDEXED BY: left to itself SQLite reads the whole mailbox by date and filters (40 ms at 25,000 messages); the conversation
+    // index finds the few messages directly (well under 1 ms).
+    const rows = this.db.prepare("SELECT json FROM messages INDEXED BY messages_thread WHERE account_id = ? AND json_extract(json, '$.threadId') = ? ORDER BY date").all(accountId, threadId) as { json: string }[]
     return rows.map((r) => JSON.parse(r.json))
   }
 

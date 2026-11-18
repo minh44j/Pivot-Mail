@@ -123,6 +123,11 @@ ok('a batch of 100 new messages is stored in under 300 ms on its own thread (a 3
 ok('reference search over 50,000 messages: exactly the right message, under 100 ms (feels instant)', r1.length === 1 && r1[0].id === 'b43210' && r2.length === 1 && r2[0].id === 'b43210' && tExact < 100 && tSpaced < 100, JSON.stringify([r1.map((m) => m.id), r2.map((m) => m.id), tExact, tSpaced]))
 ok('broad word search over 50,000 messages: newest 300 in under 100 ms', r3.length === 300 && r4.length > 0 && tWord < 100 && tTwo < 100, `${r3.length} ${r4.length} ${tWord} ${tTwo}`)
 ok('opening the app: the newest 5,000 messages load in under 400 ms', r5.length === 5000 && tLoad < 400, tLoad)
+big.thread('BIG', 'b43210')
+const [tThread, r6] = time(() => big.thread('BIG', 'b43210'))
+console.log(`   open a conversation among 50,000: ${tThread.toFixed(2)} ms`)
+// Regression (2026-11-18): SQLite chose the date index and read the whole mailbox (about 40 ms at 25,000, 80 ms at 50,000).
+ok('opening a conversation among 50,000 messages takes under 5 ms (the conversation index is used)', r6.length === 1 && r6[0].id === 'b43210' && tThread < 5, tThread)
 big.close()
 fs.rmSync(dir, { recursive: true, force: true })
 console.log(`${pass} pass, ${fail} fail`)

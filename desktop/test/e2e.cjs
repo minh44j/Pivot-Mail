@@ -244,6 +244,45 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D22 5,000 messages: a reference number is found instantly (well under a quarter second)', JSON.stringify(big.hits) === '["b4321"]' && big.searchMs < 250 && big.many === 300 && big.manyMs < 500)
   await win.evaluate(async () => { await window.pivotDesktop.store.clearAccount('acc3'); await window.pivotDesktop.store.setMeta('hist:acc1', '999') })
 
+  // ---- SPEED REPORT: a busy freight mailbox (25,000 messages) through the real app (page -> bridge -> database thread)
+  const sp = await win.evaluate(async () => {
+    const s = window.pivotDesktop.store
+    const lines = ['Maersk Line', 'Hapag-Lloyd', 'MSC', 'CMA CGM', 'ONE', 'Evergreen', 'COSCO', 'Saudi Customs (ZATCA)', 'Bahri', 'DHL Global Forwarding']
+    const words = ['arrival notice', 'booking confirmation', 'customs clearance', 'invoice', 'delivery order', 'freight quotation', 'manifest', 'vessel schedule', 'demurrage', 'packing list']
+    const ports = ['Jeddah Islamic Port', 'King Abdulaziz Port Dammam', 'Riyadh Dry Port', 'Jebel Ali', 'Shanghai', 'Rotterdam']
+    const N = 25000
+    const msgs = Array.from({ length: N }, (_, i) => {
+      const line = lines[i % 10], w = words[(i * 3) % 10], port = ports[i % 6]
+      const box = `MSKU${String(1000000 + i).slice(-7)}`
+      return { id: 'z' + i, threadId: 'zt' + Math.floor(i / 3), accountId: 'acc9', folder: i % 9 === 0 ? 'archive' : 'inbox', labels: [], from: { name: line, email: `ops${i % 50}@${line.toLowerCase().replace(/[^a-z]/g, '')}.com` }, to: [{ name: 'Pivot Shipping', email: 'ops@pivotscl.com' }], subject: `${w} — ${box} / BL ${'MEDU' + (5000000 + i)} — ${port}`, body: `Dear team, please find the ${w} for container ${box}, booking ${'BKG' + (800000 + i)}, invoice INV-2026-${String(i).padStart(5, '0')}, HS 8471.30.00. ETA ${port}. ${'Regards, operations desk. '.repeat(30)}`, date: new Date(Date.UTC(2025, 0, 1) + i * 1_200_000).toISOString(), unread: i % 4 === 0, flagged: false, attachments: [] }
+    })
+    // saved the way a sync saves them: in batches as they arrive
+    const t0 = performance.now()
+    for (let i = 0; i < N; i += 250) await s.save(msgs.slice(i, i + 250))
+    const saveMs = performance.now() - t0
+    const time = async (f) => { await f(); const t = performance.now(); const r = await f(); return [performance.now() - t, r] }
+    const [loadMs, loaded] = await time(() => s.load('acc9'))
+    const q = {}
+    for (const [k, v] of Object.entries({ container: 'MSKU1012345', containerSpaced: 'MSKU 101234-5', bl: 'MEDU5012345', booking: 'BKG812345', invoice: 'INV-2026-12345', sender: 'Hapag-Lloyd', word: 'demurrage', twoWords: 'customs clearance Jeddah', partial: 'demur' })) {
+      const [ms, r] = await time(() => s.search(['acc9'], v)); q[k] = { ms, n: r.length, first: r[0]?.id }
+    }
+    const [threadMs, th] = await time(() => s.thread('acc9', 'zt4115'))
+    return { N, saveMs, loadMs, loaded: loaded.length, q, threadMs, thread: th.length }
+  })
+  const f = (x) => `${Math.round(x)} ms`
+  console.log('\n   ===== SPEED REPORT (%s, 25,000 messages, measured inside the app) =====', process.platform)
+  console.log('   store 25,000 messages (as a sync does, 250 at a time): %s (%s per 1,000)', f(sp.saveMs), f(sp.saveMs / 25))
+  console.log('   open the mailbox (newest %d, ready to show): %s', sp.loaded, f(sp.loadMs))
+  for (const [k, v] of Object.entries(sp.q)) console.log('   search %s: %s, %d found', k.padEnd(16), f(v.ms).padStart(6), v.n)
+  console.log('   open a conversation (%d messages, full text): %s', sp.thread, f(sp.threadMs))
+  console.log('   ======================================================================\n')
+  const exact = ['container', 'containerSpaced', 'bl', 'booking', 'invoice'].every((k) => sp.q[k].n === 1 && sp.q[k].first === 'z12345')
+  ok('D66 25,000 messages: container, BL, booking and invoice numbers find exactly the right mail (with or without spaces/dashes)', exact, JSON.stringify(sp.q))
+  ok('D67 ...every search answers in under 150 ms (instant to the eye), sender/word/partial-word searches list the newest 300', Object.values(sp.q).every((v) => v.ms < 150) && sp.q.sender.n === 300 && sp.q.word.n === 300 && sp.q.partial.n === 300, JSON.stringify(sp.q))
+  ok('D68 ...the mailbox opens (5,000 newest ready) in under 500 ms and a conversation in under 50 ms', sp.loadMs < 500 && sp.loaded === 5000 && sp.threadMs < 50 && sp.thread === 3, `${sp.loadMs} ${sp.threadMs}`)
+  ok('D69 ...25,000 messages are stored in under 20 s (a full first sync is never held up by the database)', sp.saveMs < 20000, sp.saveMs)
+  await win.evaluate(() => window.pivotDesktop.store.clearAccount('acc9'))
+
   // ---- two attachments with the same name, and names Windows reserves
   await win.evaluate(() => window.pivotDesktop.startDrag([{ name: 'invoice.pdf', mime: 'application/pdf', bytes: new Uint8Array([49]) }, { name: 'invoice.pdf', mime: 'application/pdf', bytes: new Uint8Array([50]) }, { name: 'CON.txt', mime: 'text/plain', bytes: new Uint8Array([51]) }, { name: 'image001.png. ', mime: 'image/png', bytes: new Uint8Array([52]) }]))
   await win.waitForTimeout(400)
@@ -282,9 +321,15 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D32 copies of dragged attachments are deleted when the app quits', f2.length > 0 && !fs.existsSync(path.dirname(f2[0])) && !fs.existsSync(path.dirname(files[0])))
 
   // ---- the database survives a restart, and sign-out wipes it
+  const tStart = Date.now()
   const app3 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })
   const w3 = await app3.firstWindow()
-  await w3.waitForLoadState('domcontentloaded'); await w3.waitForTimeout(1500)
+  await w3.waitForLoadState('domcontentloaded')
+  await w3.waitForSelector('h1, h2, .row', { timeout: 15000 }).catch(() => {})
+  const startMs = Date.now() - tStart
+  console.log('   SPEED start (already signed in): Pivot Mail on screen in %d ms', startMs)
+  ok('D70 already signed in: from double-click to Pivot Mail on screen in under 4 s', startMs < 4000, startMs)
+  await w3.waitForTimeout(1500)
   ok('D45 already signed in: the full Pivot Mail window opens straight away (no sign-in window)', w3.url().startsWith(BASE) && (await app3.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)) === 1)
   const kept = await w3.evaluate(async () => { const s = window.pivotDesktop.store; return { ids: (await s.load('acc1')).map((m) => m.id), meta: await s.getMeta('hist:acc1'), gone: (await s.load('acc3')).length } })
   ok('D23 stored mail and sync position are still there after quitting and reopening', JSON.stringify(kept.ids) === '["m2","m1"]' && kept.meta === '999' && kept.gone === 0)
