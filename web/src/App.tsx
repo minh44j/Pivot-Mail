@@ -83,9 +83,25 @@ import { BulkPanel } from './components/BulkPanel'
 const POLL_VISIBLE_MS = 5_000
 
 /** Short, plain reason shown in the sync banner (and logged) so a failure can be told apart from the next one. */
+const BUSY_REASONS = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'RESOURCE_EXHAUSTED'])
+/** What Google's reason words mean, in plain language. */
+const REASONS: Record<string, string> = {
+  dailyLimitExceeded: 'the daily request limit of this app was reached',
+  quotaExceeded: 'a quota was reached',
+  accessNotConfigured: 'the Gmail API is switched off for this app in Google Cloud',
+  SERVICE_DISABLED: 'the Gmail API is switched off for this app in Google Cloud',
+  domainPolicy: 'your Google Workspace administrator blocks this app',
+  forbidden: 'Google says this account may not do that',
+  appNotAuthorizedToFile: 'the app is not allowed to use this mailbox',
+}
 function describeError(e: unknown): string {
   console.warn('Pivot Mail sync problem', e)
-  if (e instanceof GmailError) return e.status === 429 ? 'Google is limiting requests (429)' : e.status === 403 ? 'Google refused the request (403)' : `Google answered with error ${e.status}`
+  if (e instanceof GmailError) {
+    const why = REASONS[e.reason]
+    if (e.status === 429 || (e.status === 403 && BUSY_REASONS.has(e.reason))) return 'Google says there were too many requests for a moment. It will try again by itself'
+    if (e.status === 403) return `Google refused the request (403${e.reason ? `: ${why ?? e.reason}` : ''})`
+    return `Google answered with error ${e.status}${e.reason ? ` (${e.reason})` : ''}`
+  }
   return 'the connection to Google failed'
 }
 
@@ -1119,7 +1135,8 @@ export default function App() {
   const sendReal = async (d: ComposeInit) => {
     const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
     if (!acc) throw new Error('no account')
-    const mid = `pm-${crypto.randomUUID()}@pivotmail`
+    // A proper Message-ID: unique, and ending in the sender's own domain (mail systems such as Outlook / Microsoft 365 distrust one without a real domain).
+    const mid = `pm-${crypto.randomUUID()}@${acc.email.split('@')[1] ?? 'pivotmail.com'}`
     const raw = await outgoing(d, acc, false, mid)
     let sent: { id: string; threadId: string }
     try {

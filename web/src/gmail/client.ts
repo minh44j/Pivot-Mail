@@ -9,11 +9,29 @@ export const SESSION_ENDED = 440
 
 export class GmailError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  /** Google's own reason word for the refusal (for example "rateLimitExceeded"), when it gave one */
+  reason: string
+  constructor(status: number, message: string, reason = '') {
     super(message)
     this.status = status
+    this.reason = reason
   }
 }
+
+/** Google answers a refusal with a small JSON note; the reason word tells a busy-signal from a real "no". */
+async function reasonOf(res: Response): Promise<string> {
+  try {
+    const j = (await res.clone().json()) as { error?: { errors?: { reason?: string }[]; status?: string; message?: string } }
+    return j.error?.errors?.[0]?.reason ?? j.error?.status ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/** 403 reasons that only mean "too many requests right now": wait and try again, like a 429. */
+const BUSY = new Set(['rateLimitExceeded', 'userRateLimitExceeded', 'RESOURCE_EXHAUSTED'])
+/** 403 reasons that mean the saved permission is not enough (or was taken away): the person has to reconnect the mailbox. */
+const NEEDS_RECONNECT = new Set(['insufficientPermissions', 'PERMISSION_DENIED', 'authError'])
 
 /** One-hour keys from our server, reused until a minute before they expire. */
 const keys = new Map<string, { token: string; expiresAt: number }>()
@@ -76,13 +94,17 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
       await accessToken(accountId, true)
       continue
     }
-    const retryable = res.status === 429 || (idempotent && res.status >= 500)
+    const reason = res.status === 403 ? await reasonOf(res) : ''
+    const busy = res.status === 429 || (res.status === 403 && BUSY.has(reason))
+    const retryable = busy || (idempotent && res.status >= 500)
     if (retryable && attempt < 4) {
       const ra = Number(res.headers.get('retry-after'))
       await wait(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 30) * 1000 : 500 * 2 ** attempt)
       continue
     }
-    throw new GmailError(res.status, `Gmail request failed (${res.status})`)
+    // The saved permission is not enough: handled like an ended permission (the app offers "Reconnect").
+    if (res.status === 403 && NEEDS_RECONNECT.has(reason)) throw new GmailError(401, `Gmail request failed (403 ${reason})`, reason)
+    throw new GmailError(res.status, `Gmail request failed (${res.status}${reason ? ` ${reason}` : ''})`, reason)
   }
 }
 
