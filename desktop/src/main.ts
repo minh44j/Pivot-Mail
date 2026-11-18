@@ -19,6 +19,7 @@ import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { safeFileName, uniqueName } from './files'
 import { cleanToast, toastXml } from './toast'
+import { restartToUpdate, startUpdates, updateReadyVersion } from './updater'
 
 type Company = 'scl' | 'tmc'
 const HOSTS: Record<Company, string> = { scl: 'https://mail.pivotscl.com', tmc: 'https://mail.pivottmc.com' }
@@ -192,6 +193,8 @@ const shownToasts: Notification[] = []
 /** Alert clicks that arrived before the page was ready to handle them (for example the click that started the app). */
 let queuedActions: { action: string; accountId: string; messageId: string }[] = []
 let actionsReady = false
+/** An update became ready before the page could show it. */
+let pendingUpdateNote: string | null = null
 
 function toastKey(): string {
   if (!settings.toastKey) {
@@ -530,6 +533,7 @@ function buildTray(): void {
   const menu = () =>
     Menu.buildFromTemplate([
       { label: 'Open Pivot Mail', click: showWindow },
+      ...(updateReadyVersion() ? [{ label: `Restart to update (version ${updateReadyVersion()})`, click: () => { quitting = true; restartToUpdate() } }] : []),
       { type: 'separator' },
       {
         label: 'Start with Windows',
@@ -682,6 +686,16 @@ function bridge(): void {
     actionsReady = true
     for (const a of queuedActions) win.webContents.send('pm:mail-action', a)
     queuedActions = []
+    const v = pendingUpdateNote ?? updateReadyVersion()
+    if (v) win.webContents.send('pm:update-ready', v)
+    pendingUpdateNote = null
+  })
+
+  // "Restart now" on the update note in the page.
+  ipcMain.on('pm:restart-to-update', (e) => {
+    if (!fromApp(e)) return
+    quitting = true
+    restartToUpdate()
   })
 
   // A clicked new-mail alert brings the window back, also from the tray.
@@ -821,6 +835,13 @@ app.whenReady().then(() => {
   bridge()
   storeBridge()
   buildTray()
+  startUpdates({
+    onReady(version) {
+      tray?.displayBalloon?.({ title: 'Pivot Mail update ready', content: `Version ${version} installs when Pivot Mail restarts.`, iconType: 'info' })
+      if (win && actionsReady) win.webContents.send('pm:update-ready', version)
+      else pendingUpdateNote = version
+    },
+  })
   const hidden = process.argv.includes('--hidden')
   void start(hidden).then(() => {
     const link = process.argv.find((a) => a.startsWith(`${SCHEME}://`))

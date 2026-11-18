@@ -1,7 +1,7 @@
 {
   "name": "pivot-mail-desktop",
   "productName": "Pivot Mail",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Pivot Mail for Windows",
   "author": "Pivot",
   "private": true,
@@ -20,11 +20,35 @@
     "appId": "com.pivot.mail",
     "productName": "Pivot Mail",
     "artifactName": "PivotMail-Package-${version}.${ext}",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**", "static/**", "build/icon.png", "build/tray.png", "package.json"],
-    "asarUnpack": ["dist/store-worker.js", "dist/store.js"],
-    "protocols": [{ "name": "Pivot Mail", "schemes": ["pivotmail"] }],
-    "win": { "target": ["nsis"], "icon": "build/icon.ico" },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "static/**",
+      "build/icon.png",
+      "build/tray.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "dist/store-worker.js",
+      "dist/store.js"
+    ],
+    "protocols": [
+      {
+        "name": "Pivot Mail",
+        "schemes": [
+          "pivotmail"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "build/icon.ico"
+    },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
@@ -33,5 +57,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Pivot Mail"
     }
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
   }
 }

@@ -41,6 +41,10 @@ export interface DesktopBridge {
   notifyMail?(payload: Record<string, unknown>, who?: { name?: string; email?: string }): Promise<boolean>
   /** Clicks on those alerts and their buttons. From 0.9.0. */
   onMailAction?(cb: (a: { action: string; accountId: string; messageId: string }) => void): void
+  /** A newer version of the Windows app has been downloaded. From 0.9.0. */
+  onUpdateReady?(cb: (version: string) => void): void
+  /** Install that version now and reopen Pivot Mail. */
+  restartToUpdate?(): void
   /** Bring the window to the front, also when it is hidden in the tray (present from desktop version 0.2.0). */
   show?(): void
 }

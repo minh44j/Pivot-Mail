@@ -40,7 +40,7 @@ jobs:
           v=$(node -p "require('./package.json').version")
           du -sb release/win-unpacked | cut -f1 > release/expected-bytes.txt
           dotnet build setup/PivotMailSetup.csproj -c Release -nologo -p:Version=$v -p:PayloadPath=../release/PivotMail-Package-$v.exe -p:ExpectedBytesPath=../release/expected-bytes.txt
-          cp setup/bin/Release/net48/PivotMailSetup.exe "release/PivotMail-Setup-$v.exe"
+          cp setup/bin/Release/net462/PivotMailSetup.exe "release/PivotMail-Setup-$v.exe"
       - name: Run Setup and photograph it
         shell: pwsh
         run: |

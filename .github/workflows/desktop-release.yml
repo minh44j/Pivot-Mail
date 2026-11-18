@@ -1,0 +1,68 @@
+# Publishes a new version of the Windows app: press "Run workflow" (Actions > Desktop release) after raising "version" in
+# desktop/package.json. Builds on Windows, runs the tests, then publishes GitHub Release v<version> with:
+#   PivotMail-Setup-<version>.exe   the installer for new computers (link this one for staff)
+#   PivotMail-Package-<version>.exe + latest.yml + .blockmap   what installed apps download to update themselves
+# Installed apps check every 4 hours (and 30 s after starting), download in the background and install on restart.
+name: Desktop release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency: desktop-release
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            desktop/package-lock.json
+            web/package-lock.json
+      - run: npm ci
+      - name: Refuse a version that was already released
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if gh release view "v$v" >/dev/null 2>&1; then echo "v$v is already released: raise the version in desktop/package.json first."; exit 1; fi
+      - name: Build the package
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run dist
+      - name: Build Pivot Mail Setup
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          du -sb release/win-unpacked | cut -f1 > release/expected-bytes.txt
+          dotnet build setup/PivotMailSetup.csproj -c Release -nologo -p:Version=$v -p:PayloadPath=../release/PivotMail-Package-$v.exe -p:ExpectedBytesPath=../release/expected-bytes.txt
+          cp setup/bin/Release/net462/PivotMailSetup.exe "release/PivotMail-Setup-$v.exe"
+      - name: Test the packaged app before publishing
+        shell: bash
+        run: |
+          (cd ../web && npm ci && npm run build)
+          npm install --no-save playwright@1.63.0
+          (cd ../web && nohup npx tsx ../desktop/test/server.mts > "$GITHUB_WORKSPACE/server.log" 2>&1 &)
+          for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:4310/ && break; sleep 1; done
+          ELECTRON_RUN_AS_NODE=1 npx electron test/store.test.cjs
+          PIVOT_MAIL_EXE="release/win-unpacked/Pivot Mail.exe" node test/e2e.cjs
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          gh release create "v$v" --title "Pivot Mail for Windows $v" --notes "Install: download PivotMail-Setup-$v.exe and double-click it. Installed copies update themselves." \
+            "release/PivotMail-Setup-$v.exe" "release/PivotMail-Package-$v.exe" "release/PivotMail-Package-$v.exe.blockmap" "release/latest.yml"

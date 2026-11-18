@@ -52,7 +52,7 @@ function avatarPng(name: string, email: string): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.9.0',
+  version: '0.10.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
@@ -103,6 +103,15 @@ contextBridge.exposeInMainWorld('pivotDesktop', {
       cb({ action: String(x.action ?? ''), accountId: String(x.accountId ?? ''), messageId: String(x.messageId ?? '') })
     })
     ipcRenderer.send('pm:actions-ready')
+  },
+  /** A newer Pivot Mail has been downloaded (the page shows "Restart now"). */
+  onUpdateReady(cb: (version: string) => void) {
+    if (typeof cb !== 'function') return
+    ipcRenderer.removeAllListeners('pm:update-ready')
+    ipcRenderer.on('pm:update-ready', (_e, v: unknown) => cb(String(v)))
+  },
+  restartToUpdate() {
+    ipcRenderer.send('pm:restart-to-update')
   },
   show() {
     ipcRenderer.send('pm:show')

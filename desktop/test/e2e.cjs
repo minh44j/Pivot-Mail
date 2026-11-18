@@ -53,7 +53,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await si.screenshot({ path: path.join(os.tmpdir(), 'pm-signin.png') })
 
   // ---- the page itself is locked down
-  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'notifyMail', 'onMailAction', 'onSignInState', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
+  ok('D1 the page gets only the small bridge: no Node, no require, no process', await si.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['copyFiles', 'notifyMail', 'onMailAction', 'onSignInState', 'onUpdateReady', 'restartToUpdate', 'retry', 'setBadge', 'setTheme', 'show', 'signIn', 'signInBack', 'signInReopen', 'signedOut', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await si.locator('button[data-co="scl"]').click(); await si.waitForTimeout(800)
@@ -302,6 +302,25 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D16 Pivot Travel Management signs in at mail.pivottmc.com, and the choice is remembered', tmc.startsWith('https://mail.pivottmc.com/api/auth/start?') && /company=tmc/.test(tmc) && JSON.parse(fs.readFileSync(path.join(fresh, 'settings.json'), 'utf8')).company === 'tmc' && (await w2.locator('#domain').innerText()) === '@pivottmc.com')
   await app2.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
   await app2.close().catch(() => {})
+
+  // ---- automatic updates (Windows, packaged app): a newer version on a local feed is found, downloaded and checked
+  if (process.platform === 'win32' && EXE && fs.existsSync(path.join(path.dirname(path.dirname(EXE)), 'latest.yml'))) {
+    const rel = path.dirname(path.dirname(EXE)) // release/
+    const yml = fs.readFileSync(path.join(rel, 'latest.yml'), 'utf8')
+    const feedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-feed-'))
+    const pkg = (/path: (.+)/.exec(yml) || [])[1].trim()
+    fs.copyFileSync(path.join(rel, pkg), path.join(feedDir, pkg))
+    fs.writeFileSync(path.join(feedDir, 'latest.yml'), yml.replace(/^version: .+$/m, 'version: 99.0.0'))
+    const feed = http.createServer((q, res) => { const f = path.join(feedDir, decodeURIComponent(q.url.split('?')[0]).replace(/^\/+/, '')); if (!f.startsWith(feedDir) || !fs.existsSync(f)) { res.statusCode = 404; return res.end() } res.setHeader('content-length', fs.statSync(f).size); fs.createReadStream(f).pipe(res) })
+    await new Promise((r) => feed.listen(4400, r))
+    const a5 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-')), PIVOT_MAIL_UPDATE_URL: 'http://localhost:4400/', PIVOT_MAIL_UPDATE_DELAY: '1500' })
+    await a5.firstWindow()
+    let got = null, err = null
+    for (let i = 0; i < 90 && !got && !err; i++) { await new Promise((r) => setTimeout(r, 1000)); [got, err] = await a5.evaluate(() => [global.__pmUpdate || null, global.__pmUpdateError || null]) }
+    ok('D54 automatic update: a newer version is found, downloaded and its checksum verified, ready to install on restart', got === '99.0.0', err || 'timed out')
+    a5.process().kill() // leave without installing the test "update"
+    feed.close()
+  }
 
   console.log(`${pass} pass, ${fail} fail`)
   process.exit(fail ? 1 : 0)

@@ -715,8 +715,13 @@ export default function App() {
       } else if (a.action === 'open' && m) alertOpen.current(m)
       else if (base) alertOpen.current({ ...base, id: '' }) // the Inbox of that mailbox
     }
+    // A newer Windows app has been downloaded: say so, with "Restart now" (otherwise it installs when Pivot Mail is next closed).
+    // Registered before the alert clicks, because the app sends this as soon as the page says it is ready.
+    desktop()?.onUpdateReady?.((v) =>
+      showToast(`Pivot Mail ${v} is ready. It installs when Pivot Mail restarts.`, { kind: 'info', action: { label: 'Restart now', onClick: () => desktop()?.restartToUpdate?.() } }),
+    )
     desktop()?.onMailAction?.((a) => handle(a))
-  }, [])
+  }, [showToast])
 
   /**
    * New-mail alert. In the Windows app: a real Windows alert like Outlook's (initials picture, sender, subject, first line,
