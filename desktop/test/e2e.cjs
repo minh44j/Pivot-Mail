@@ -172,7 +172,8 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
       const kept = ps("[void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]; ([Windows.UI.Notifications.ToastNotificationManager]::History.GetHistory('com.pivot.mail')).Count")
       console.log('   Windows notification list holds ' + kept + ' Pivot Mail alert(s)')
       console.log('   settings: ' + ps("$a=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/PushNotifications' -ErrorAction SilentlyContinue; $b=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Notifications/Settings' -ErrorAction SilentlyContinue; $c=Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Notifications/Settings/com.pivot.mail' -ErrorAction SilentlyContinue; 'ToastEnabled=' + $a.ToastEnabled + ' NOC_GLOBAL_SETTING_TOASTS_ENABLED=' + $b.NOC_GLOBAL_SETTING_TOASTS_ENABLED + ' app=' + ($c | Out-String).Trim().Replace([Environment]::NewLine, ' ')"))
-      ok('D58 Windows delivered the alerts to its notification list', Number(kept) >= 1, kept)
+      // (PowerShell may print more than the number, e.g. a blank line or a notice: read the first number in its answer)
+      ok('D58 Windows delivered the alerts to its notification list', Number((/\d+/.exec(kept) || ['0'])[0]) >= 1, JSON.stringify(kept))
       // The notification panel, opened the way a person would (Windows key + N), photographed with the alerts in it.
       ps("Start-Process 'ms-actioncenter:'"); await win.waitForTimeout(2500); shot('8-notification-panel.png')
       ps("Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('{ESC}')")
