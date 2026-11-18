@@ -69,5 +69,18 @@ ok('dispatcher: POST /api/auth/desktop', loc(await dispatchPost(req('/api/auth/d
 ok('dispatcher: PATCH /api/auth/session needs sign-in', (await dispatchPatch(req('/api/auth/session', { method: 'PATCH', headers: { origin: SCL } }))).status >= 400)
 ok('dispatcher: unknown route is 404, wrong method 405', (await dispatchGet(req('/api/auth/nope'))).status === 404 && (await dispatchGet(req('/api/auth/logout'))).status === 405)
 
+// ---- login forgery: a form on another website posting a valid ticket (for the attacker's own account) is refused
+{
+  const sec2 = randomToken(32)
+  const t2 = ticketOf(await browserSignIn(sha256b64url(sec2), 'mallory@pivotscl.com'))
+  const forged = (headers: Record<string, string>) => redeem(req('/api/auth/desktop', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', ...headers }, body: new URLSearchParams({ t: t2, v: sec2 }).toString() }))
+  const a = await forged({ 'sec-fetch-site': 'cross-site', origin: 'https://evil.example' })
+  const b = await forged({ origin: 'https://evil.example' })
+  const c = await forged({ 'sec-fetch-site': 'same-site', origin: 'https://other.pivotscl.com' })
+  ok('a hand-off posted from another website is refused (no session cookie)', [a, b, c].every((x) => loc(x) === '/?auth_error=state' && !cookieOf(x, '__Host-pm_session')))
+  const d = await forged({ 'sec-fetch-site': 'none' })
+  ok('...while the app\'s own post (no other site involved) still signs in', loc(d) === '/' && !!cookieOf(d, '__Host-pm_session'))
+}
+
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

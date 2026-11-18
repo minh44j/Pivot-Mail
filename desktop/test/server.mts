@@ -11,7 +11,7 @@ process.env.GOOGLE_CLIENT_ID_TMC = 'tmc-id.apps.googleusercontent.com'
 process.env.GOOGLE_CLIENT_SECRET_TMC = 'tmc-secret'
 delete process.env.SUPABASE_URL
 const PORT = Number(process.env.PORT ?? 4310)
-const DIST = path.resolve(import.meta.dirname, '../../web/dist')
+const DIST = process.env.PIVOT_TEST_DIST ? path.resolve(process.env.PIVOT_TEST_DIST) : path.resolve(import.meta.dirname, '../../web/dist')
 
 let claims: Record<string, unknown> = {}
 const realFetch = globalThis.fetch
@@ -31,6 +31,12 @@ http
     if (url.pathname === '/__test/claims') {
       claims = JSON.parse(Buffer.concat(chunks).toString() || '{}')
       res.end('ok')
+      return
+    }
+    if (url.pathname === '/__test/redirect') {
+      res.statusCode = 302
+      res.setHeader('location', 'https://example.com/landed-elsewhere')
+      res.end()
       return
     }
     if (url.pathname === '/api/accounts') {

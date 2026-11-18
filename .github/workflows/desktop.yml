@@ -1,6 +1,7 @@
-# Builds the Pivot Mail Windows installer on a Windows machine.
-# Runs when the desktop app changes, or by hand (Actions > Desktop app (Windows) > Run workflow).
-# The installer is attached to the run as "PivotMail-Windows" (download it from the run's summary page).
+# Builds the Pivot Mail Windows installer on a Windows machine, then tests the packaged app itself on that Windows machine
+# (sign-in hand-off, alerts, tray, taskbar number, drag-out, the local mail database and search). The installer is attached to
+# the run as "PivotMail-Windows" only when every test passed (download it from the run's summary page).
+# Runs when the desktop app or the web app changes, or by hand (Actions > Desktop app (Windows) > Run workflow).
 name: Desktop app (Windows)
 
 on:
@@ -8,6 +9,9 @@ on:
   push:
     paths:
       - 'desktop/**'
+      - 'web/src/**'
+      - 'web/api/**'
+      - 'web/public/**'
       - '.github/workflows/desktop.yml'
 
 permissions:
@@ -25,12 +29,39 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: |
+            desktop/package-lock.json
+            web/package-lock.json
       - run: npm ci
       - run: npm run dist
         env:
           # No code-signing certificate yet: Windows shows "Windows protected your PC" on first run (More info > Run anyway).
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      # ---- tests on Windows, against the packaged app
+      - name: Web app for the test (built from this commit)
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Test tool (drives the app window)
+        run: npm install --no-save playwright@1.63.0
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+      - name: Test the packaged app on Windows
+        shell: bash
+        run: |
+          # The real sign-in code with a pretend Google, serving the web app (started here so it lives through the tests)
+          (cd ../web && nohup npx tsx ../desktop/test/server.mts > "$GITHUB_WORKSPACE/server.log" 2>&1 &)
+          for i in $(seq 1 40); do curl -s -o /dev/null http://localhost:4310/ && break; sleep 1; done
+          echo "== local mail database: search accuracy, wipe, 50,000-message speed"
+          ELECTRON_RUN_AS_NODE=1 npx electron test/store.test.cjs
+          echo "== the packaged app, end to end"
+          PIVOT_MAIL_EXE="release/win-unpacked/Pivot Mail.exe" node test/e2e.cjs
+      - name: Test server log (on failure)
+        if: failure()
+        shell: bash
+        run: cat "$GITHUB_WORKSPACE/server.log" || true
       - uses: actions/upload-artifact@v4
         with:
           name: PivotMail-Windows

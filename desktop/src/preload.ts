@@ -28,12 +28,13 @@ function badgePng(n: number): string | null {
 const call = (op: string, a?: unknown, b?: unknown): Promise<unknown> => ipcRenderer.invoke('pm:store', op, a, b)
 
 contextBridge.exposeInMainWorld('pivotDesktop', {
-  version: '0.2.0',
+  version: '0.3.0',
   store: {
     load: (accountId: string) => call('load', accountId),
     save: (msgs: unknown[]) => call('save', msgs),
     remove: (ids: string[]) => call('remove', ids),
     search: (accountIds: string[], query: string) => call('search', accountIds, query),
+    thread: (accountId: string, threadId: string) => call('thread', accountId, threadId),
     getMeta: (key: string) => call('getMeta', key),
     setMeta: (key: string, value: string) => call('setMeta', key, value),
     clearAccount: (accountId: string) => call('clearAccount', accountId),
@@ -49,6 +50,9 @@ contextBridge.exposeInMainWorld('pivotDesktop', {
       'pm:drag',
       files.map((f) => ({ name: String(f.name), bytes: f.bytes instanceof Uint8Array ? f.bytes : new Uint8Array(0) })),
     )
+  },
+  show() {
+    ipcRenderer.send('pm:show')
   },
   chooseCompany(company: 'scl' | 'tmc') {
     ipcRenderer.send('pm:choose-company', company)

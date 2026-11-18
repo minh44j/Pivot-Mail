@@ -4241,7 +4241,7 @@ a.btn.google.real:hover {
 .cb:hover:not(:disabled), .cb[aria-expanded='true'] { background: var(--fill); }
 .cb:disabled { opacity: 0.4; }
 .cb[aria-pressed='true'] { background: var(--brand-green-tint); }
-.cb-more { padding: 0 8px; }
+.cb-more { padding: 0 8px; flex: none; margin-left: -6px; }
 .cb-sep { flex: none; width: 1px; height: 20px; margin: 0 6px; background: var(--separator); }
 .cb-hamburger { display: none; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 8px; background: none; color: var(--label); }
 .cb-hamburger:hover { background: var(--fill); }

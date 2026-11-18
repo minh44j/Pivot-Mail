@@ -142,17 +142,28 @@ const isList = (v: unknown) => Array.isArray(v)
 const isText = (v: unknown) => typeof v === 'string'
 const any = () => true
 
+/**
+ * While a person's mail is being wiped (sign-out, a different person, a removed mailbox), late writes from work still in flight
+ * (a sync that was half way, a change saved a second later) must not put any of it back. Sign-out locks every write until the page
+ * reloads; a removed mailbox blocks writes for that mailbox.
+ */
+let locked = false
+const blocked = new Set<string>()
+const writable = (msgs: Message[]) => (locked ? [] : msgs.filter((m) => !blocked.has(m.accountId)))
+
 export const cache = {
   load: (accountId: string): Promise<Message[]> => {
     const d = desktopStore()
     return d ? soft(d.load(accountId), [], isList) : load(accountId)
   },
-  save: async (msgs: Message[]): Promise<void> => {
+  save: async (all: Message[]): Promise<void> => {
+    const msgs = writable(all)
     const d = desktopStore()
     if (!d) return save(msgs)
     if (msgs.length > 0) await soft(d.save(msgs), null, any)
   },
   remove: async (ids: string[]): Promise<void> => {
+    if (locked) return
     const d = desktopStore()
     if (!d) return remove(ids)
     if (ids.length > 0) await soft(d.remove(ids), null, any)
@@ -162,20 +173,28 @@ export const cache = {
     return d ? soft(d.getMeta(key), null, isText) : getMeta(key)
   },
   setMeta: async (key: string, value: string): Promise<void> => {
+    if (locked || [...blocked].some((id) => key.endsWith(`:${id}`))) return
     const d = desktopStore()
     if (!d) return setMeta(key, value)
     await soft(d.setMeta(key, value), null, any)
   },
   clearAccount: async (accountId: string): Promise<void> => {
+    blocked.add(accountId)
     const d = desktopStore()
     // Also clear any browser copy left from before the desktop database existed.
     await clearAccount(accountId)
     if (d) await soft(d.clearAccount(accountId), null, any)
   },
   clearAll: async (): Promise<void> => {
+    locked = true
     const d = desktopStore()
     await clearAll()
     if (d) await soft(d.clearAll(), null, any)
+  },
+  /** Desktop app only: a conversation complete from this computer (null in a browser, or with an older desktop app). */
+  thread: (accountId: string, threadId: string): Promise<Message[]> | null => {
+    const d = desktopStore()
+    return d?.thread ? soft(d.thread(accountId, threadId), [], isList) : null
   },
   /** Desktop app only: instant search of everything stored on this computer (null in a browser: there, Gmail's search does it). */
   search: (accountIds: string[], query: string): Promise<Message[]> | null => {

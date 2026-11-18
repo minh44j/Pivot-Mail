@@ -108,6 +108,14 @@ function describeError(e: unknown): string {
 
 const stamp = (): number => Date.now()
 
+/**
+ * After sign-out the page starts again from nothing: every background check, timer and Gmail key of the person who left is gone at
+ * once, rather than relying on each to notice (a shared computer must not keep fetching or alerting someone else's mail).
+ */
+function restartClean(): void {
+  window.location.replace('/')
+}
+
 /** What a person leaves on this device: the mail copy, an unsent draft, recent searches, personal templates. */
 async function forgetPersonalData(): Promise<void> {
   await platform.cache.clearAll()
@@ -358,7 +366,7 @@ export default function App() {
       const cur = new Map(messagesRef.current.map((m) => [m.id, m]))
       persisted.current = cur
       if (!prev) return
-      const changed = [...cur.values()].filter((m) => prev.get(m.id) !== m)
+      const changed = [...cur.values()].filter((m) => prev.get(m.id) !== m && !fromStore.current.has(m))
       const gone = [...prev.keys()].filter((id) => !cur.has(id))
       if (changed.length > 0) void platform.cache.save(changed)
       if (gone.length > 0) void platform.cache.remove(gone)
@@ -447,8 +455,39 @@ export default function App() {
   /** Messages that are gone for good: out of the list and out of this device's copy. */
   const dropGone = useCallback((ids: string[]) => {
     const gone = new Set(ids)
+    for (const id of ids) goneIds.current.add(id)
     setMessages((prev) => prev.filter((m) => !gone.has(m.id)))
     void platform.cache.remove(ids)
+  }, [])
+
+  /** Messages known to be gone this session: a stored copy read a moment earlier must not bring one back. */
+  const goneIds = useRef(new Set<string>())
+  /** Copies read from this device's store: already saved there, so they are not saved again. */
+  const fromStore = useRef(new WeakSet<Message>())
+  /**
+   * Adds copies from this device's store to what is on screen. What is on screen is never older than the store: a stored copy only
+   * fills in what is missing (a message not on screen, or the full text of one on screen as a list line), and read, flag and folder
+   * always stay as they are on screen (a change made a second ago may not be stored yet).
+   */
+  const addStored = useCallback((stored: Message[]) => {
+    const usable = stored.filter((m) => !goneIds.current.has(m.id))
+    if (usable.length === 0) return
+    setMessages((prev) => {
+      const byId = new Map(prev.map((m) => [m.id, m]))
+      let changed = false
+      for (const m of usable) {
+        const cur = byId.get(m.id)
+        let next: Message | null = null
+        if (!cur) next = m
+        else if (!cur.loaded && m.loaded) next = { ...m, folder: cur.folder, labels: cur.labels, unread: cur.unread, flagged: cur.flagged, important: cur.important }
+        if (next) {
+          fromStore.current.add(next)
+          byId.set(m.id, next)
+          changed = true
+        }
+      }
+      return changed ? [...byId.values()] : prev
+    })
   }, [])
 
   const ensureLabels = useCallback(async (accountId: string): Promise<GLabel[]> => {
@@ -534,6 +573,14 @@ export default function App() {
     async (m: Message, force = false) => {
       const have = messagesRef.current.filter((x) => x.accountId === m.accountId && x.threadId === m.threadId)
       if (!force && have.length > 0 && have.every((x) => x.loaded)) return have
+      // Windows app: the conversation is usually stored complete on this computer; open it from there at once.
+      if (!force) {
+        const local = await (platform.cache.thread(m.accountId, m.threadId) ?? Promise.resolve([]))
+        if (local.length > 0 && local.length >= have.length && local.every((x) => x.loaded) && have.every((h) => local.some((x) => x.id === h.id))) {
+          addStored(local)
+          return local
+        }
+      }
       try {
         const labels = await ensureLabels(m.accountId)
         const full = await getThreadFull(m.accountId, m.threadId)
@@ -546,7 +593,7 @@ export default function App() {
         return []
       }
     },
-    [ensureLabels, mergeIn, showToast],
+    [ensureLabels, mergeIn, showToast, addStored],
   )
 
   const loadAccounts = useCallback(async () => {
@@ -559,14 +606,14 @@ export default function App() {
     for (const a of list) {
       void checkMailbox(a)
       void ensureLabels(a.id).catch(() => undefined)
-      void platform.cache.load(a.id).then((ms) => setMessages((prev) => mergeMessages(prev, ms)))
+      void platform.cache.load(a.id).then(addStored)
       // Where change tracking continues: the saved point, or "now" for a mailbox seen for the first time.
       void platform.cache.getMeta(`hist:${a.id}`).then((v) => {
         if (v) historyIds.current.set(a.id, v)
         else void getProfile(a.id).then((p) => setHistory(a.id, p.historyId)).catch(() => undefined)
       })
     }
-  }, [checkMailbox, ensureLabels, setHistory])
+  }, [checkMailbox, ensureLabels, setHistory, addStored])
   useEffect(() => {
     if (!desktop() || !authUser) return
     let last = 0
@@ -615,6 +662,20 @@ export default function App() {
   }, [loadAccounts, loadCases, showToast])
 
 
+  /** Clicking a new-mail alert: that mailbox's Inbox opens, with the message open (several messages: just the Inbox). */
+  const openFromAlert = useRef<string | null>(null)
+  const [alertTick, setAlertTick] = useState(0)
+  const alertOpen = useRef<(m: Message) => void>(() => {})
+  useEffect(() => {
+    alertOpen.current = (m) => {
+      setQuery('')
+      setSmart([])
+      setSel({ accountId: m.accountId, kind: 'folder', id: 'inbox' })
+      openFromAlert.current = m.id || null
+      setAlertTick((t) => t + 1)
+    }
+  })
+
   const applyChanges = useCallback(
     async (accountId: string, r: Changes) => {
       const labels = await ensureLabels(accountId)
@@ -646,7 +707,10 @@ export default function App() {
           if (changed) next.push(changed)
           else dropped.push(id)
         }
-        if (dropped.length > 0) setMessages((prev) => prev.filter((m) => !dropped.includes(m.id)))
+        if (dropped.length > 0) {
+          for (const id of dropped) goneIds.current.add(id)
+          setMessages((prev) => prev.filter((m) => !dropped.includes(m.id)))
+        }
         mergeIn(next)
       }
 
@@ -665,8 +729,9 @@ export default function App() {
       // Alert for new unread mail in the Inbox, not for what we sent ourselves.
       const me = realAccountsRef.current.find((x) => x.id === accountId)?.email
       const fresh2 = added.filter((m) => m.folder === 'inbox' && m.unread && m.from.email !== me && !known.has(m.id))
-      if (fresh2.length === 1) platform.notify(fresh2[0]?.from.name ?? 'New mail', fresh2[0]?.subject ?? '')
-      else if (fresh2.length > 1) platform.notify(`${fresh2.length} new messages`, fresh2.map((m) => m.from.name).slice(0, 3).join(', '))
+      const one = fresh2[0]
+      if (fresh2.length === 1 && one) platform.notify(one.from.name || one.from.email || 'New mail', one.subject || '(no subject)', () => alertOpen.current(one))
+      else if (fresh2.length > 1) platform.notify(`${fresh2.length} new messages`, fresh2.map((m) => m.from.name || m.from.email).slice(0, 3).join(', '), () => alertOpen.current({ ...fresh2[0]!, id: '' }))
     },
     [ensureLabels, mergeIn, loadThread],
   )
@@ -732,19 +797,31 @@ export default function App() {
     pollRef.current = pollAll
   })
 
-  // 15 s while the tab is open, 60 s when hidden, backing off while Gmail is unreachable; at once on return or reconnect.
+  // Every 5 s while the tab is open, 60 s when it is a hidden browser tab, backing off while Gmail is unreachable; at once on return or
+  // reconnect. The Windows app keeps the 5 s pace while hidden in the tray: it is the mail program, and alerts must not wait a minute.
   useEffect(() => {
     if (!realMode || !hasReal) return
     let timer: number | undefined
     let last = 0
-    const delay = () => Math.min(120_000, (document.visibilityState === 'visible' ? POLL_VISIBLE_MS : 60_000) * 2 ** Math.min(failStreak.current, 3))
+    const app = desktop() !== null
+    const delay = () => Math.min(120_000, (app || document.visibilityState === 'visible' ? POLL_VISIBLE_MS : 60_000) * 2 ** Math.min(failStreak.current, 3))
+    // One loop only, and it ends with this effect (sign-out, last mailbox removed): a check still running when that happens
+    // finishes without scheduling another.
+    let stopped = false
+    let running = false
     const loop = async () => {
+      if (stopped || running) return
+      running = true
       last = stamp()
-      await pollRef.current()
-      timer = window.setTimeout(() => void loop(), delay())
+      try {
+        await pollRef.current()
+      } finally {
+        running = false
+      }
+      if (!stopped) timer = window.setTimeout(() => void loop(), delay())
     }
     const wake = () => {
-      if (stamp() - last < 4000) return
+      if (running || stamp() - last < 4000) return
       window.clearTimeout(timer)
       void loop()
     }
@@ -754,6 +831,7 @@ export default function App() {
     window.addEventListener('online', wake)
     window.addEventListener('focus', wake)
     return () => {
+      stopped = true
       window.clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVis)
       window.removeEventListener('online', wake)
@@ -971,21 +1049,26 @@ export default function App() {
    */
   useEffect(() => {
     if (!realMode || liveQuery === '') return
+    let cancelled = false
     const t = window.setTimeout(() => {
       const [, kind, id = ''] = selKey.split('|')
       const targets = kind === 'all' ? realAccountsRef.current.map((x) => x.id) : [accountId]
       const found = platform.cache.search(targets, liveQuery)
       if (!found) return
       void found.then((hits) => {
+        if (cancelled) return
         // The same places Gmail searches: the open folder or label, or (all mail / search everywhere) everything except Deleted.
         const inScope = hits.filter((m) => (searchAll || kind === 'all' ? m.folder !== 'deleted' : kind === 'label' ? m.labels.includes(id) : kind === 'folder' ? m.folder === id : true))
         if (inScope.length === 0) return
-        setMessages((prev) => mergeMessages(prev, inScope))
+        addStored(inScope)
         addLiveHits(liveKey, inScope.map((m) => m.id))
       })
     }, 80)
-    return () => window.clearTimeout(t)
-  }, [realMode, liveQuery, liveKey, accountId, searchAll, selKey, addLiveHits])
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [realMode, liveQuery, liveKey, accountId, searchAll, selKey, addLiveHits, addStored])
   /** Real mail: Gmail's own search (any age). Results appear as they arrive; until then the loaded mail is filtered locally. */
   useEffect(() => {
     if (!realMode || liveQuery === '') return
@@ -1107,6 +1190,17 @@ export default function App() {
     },
     [rows, messages, threaded, patch, realMode, loadThread, touch],
   )
+
+  // A clicked alert waits until its Inbox is on screen, then opens the message like a click on its row (loads it, marks it read).
+  useEffect(() => {
+    const id = openFromAlert.current
+    if (!id) return
+    const target = messages.find((m) => m.id === id)
+    const row = rows.find((r) => r.msg.id === id || (target && r.msg.accountId === target.accountId && r.msg.threadId === target.threadId))
+    if (!row) return
+    openFromAlert.current = null
+    select(row.msg.id)
+  }, [alertTick, rows, messages, select])
 
   const openCompose = useCallback(
     (init?: Partial<ComposeInit>) => {
@@ -2283,13 +2377,13 @@ export default function App() {
         signedInAs={authUser?.email}
         canSwitchRole={!authUser || authUser.role === 'admin'}
         onSignOut={() => {
-          if (authUser) void forgetPersonalData().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
+          if (authUser) void forgetPersonalData().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null); restartClean() })
           setEntered(false)
         }}
         onSignOutAll={
           authUser
             ? () => {
-                void forgetPersonalData().then(() => signOut(true)).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null) })
+                void forgetPersonalData().then(() => signOut(true)).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null); restartClean() })
                 setEntered(false)
               }
             : undefined

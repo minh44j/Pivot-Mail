@@ -1,5 +1,6 @@
 // End-to-end test of the desktop app: real Electron, real web app, real sign-in code (test/server.mts), pretend Google.
 // Run: (cd ../web && npx tsx ../desktop/test/server.mts &) ; xvfb-run -a node test/e2e.cjs
+// On Windows (GitHub Actions) the same test runs against the packaged app: PIVOT_MAIL_EXE="release/win-unpacked/Pivot Mail.exe".
 const { _electron } = require('playwright')
 const path = require('node:path')
 const fs = require('node:fs')
@@ -27,7 +28,11 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
 
 ;(async () => {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-e2e-'))
-  const launch = (env) => _electron.launch({ executablePath: require(path.join(D, 'node_modules', 'electron')), args: ['--no-sandbox', D], cwd: D, env: { ...process.env, ...env } })
+  const EXE = process.env.PIVOT_MAIL_EXE ? path.resolve(D, process.env.PIVOT_MAIL_EXE) : null
+  // Linux test machines run as root, where Chromium's sandbox cannot start; Windows keeps it on.
+  const flags = process.platform === 'linux' ? ['--no-sandbox'] : []
+  const launch = (env) => _electron.launch({ executablePath: EXE ?? require(path.join(D, 'node_modules', 'electron')), args: EXE ? flags : [...flags, D], cwd: D, env: { ...process.env, ...env } })
+  console.log(`   running ${EXE ? 'the packaged app ' + EXE : 'from source'} on ${process.platform}`)
   const app = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })
   await app.evaluate(({ shell, dialog, BrowserWindow }) => {
     global.__opened = []; global.__dialogs = []; global.__overlay = []; global.__drags = []
@@ -44,7 +49,7 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const opened = () => app.evaluate(() => global.__opened)
 
   // ---- the page itself is locked down
-  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'setBadge', 'startDrag', 'store', 'version'])))
+  ok('D1 the web page gets only the small bridge: no Node, no require, no process', await win.evaluate(() => typeof require === 'undefined' && typeof process === 'undefined' && JSON.stringify(Object.keys(window.pivotDesktop).sort()) === JSON.stringify(['chooseCompany', 'setBadge', 'show', 'startDrag', 'store', 'version'])))
 
   // ---- sign-in goes to the browser, not into the window
   await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
@@ -60,12 +65,14 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   // the real thing
   await win.getByRole('link', { name: /Pivot Shipping/ }).click({ noWaitAfter: true }); await win.waitForTimeout(800)
   const start2 = (await opened()).filter((u) => u.includes('/api/auth/start')).pop()
+  // Any website can open a pivotmail:// link: a bogus one arriving now must not spoil the real sign-in under way.
+  await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=bogus.ticket'); await win.waitForTimeout(1200)
   const { location, ticket } = await browserSignIn(start2)
   ok('D5 the browser finishes on the hand-back page with a ticket', location.startsWith('/desktop-signed-in.html#t=') && ticket.length > 20)
   await app.evaluate(({ app }, link) => app.emit('second-instance', {}, ['pm', link], ''), 'pivotmail://auth?t=' + encodeURIComponent(ticket))
   await win.waitForTimeout(2500)
   const s = await win.evaluate(async () => { const r = await fetch('/api/auth/session'); return { status: r.status, body: await r.json() } })
-  ok('D6 the app window is signed in as that person', s.status === 200 && s.body.user && s.body.user.email === 'ann@pivotscl.com')
+  ok('D6 the app window is signed in as that person (even after a bogus link arrived mid-way)', s.status === 200 && s.body.user && s.body.user.email === 'ann@pivotscl.com')
   ok('D7 ...and shows Pivot Mail (the welcome screen for a person with no mailbox yet)', (await win.getByRole('heading', { name: /Welcome, Ann/ }).count()) === 1)
 
   // the same link again, after it was used: refused politely, nothing changes
@@ -91,7 +98,15 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   const drag = (await app.evaluate(() => global.__drags))[0]
   const files = drag ? drag.files || [drag.file] : []
   ok('D12 dragging hands Windows real files with the right content', files.length === 2 && fs.readFileSync(files[0], 'utf8') === 'hi' && fs.readFileSync(files[1]).subarray(0, 4).toString() === '%PDF')
-  ok('D13 ...a hostile file name cannot escape the temporary folder', path.dirname(files[0]) === path.dirname(files[1]) && !files[0].includes('..') && path.basename(files[0]).includes('evil.exe') && files[0].startsWith(os.tmpdir()))
+  ok('D13 ...a hostile file name cannot escape the temporary folder', path.dirname(files[0]) === path.dirname(files[1]) && !files[0].includes('..') && path.basename(files[0]).includes('evil.exe') && path.basename(path.dirname(files[0])).startsWith('pivot-mail-'))
+
+  // ---- alerts
+  ok('D26 Windows alerts are allowed without asking (no "allow notifications" prompt in the app)', (await win.evaluate(() => Notification.permission)) === 'granted')
+  const noteErr = await win.evaluate(() => { try { const n = new Notification('Maersk Line', { body: 'Arrival notice MSKU7654321' }); n.close(); return null } catch (e) { return String(e) } })
+  ok('D27 an alert can be raised from the mail page', noteErr === null, noteErr)
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide()); await win.waitForTimeout(300)
+  await win.evaluate(() => window.pivotDesktop.show()); await win.waitForTimeout(500)
+  ok('D28 clicking an alert brings the window back out of the tray', await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
 
   // ---- the local mail database
   const mk = (id, acc, date, extra = {}) => ({ id, threadId: id, accountId: acc, folder: 'inbox', labels: [], from: { name: 'Maersk Line', email: 'notify@maersk.com' }, to: [{ name: 'Ann', email: 'ann@pivotscl.com' }], subject: 'Hello', body: '', date, unread: true, flagged: false, attachments: [], ...extra })
@@ -112,6 +127,9 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D20 Gmail-style operators and stray symbols never break search (left to Gmail)', JSON.stringify(odd) === '[0,0,0]')
   await win.evaluate(async (m) => window.pivotDesktop.store.save([m]), mk('m1', 'acc1', '2026-11-01T08:00:00Z', { subject: 'Arrival notice', folder: 'archive', unread: false }))
   const m1 = await win.evaluate(async () => (await window.pivotDesktop.store.load('acc1')).find((m) => m.id === 'm1'))
+  const light = await win.evaluate(async () => (await window.pivotDesktop.store.load('acc1')).find((m) => m.id === 'm1'))
+  const conv = await win.evaluate(async () => window.pivotDesktop.store.thread('acc1', 'm1'))
+  ok('D29 the list gets a light copy (preview, no full HTML), opening gets the complete message from this computer', light && light.loaded === false && light.body.length <= 400 && !('html' in light) && conv.length === 1 && conv[0].loaded === true && conv[0].body.includes('MSKU1234567'))
   ok('D21 a quick list refresh updates read/folder but keeps the full message already stored (and still findable)', m1 && m1.folder === 'archive' && m1.unread === false && m1.body.includes('MSKU1234567') && JSON.stringify(await q(['acc1'], 'msku')) === '["m1"]')
   const big = await win.evaluate(async () => {
     const s = window.pivotDesktop.store
@@ -126,12 +144,27 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D22 5,000 messages: a reference number is found instantly (well under a quarter second)', JSON.stringify(big.hits) === '["b4321"]' && big.searchMs < 250 && big.many === 300 && big.manyMs < 500)
   await win.evaluate(async () => { await window.pivotDesktop.store.clearAccount('acc3'); await window.pivotDesktop.store.setMeta('hist:acc1', '999') })
 
+  // ---- two attachments with the same name, and names Windows reserves
+  await win.evaluate(() => window.pivotDesktop.startDrag([{ name: 'invoice.pdf', mime: 'application/pdf', bytes: new Uint8Array([49]) }, { name: 'invoice.pdf', mime: 'application/pdf', bytes: new Uint8Array([50]) }, { name: 'CON.txt', mime: 'text/plain', bytes: new Uint8Array([51]) }, { name: 'image001.png. ', mime: 'image/png', bytes: new Uint8Array([52]) }]))
+  await win.waitForTimeout(400)
+  const d2 = (await app.evaluate(() => global.__drags)).pop()
+  const f2 = d2 ? d2.files || [d2.file] : []
+  const names2 = f2.map((f) => path.basename(f))
+  console.log('   dragged names:', JSON.stringify(names2))
+  ok('D30 two attachments with the same name both arrive ("invoice (2).pdf"); Windows-reserved names are made safe', f2.length === 4 && names2[0] === 'invoice.pdf' && names2[1] === 'invoice (2).pdf' && fs.readFileSync(f2[1], 'utf8') === '2' && names2[2] === '_CON.txt' && names2[3] === 'image001.png')
+
+  // ---- a Pivot Mail address that redirects to another site never shows that site in the app window
+  await win.evaluate(() => { location.href = '/__test/redirect' }); await win.waitForTimeout(1200)
+  ok('D31 a redirect to another website opens in the normal browser; the app window stays on Pivot Mail', (await opened()).includes('https://example.com/landed-elsewhere') && win.url().startsWith(BASE))
+
   // ---- closing keeps it in the tray
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await new Promise((r) => setTimeout(r, 500))
   const st = await app.evaluate(({ BrowserWindow }) => ({ n: BrowserWindow.getAllWindows().length, visible: BrowserWindow.getAllWindows()[0] && BrowserWindow.getAllWindows()[0].isVisible() }))
   ok('D14 closing the window keeps Pivot Mail running (hidden, still checking mail)', st.n === 1 && st.visible === false)
   await app.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
   await app.close().catch(() => {})
+
+  ok('D32 copies of dragged attachments are deleted when the app quits', f2.length > 0 && !fs.existsSync(path.dirname(f2[0])) && !fs.existsSync(path.dirname(files[0])))
 
   // ---- the database survives a restart, and sign-out wipes it
   const app3 = await launch({ PIVOT_MAIL_URL: BASE, PIVOT_MAIL_USER_DATA: userData })

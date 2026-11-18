@@ -476,20 +476,21 @@ export function Toolbar(p: Props) {
           <Cmd icon="eye" tone="blue" label={b.unread ? 'Mark as read' : 'Mark as unread'} onClick={b.onToggleRead} disabled={!b.enabled} />
           <Cmd icon="flag" tone="orange" label={b.flagged ? 'Remove flag' : 'Flag'} onClick={b.onToggleFlag} disabled={!b.enabled} pressed={b.flagged} />
           <Cmd icon="folder" tone="teal" label="Move to" onClick={b.onMove} disabled={!b.enabled} />
-          <button
-            type="button"
-            className="cb cb-more"
-            aria-label="More actions"
-            aria-haspopup="menu"
-            disabled={!b.enabled}
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              b.onMore(Math.max(8, r.right - 230), r.bottom + 4)
-            }}
-          >
-            <Icon name="more" size={18} />
-          </button>
         </div>
+        {/* Outside the scrolling row: on a narrow window the actions that do not fit are still one click away (the message menu). */}
+        <button
+          type="button"
+          className="cb cb-more"
+          aria-label="More actions"
+          aria-haspopup="menu"
+          disabled={!b.enabled}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            b.onMore(Math.max(8, r.right - 230), r.bottom + 4)
+          }}
+        >
+          <Icon name="more" size={18} />
+        </button>
         <div className="cb-tools">
           <button
             type="button"

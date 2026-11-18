@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { MailStore } from './store'
+import { safeFileName, uniqueName } from './files'
 
 type Company = 'scl' | 'tmc'
 const HOSTS: Record<Company, string> = { scl: 'https://mail.pivotscl.com', tmc: 'https://mail.pivottmc.com' }
@@ -60,7 +61,9 @@ let pending: { verifier: string; at: number } | null = null
 
 /* ------------------------------------------------------------------ single instance and the pivotmail:// link */
 
-if (!app.requestSingleInstanceLock()) {
+/** False in a second copy started while Pivot Mail already runs: it hands its link over and ends without opening anything. */
+const primary = app.requestSingleInstanceLock()
+if (!primary) {
   app.quit()
 } else {
   app.on('second-instance', (_e, argv) => {
@@ -111,12 +114,18 @@ async function handleLink(link: string): Promise<void> {
     return
   }
   const body = new URLSearchParams({ t, v: pending.verifier }).toString()
-  pending = null
   showWindow()
-  await win?.loadURL(`${base}/api/auth/desktop`, {
-    postData: [{ type: 'rawData', bytes: Buffer.from(body) }],
-    extraHeaders: 'Content-Type: application/x-www-form-urlencoded',
-  })
+  try {
+    await win?.loadURL(`${base}/api/auth/desktop`, {
+      postData: [{ type: 'rawData', bytes: Buffer.from(body) }],
+      extraHeaders: 'Content-Type: application/x-www-form-urlencoded',
+    })
+  } catch {
+    /* the page shows its own error */
+  }
+  // The secret is used up only by a sign-in that worked: a bogus pivotmail:// link (any website can open one) must not spoil the
+  // real sign-in still in progress in the browser.
+  if (win && !win.webContents.getURL().includes('auth_error')) pending = null
 }
 
 /* ------------------------------------------------------------------ navigation rules */
@@ -152,11 +161,18 @@ function guard(contents: WebContents): void {
   }
   contents.on('will-navigate', onNavigate)
   contents.on('will-redirect', (e, target) => {
-    // A redirect to Google's sign-in inside the window would be refused by Google: send it to the browser instead.
-    if (/^https:\/\/accounts\.google\.com\//.test(target)) {
+    // Pivot Mail's window shows Pivot Mail only: a redirect elsewhere (Google's sign-in, which Google refuses inside app windows,
+    // or any other site) opens in the normal browser, so no other site ever gets this window and its bridge.
+    let u: URL
+    try {
+      u = new URL(target)
+    } catch {
       e.preventDefault()
-      void shell.openExternal(target)
+      return
     }
+    if (isSameSite(u)) return
+    e.preventDefault()
+    if (u.protocol === 'https:' || u.protocol === 'http:') void shell.openExternal(u.href)
   })
   contents.setWindowOpenHandler(({ url }) => {
     // Print and file previews open as blob: windows of this app; everything else goes to the normal browser.
@@ -283,16 +299,55 @@ function chooseAgain(): void {
 
 /* ------------------------------------------------------------------ the bridge (see preload.ts) */
 
+/** Folders holding copies of dragged attachments; removed when the app quits, and any left from a crash at the next start. */
+const dragDirs: string[] = []
+function cleanDragFolders(all = false): void {
+  const dirs = all ? fs.readdirSync(os.tmpdir()).filter((d) => d.startsWith('pivot-mail-')).map((d) => path.join(os.tmpdir(), d)) : dragDirs
+  for (const d of dirs) {
+    try {
+      fs.rmSync(d, { recursive: true, force: true })
+    } catch {
+      /* in use by Windows Explorer right now; removed next time */
+    }
+  }
+}
+
+/** A bridge call counts only from the Pivot Mail page itself in the main window (not a preview, not another site). */
+function fromApp(e: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean {
+  if (!win || e.sender !== win.webContents) return false
+  try {
+    return isSameSite(new URL(e.senderFrame?.url ?? e.sender.getURL()))
+  } catch {
+    return false
+  }
+}
+
+/** The first-run company screen (a file inside the app). */
+function fromChooser(e: Electron.IpcMainEvent): boolean {
+  if (!win || e.sender !== win.webContents) return false
+  try {
+    const u = new URL(e.senderFrame?.url ?? e.sender.getURL())
+    return u.protocol === 'file:' && u.pathname.endsWith('/static/choose.html')
+  } catch {
+    return false
+  }
+}
+
 function bridge(): void {
   ipcMain.on('pm:choose-company', (e, company: unknown) => {
-    if (e.sender !== win?.webContents || (company !== 'scl' && company !== 'tmc')) return
+    if (!win || !fromChooser(e) || (company !== 'scl' && company !== 'tmc')) return
     settings.company = company
     saveSettings()
     void win.loadURL(HOSTS[company])
   })
 
+  // A clicked new-mail alert brings the window back, also from the tray.
+  ipcMain.on('pm:show', (e) => {
+    if (fromApp(e)) showWindow()
+  })
+
   ipcMain.on('pm:badge', (e, count: unknown, png: unknown) => {
-    if (e.sender !== win?.webContents || !win) return
+    if (!win || !fromApp(e)) return
     const n = typeof count === 'number' && Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0
     tray?.setToolTip(n > 0 ? `Pivot Mail · ${n} unread` : 'Pivot Mail')
     if (n > 0 && typeof png === 'string' && png.startsWith('data:image/png;base64,')) win.setOverlayIcon(nativeImage.createFromDataURL(png), `${n} unread`)
@@ -300,21 +355,26 @@ function bridge(): void {
   })
 
   ipcMain.on('pm:drag', (e, files: unknown) => {
-    if (e.sender !== win?.webContents || !Array.isArray(files) || files.length === 0) return
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pivot-mail-'))
-    const paths: string[] = []
-    for (const f of files.slice(0, 50) as { name?: unknown; bytes?: unknown }[]) {
-      if (typeof f.name !== 'string' || !(f.bytes instanceof Uint8Array)) continue
-      // A file name from an email is untrusted: keep only the name itself, never a path, and nothing Windows refuses.
-      const name = (f.name.split(/[\\/]/).pop() ?? '').replace(/[\\/:*?"<>|\u0000-\u001f]/g, '_').replace(/^\.+/, '').slice(0, 180) || 'attachment'
-      const full = path.join(dir, name)
-      fs.writeFileSync(full, f.bytes)
-      paths.push(full)
+    if (!fromApp(e) || !Array.isArray(files) || files.length === 0) return
+    try {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pivot-mail-'))
+      dragDirs.push(dir)
+      const used = new Set<string>()
+      const paths: string[] = []
+      for (const f of files.slice(0, 50) as { name?: unknown; bytes?: unknown }[]) {
+        if (typeof f.name !== 'string' || !(f.bytes instanceof Uint8Array)) continue
+        const name = uniqueName(safeFileName(f.name), used)
+        const full = path.join(dir, name)
+        fs.writeFileSync(full, f.bytes)
+        paths.push(full)
+      }
+      if (paths.length === 0) return
+      const icon = nativeImage.createFromPath(asset('build', 'tray.png'))
+      if (paths.length === 1) e.sender.startDrag({ file: paths[0] as string, icon })
+      else e.sender.startDrag({ file: paths[0] as string, files: paths, icon })
+    } catch {
+      /* a file Windows refused: the drag simply does not start (never an error box) */
     }
-    if (paths.length === 0) return
-    const icon = nativeImage.createFromPath(asset('build', 'tray.png'))
-    if (paths.length === 1) e.sender.startDrag({ file: paths[0] as string, icon })
-    else e.sender.startDrag({ file: paths[0] as string, files: paths, icon })
   })
 }
 
@@ -326,14 +386,7 @@ const isIdList = (x: unknown): x is string[] => Array.isArray(x) && x.length <= 
 function storeBridge(): void {
   ipcMain.handle('pm:store', (e, op: unknown, a: unknown, b: unknown) => {
     // Only the Pivot Mail page itself may read or change the mail database (never the first-run screen or a preview window).
-    if (!store || e.sender !== win?.webContents) return null
-    let from: URL
-    try {
-      from = new URL(e.senderFrame?.url ?? e.sender.getURL())
-    } catch {
-      return null
-    }
-    if (!isSameSite(from)) return null
+    if (!store || !fromApp(e)) return null
     switch (op) {
       case 'load':
         return isId(a) ? store.load(a) : []
@@ -343,6 +396,8 @@ function storeBridge(): void {
       case 'remove':
         if (isIdList(a)) store.remove(a)
         return null
+      case 'thread':
+        return isId(a) && isId(b) ? store.thread(a, b) : []
       case 'search':
         return isIdList(a) && typeof b === 'string' && b.length <= 500 ? store.search(a, b) : []
       case 'getMeta':
@@ -370,7 +425,13 @@ app.setAppUserModelId(APP_ID) // Windows alerts carry the Pivot Mail name and ic
 Menu.setApplicationMenu(null) // no hidden menu shortcuts (Ctrl+R must reach the app as "Reply", not reload the page)
 
 app.whenReady().then(() => {
+  if (!primary) return
   settings = readSettings()
+  try {
+    cleanDragFolders(true) // copies left behind by a crash or a forced shutdown
+  } catch {
+    /* ignored */
+  }
   registerScheme()
   // Only what the app needs: alerts and the clipboard. Camera, microphone, location and the rest are refused.
   session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(['notifications', 'clipboard-read', 'clipboard-sanitized-write'].includes(permission)))
@@ -394,6 +455,7 @@ app.on('before-quit', () => {
 app.on('will-quit', () => {
   store?.close()
   store = null
+  cleanDragFolders()
 })
 app.on('window-all-closed', () => {
   /* stay in the tray */

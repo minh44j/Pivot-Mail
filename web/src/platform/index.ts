@@ -68,10 +68,17 @@ async function requestNotifications(): Promise<NotificationPermission | 'unsuppo
   return Notification.requestPermission()
 }
 
-function notify(title: string, body: string): void {
+/** A system alert. Clicking it brings Pivot Mail to the front (in the Windows app: out of the tray too) and runs onClick. */
+function notify(title: string, body: string, onClick?: () => void): void {
   if (notificationState() !== 'granted') return
   try {
-    new Notification(title, { body })
+    const n = new Notification(title, { body })
+    n.onclick = () => {
+      desktop()?.show?.()
+      window.focus()
+      n.close()
+      onClick?.()
+    }
   } catch {
     /* ignored */
   }

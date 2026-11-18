@@ -22,6 +22,12 @@ export async function POST(req: Request): Promise<Response> {
   const host = hostOf(req)
   const secret = sessionSecret()
   if (!host || !secret) return json({ error: 'config' }, 503)
+  // Only the desktop app itself posts here (a navigation it starts: no other site involved). A form on another website must not be
+  // able to sign this browser into someone else's account (login forgery), so a post sent from another site is refused.
+  const site = req.headers.get('sec-fetch-site')
+  const origin = req.headers.get('origin')
+  if (site === 'cross-site' || site === 'same-site') return redirect('/?auth_error=state')
+  if (origin && origin !== 'null' && origin !== `${protocolFor(host)}://${host}`) return redirect('/?auth_error=state')
   const form = new URLSearchParams(await req.text().catch(() => ''))
   const t = verifyToken<Ticket>(form.get('t') ?? '', secret)
   const v = form.get('v') ?? ''

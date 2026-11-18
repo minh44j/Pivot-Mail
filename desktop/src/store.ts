@@ -20,11 +20,15 @@ interface Msg {
   cc?: { name?: string; email?: string }[]
   attachments?: { name?: string }[]
   loaded?: boolean
+  html?: string
+  inline?: unknown
   [k: string]: unknown
 }
 
 /** The newest messages per mailbox handed to the window at start (the rest stays here and is reached through search). */
 const LOAD_LIMIT = 5000
+/** Characters of text kept with each message in the list (the grey preview line needs about 200). */
+const PREVIEW_CHARS = 400
 /** A message body longer than this is indexed only in its first part (keeps the index small and fast). */
 const BODY_INDEX_CHARS = 20_000
 /** Messages kept per mailbox on this computer; beyond it the oldest are dropped (they stay in Gmail and come back through search). */
@@ -32,8 +36,58 @@ export const KEEP_PER_ACCOUNT = 50_000
 /** Fields a quick list refresh may change on a message whose full body is already stored. */
 const LIGHT_FIELDS = ['folder', 'labels', 'unread', 'flagged', 'important', 'hasAttachments'] as const
 
+/** Raised when the database layout changes; an older file is re-indexed from its stored messages on first start. */
+const SCHEMA = 2
+
+/**
+ * Shipping references are written in many ways: "MSKU 765432-1", "MSKU-7654321", "MSKU7654321", "BL No. MEDU 1234567".
+ * This builds, for every message, the joined forms of short runs of words that contain a number (and the number part of joined
+ * codes), so a reference is found whether it is typed with or without spaces and dashes, and by its number alone.
+ */
+export function referencesOf(text: string): string {
+  const toks = text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
+  const out = new Set<string>()
+  for (let i = 0; i < toks.length && out.size < 4000; i++) {
+    let joined = ''
+    for (let k = 0; k < 4 && i + k < toks.length; k++) {
+      const t = toks[i + k] as string
+      if (t.length > 20) break
+      joined += t
+      if (joined.length > 30) break
+      if (joined.length >= 5 && /\d/.test(joined) && (k > 0 || /\p{L}/u.test(joined))) out.add(joined)
+    }
+    const t = toks[i] as string
+    if (/\p{L}/u.test(t) && /\d/.test(t)) for (const m of t.matchAll(/(?<=\p{L})\d{4,}/gu)) out.add(m[0])
+  }
+  return [...out].join(' ')
+}
+
+/** A message as a list line: everything the list shows, without the full text, HTML and pictures (see MailStore.load). */
+function light(json: string): unknown {
+  const m = JSON.parse(json) as Msg
+  if (!m.loaded) return m
+  const { html: _html, inline: _inline, ...rest } = m
+  return { ...rest, body: (m.body ?? '').slice(0, PREVIEW_CHARS), loaded: false }
+}
+
+/** Searches only this computer can answer exactly; anything with Gmail's own search words is left to Gmail. */
+const GMAIL_SYNTAX =
+  /(^|\s)-?(from|to|cc|bcc|subject|label|has|is|in|after|before|older|newer|older_than|newer_than|filename|list|deliveredto|category|size|larger|smaller|rfc822msgid):|(^|\s)-(?=[\p{L}\p{N}"])|(^|\s)(OR|AND)(\s|$)|[{}|]/u
+
 export class MailStore {
   private db: DatabaseSync
+
+  /** Runs fn as one transaction; on any error it is undone, so the database is never left mid-way (and never stuck). */
+  private tx(fn: () => void): void {
+    this.db.exec('BEGIN')
+    try {
+      fn()
+      this.db.exec('COMMIT')
+    } catch (e) {
+      this.db.exec('ROLLBACK')
+      throw e
+    }
+  }
 
   constructor(file: string) {
     this.db = new DatabaseSync(file)
@@ -42,14 +96,51 @@ export class MailStore {
       PRAGMA synchronous = NORMAL;
       CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, date TEXT NOT NULL, json TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS messages_account_date ON messages (account_id, date DESC);
+      CREATE INDEX IF NOT EXISTS messages_thread ON messages (account_id, json_extract(json, '$.threadId'));
       CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      -- The word index: one entry per message, sharing the message's row number (so replacing or removing one is a direct lookup).
-      CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(subject, people, body, tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3');
     `)
+    const version = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
+    if (version < SCHEMA) {
+      this.db.exec('DROP TABLE IF EXISTS messages_fts; DROP TABLE IF EXISTS search_index;')
+    }
+    // The word index: one entry per message, sharing the message's row number (so replacing or removing one is a direct lookup).
+    this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(subject, people, body, refs, tokenize = 'unicode61 remove_diacritics 2', prefix = '2 3')`)
+    if (version < SCHEMA) {
+      this.reindex()
+      this.db.exec(`PRAGMA user_version = ${SCHEMA}`)
+    }
   }
 
+  /** Rebuilds the word index from the stored messages (after an upgrade of the index layout). */
+  private reindex(): void {
+    const rows = this.db.prepare('SELECT rowid, json FROM messages')
+    const index = this.db.prepare('INSERT INTO search_index (rowid, subject, people, body, refs) VALUES (?, ?, ?, ?, ?)')
+    this.tx(() => {
+      for (const r of rows.iterate() as Iterable<{ rowid: number; json: string }>) index.run(r.rowid, ...this.fields(JSON.parse(r.json) as Msg))
+    })
+  }
+
+  private fields(m: Msg): [string, string, string, string] {
+    const who = [m.from, ...(m.to ?? []), ...(m.cc ?? [])].filter(Boolean).map((p) => `${p?.name ?? ''} ${p?.email ?? ''}`)
+    const files = (m.attachments ?? []).map((a) => a?.name ?? '')
+    const subject = m.subject ?? ''
+    const body = `${m.snippet ?? ''}\n${files.join(' ')}\n${(m.body ?? '').slice(0, BODY_INDEX_CHARS)}`
+    return [subject, who.join(' '), body, referencesOf(`${subject}\n${body}`)]
+  }
+
+  /**
+   * The newest messages of a mailbox for the list, like Outlook: everything the list shows (sender, subject, a preview, flags,
+   * attachment names) but not the full text, HTML and pictures, which come from here the moment a message is opened (thread()).
+   * Keeps opening the app fast and its memory small however much mail is stored.
+   */
   load(accountId: string, limit = LOAD_LIMIT): unknown[] {
     const rows = this.db.prepare('SELECT json FROM messages WHERE account_id = ? ORDER BY date DESC LIMIT ?').all(accountId, Math.min(Math.max(1, limit), 50_000)) as { json: string }[]
+    return rows.map((r) => light(r.json))
+  }
+
+  /** Every stored message of one conversation, complete (opening a message: no wait for the internet). */
+  thread(accountId: string, threadId: string): unknown[] {
+    const rows = this.db.prepare("SELECT json FROM messages WHERE account_id = ? AND json_extract(json, '$.threadId') = ? ORDER BY date").all(accountId, threadId) as { json: string }[]
     return rows.map((r) => JSON.parse(r.json))
   }
 
@@ -57,9 +148,8 @@ export class MailStore {
     const old = this.db.prepare('SELECT json FROM messages WHERE id = ?')
     const put = this.db.prepare('INSERT INTO messages (id, account_id, date, json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET account_id = excluded.account_id, date = excluded.date, json = excluded.json RETURNING rowid')
     const unindex = this.db.prepare('DELETE FROM search_index WHERE rowid = ?')
-    const index = this.db.prepare('INSERT INTO search_index (rowid, subject, people, body) VALUES (?, ?, ?, ?)')
-    this.db.exec('BEGIN')
-    try {
+    const index = this.db.prepare('INSERT INTO search_index (rowid, subject, people, body, refs) VALUES (?, ?, ?, ?, ?)')
+    this.tx(() => {
       for (const m of msgs) {
         if (!m || typeof m.id !== 'string' || typeof m.accountId !== 'string' || typeof m.date !== 'string') continue
         // A list refresh sends messages without their body: keep the stored full copy and update only what can change.
@@ -74,15 +164,9 @@ export class MailStore {
         }
         const { rowid } = put.get(m.id, m.accountId, m.date, JSON.stringify(m)) as { rowid: number }
         unindex.run(rowid)
-        const who = [m.from, ...(m.to ?? []), ...(m.cc ?? [])].filter(Boolean).map((p) => `${p?.name ?? ''} ${p?.email ?? ''}`)
-        const files = (m.attachments ?? []).map((a) => a?.name ?? '')
-        index.run(rowid, m.subject ?? '', who.join(' '), `${m.snippet ?? ''}\n${files.join(' ')}\n${(m.body ?? '').slice(0, BODY_INDEX_CHARS)}`)
+        index.run(rowid, ...this.fields(m))
       }
-      this.db.exec('COMMIT')
-    } catch (e) {
-      this.db.exec('ROLLBACK')
-      throw e
-    }
+    })
     for (const a of new Set(msgs.map((m) => m?.accountId).filter((x): x is string => typeof x === 'string'))) this.prune(a)
   }
 
@@ -96,12 +180,12 @@ export class MailStore {
   remove(ids: string[]): void {
     const del = this.db.prepare('DELETE FROM messages WHERE id = ? RETURNING rowid')
     const unindex = this.db.prepare('DELETE FROM search_index WHERE rowid = ?')
-    this.db.exec('BEGIN')
-    for (const id of ids) {
-      const r = del.get(id) as { rowid: number } | undefined
-      if (r) unindex.run(r.rowid)
-    }
-    this.db.exec('COMMIT')
+    this.tx(() => {
+      for (const id of ids) {
+        const r = del.get(id) as { rowid: number } | undefined
+        if (r) unindex.run(r.rowid)
+      }
+    })
   }
 
   /**
@@ -109,19 +193,26 @@ export class MailStore {
    * Gmail-style operators such as from: or has:attachment are left to Gmail's own search, which runs right after.
    */
   search(accountIds: string[], query: string, limit = 300): unknown[] {
+    // from:, has:, -word, OR ... mean something precise in Gmail; a local guess could show mail that does not match.
+    if (GMAIL_SYNTAX.test(query)) return []
     const words = query
+      .replace(/[\u0000-\u001f\u007f]/g, ' ')
       .split(/\s+/)
-      .filter((w) => w && !/^-?[a-z]+:/i.test(w))
       .map((w) => w.replace(/["*^():]/g, '').trim())
-      .filter((w) => w.length > 0)
+      .filter((w) => /[\p{L}\p{N}]/u.test(w))
       .slice(0, 12)
     if (words.length === 0 || accountIds.length === 0) return []
-    const match = words.map((w) => `"${w}"*`).join(' AND ')
+    let match = words.map((w) => `"${w}"*`).join(' AND ')
+    // A reference typed with or without spaces and dashes ("MSKU 765432-1", "msku7654321", "7654321") also matches its joined form.
+    const joined = words.join('').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+    if (/\d/.test(joined) && joined.length >= 5 && joined.length <= 30) match = `(${match}) OR refs : "${joined}"*`
     const marks = accountIds.map(() => '?').join(',')
-    const rows = this.db
-      .prepare(`SELECT m.json FROM search_index f JOIN messages m ON m.rowid = f.rowid WHERE search_index MATCH ? AND m.account_id IN (${marks}) ORDER BY m.date DESC LIMIT ?`)
-      .all(match, ...accountIds, Math.min(Math.max(1, limit), 2000)) as { json: string }[]
-    return rows.map((r) => JSON.parse(r.json))
+    // Two steps: find and sort the matches by date alone, then read only the newest ones in full.
+    const hits = this.db
+      .prepare(`SELECT m.rowid AS r FROM search_index f JOIN messages m ON m.rowid = f.rowid WHERE search_index MATCH ? AND m.account_id IN (${marks}) ORDER BY m.date DESC LIMIT ?`)
+      .all(match, ...accountIds, Math.min(Math.max(1, limit), 2000)) as { r: number }[]
+    const get = this.db.prepare('SELECT json FROM messages WHERE rowid = ?')
+    return hits.map((h) => light((get.get(h.r) as { json: string }).json))
   }
 
   getMeta(key: string): string | null {
@@ -134,16 +225,18 @@ export class MailStore {
   }
 
   clearAccount(accountId: string): void {
-    this.db.exec('BEGIN')
-    this.db.prepare('DELETE FROM search_index WHERE rowid IN (SELECT rowid FROM messages WHERE account_id = ?)').run(accountId)
-    this.db.prepare('DELETE FROM messages WHERE account_id = ?').run(accountId)
-    this.db.prepare('DELETE FROM meta WHERE key = ?').run(`hist:${accountId}`)
-    this.db.exec('COMMIT')
+    this.tx(() => {
+      this.db.prepare('DELETE FROM search_index WHERE rowid IN (SELECT rowid FROM messages WHERE account_id = ?)').run(accountId)
+      this.db.prepare('DELETE FROM messages WHERE account_id = ?').run(accountId)
+      this.db.prepare('DELETE FROM meta WHERE key = ?').run(`hist:${accountId}`)
+    })
   }
 
   clearAll(): void {
-    this.db.exec('DELETE FROM messages; DELETE FROM search_index; DELETE FROM meta;')
+    this.tx(() => this.db.exec('DELETE FROM messages; DELETE FROM search_index; DELETE FROM meta;'))
+    // Rewrite the file without the old pages, and empty the write-ahead log too, so no deleted mail stays readable on disk.
     this.db.exec('VACUUM')
+    this.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
   }
 
   count(accountId?: string): number {

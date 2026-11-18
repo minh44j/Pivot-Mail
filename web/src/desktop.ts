@@ -15,6 +15,8 @@ export interface DesktopStore {
   remove(ids: string[]): Promise<unknown>
   /** Messages of these mailboxes whose subject, people, preview, attachment names or body contain every word (as word beginnings). */
   search(accountIds: string[], query: string): Promise<unknown>
+  /** Every stored message of one conversation, complete. */
+  thread?(accountId: string, threadId: string): Promise<unknown>
   getMeta(key: string): Promise<unknown>
   setMeta(key: string, value: string): Promise<unknown>
   clearAccount(accountId: string): Promise<unknown>
@@ -29,6 +31,8 @@ export interface DesktopBridge {
   setBadge(count: number): void
   /** Drag files out of the app onto the desktop or into a folder (call from dragstart, after preventDefault). */
   startDrag(files: DesktopFile[]): void
+  /** Bring the window to the front, also when it is hidden in the tray (present from desktop version 0.2.0). */
+  show?(): void
 }
 
 export function desktop(): DesktopBridge | null {
