@@ -8,6 +8,14 @@
     <SolidColorBrush x:Key="Ink" Color="#0F1F35" />
     <SolidColorBrush x:Key="Ink2" Color="#5B6676" />
     <SolidColorBrush x:Key="Line" Color="#E3E8EF" />
+    <LinearGradientBrush x:Key="PrimaryFill" StartPoint="0,0" EndPoint="0,1">
+      <GradientStop Color="#3A424D" Offset="0" />
+      <GradientStop Color="#171C23" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="PrimaryHover" StartPoint="0,0" EndPoint="0,1">
+      <GradientStop Color="#4A5462" Offset="0" />
+      <GradientStop Color="#1E242C" Offset="1" />
+    </LinearGradientBrush>
 
     <!-- The dark primary button (Install, Finish) -->
     <Style x:Key="Primary" TargetType="Button">
@@ -24,18 +32,12 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Border x:Name="b" CornerRadius="11" BorderThickness="1" BorderBrush="#0B0F14">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                  <GradientStop x:Name="top" Color="#3A424D" Offset="0" />
-                  <GradientStop Color="#171C23" Offset="1" />
-                </LinearGradientBrush>
-              </Border.Background>
+            <Border x:Name="b" CornerRadius="11" BorderThickness="1" BorderBrush="#0B0F14" Background="{StaticResource PrimaryFill}">
               <Border.Effect><DropShadowEffect BlurRadius="14" ShadowDepth="3" Direction="270" Opacity="0.22" /></Border.Effect>
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="top" Property="Color" Value="#4A5462" /></Trigger>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="b" Property="Background" Value="{StaticResource PrimaryHover}" /></Trigger>
               <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="b" Property="BorderBrush" Value="#4AA6EC" /><Setter TargetName="b" Property="BorderThickness" Value="2" /></Trigger>
               <Trigger Property="IsPressed" Value="True">
                 <Setter Property="RenderTransform"><Setter.Value><ScaleTransform ScaleX="0.985" ScaleY="0.985" /></Setter.Value></Setter>
