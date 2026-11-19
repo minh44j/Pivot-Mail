@@ -6,7 +6,8 @@ import { inlineImageUri } from '../gmail/inline'
 const CSP = "default-src 'none'; img-src https: data:; style-src 'unsafe-inline'"
 
 const FRAME_CSS = `
-html,body{margin:0;padding:0}
+html,body{margin:0;padding:0;height:auto!important;min-height:0!important}
+#pm-mail{display:flow-root}
 body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1d1d1f;overflow-wrap:anywhere;word-break:break-word}
 img{max-width:100%;height:auto}
 table{max-width:100%;border-collapse:collapse}
@@ -23,22 +24,37 @@ function HtmlFrame({ html }: { html: string }) {
   const [h, setH] = useState(60)
   // Mail is written for a white page. In the dark theme it is shown on a white sheet (with some room around the text) rather than guessed into dark colours.
   const dark = document.documentElement.dataset.theme === 'dark'
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}${dark ? 'html{background:#fff}body{padding:12px 14px}' : ''}</style></head><body>${html}</body></html>`
+  // "Full window height" in a mail (100vh) would mean the frame's own height and make it grow with every measurement: off.
+  const safe = html.replace(/\b\d+(?:\.\d+)?(?:d|s|l)?vh\b/gi, 'auto')
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}${dark ? 'html{background:#fff}body{padding:12px 14px}' : ''}</style></head><body><div id="pm-mail">${safe}</div></body></html>`
 
+  /**
+   * The frame is as tall as the mail's own content (a wrapper around it), plus the page's padding. Measuring the frame's page
+   * instead (scrollHeight) can never come out smaller than the frame itself, so the frame only ever grew: after "Show trimmed
+   * content" and "Hide" it kept the long height, a large blank space before Reply (regression test: scratchpad gap.js).
+   */
   const measure = () => {
     const d = ref.current?.contentDocument
-    if (d?.body) setH(Math.max(40, d.documentElement.scrollHeight))
+    const wrap = d?.getElementById('pm-mail')
+    if (!d?.body || !wrap) return
+    const cs = d.defaultView?.getComputedStyle(d.body)
+    const pad = cs ? parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom) : 0
+    setH(Math.max(40, Math.ceil(wrap.getBoundingClientRect().height + (Number.isFinite(pad) ? pad : 0))))
   }
-  useEffect(() => {
-    const f = ref.current
-    if (!f) return
-    const t = window.setInterval(measure, 400) // late image loads
-    const stop = window.setTimeout(() => window.clearInterval(t), 4000)
-    return () => {
-      window.clearInterval(t)
-      window.clearTimeout(stop)
+  // Follow the content as it changes (pictures arriving, fonts, a wider or narrower window), for as long as it is shown.
+  const watch = useRef<ResizeObserver | null>(null)
+  const onLoad = () => {
+    measure()
+    watch.current?.disconnect()
+    const d = ref.current?.contentDocument
+    const wrap = d?.getElementById('pm-mail')
+    const RO = (d?.defaultView as (Window & { ResizeObserver?: typeof ResizeObserver }) | null)?.ResizeObserver
+    if (wrap && RO) {
+      watch.current = new RO(() => measure())
+      watch.current.observe(wrap)
     }
-  }, [html])
+  }
+  useEffect(() => () => watch.current?.disconnect(), [])
 
   return (
     <iframe
@@ -49,7 +65,7 @@ function HtmlFrame({ html }: { html: string }) {
       referrerPolicy="no-referrer"
       srcDoc={doc}
       style={dark ? { height: h, background: '#fff', borderRadius: 10 } : { height: h }}
-      onLoad={measure}
+      onLoad={onLoad}
     />
   )
 }
