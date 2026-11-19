@@ -1,4 +1,4 @@
-import { connectUrl } from '../auth'
+import { connectClick, connectUrl } from '../auth'
 import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 import type { IconName } from './Icon'
@@ -70,7 +70,7 @@ export function Welcome({ name, email, company, onOther }: Props) {
             </li>
           </ol>
 
-          <a className="wl-go" href={connectUrl(company, 'personal')}>
+          <a className="wl-go" href={connectUrl(company, 'personal')} onClick={connectClick(company, 'personal')}>
             <GoogleG />
             Connect {email}
           </a>

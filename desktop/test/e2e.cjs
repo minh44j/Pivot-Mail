@@ -110,6 +110,13 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D9 a link to another website opens in the normal browser; the app stays put', (await opened()).includes('https://example.com/some-page') && win.url().startsWith(BASE))
   await win.evaluate(() => { location.href = '/api/accounts/connect?company=scl&kind=personal' }); await win.waitForTimeout(600)
   ok('D10 "Add account" (Google permission) also opens in the browser', (await opened()).some((u) => u.includes('/api/accounts/connect?company=scl')) && win.url().startsWith(BASE))
+  // The Welcome screen's "Connect" button inside the app: the browser gets the address with the app's two-minute pass, so it
+  // does not have to be signed in (regression 2026-11-19: Travel Management showed a pivotscl.com Google page).
+  const nOpened = (await opened()).length
+  await win.goto(BASE + '/'); await win.waitForSelector('.wl-go', { timeout: 15000 })
+  await win.locator('.wl-go').click(); await win.waitForTimeout(1500)
+  const viaButton = (await opened()).slice(nOpened).find((u) => u.includes('/api/accounts/connect?')) || ''
+  ok('D71 "Connect" in the app opens the browser with a pass for that company (no separate browser sign-in needed)', /\/api\/accounts\/connect\?company=scl&kind=personal&t=[^&]{40,}/.test(viaButton), viaButton.slice(0, 120))
 
   // ---- taskbar number
   await win.evaluate(() => window.pivotDesktop.setBadge(7)); await win.waitForTimeout(200)

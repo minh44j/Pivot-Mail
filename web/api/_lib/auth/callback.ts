@@ -31,9 +31,14 @@ export async function GET(req: Request): Promise<Response> {
   const fail = (code: string) => redirect(`/?auth_error=${code}`, [drop])
 
   const q = new URL(req.url).searchParams
-  if (q.get('error')) return fail(q.get('error') === 'access_denied' ? 'cancelled' : 'google')
-
   const saved = verifyToken<OauthState>(parseCookies(req.headers.get('cookie'))[OAUTH_COOKIE], secret)
+  if (q.get('error')) {
+    const why = q.get('error') === 'access_denied' ? 'cancelled' : 'google'
+    // "Add account" from the desktop app: the browser shows its small result page (it may not be signed in here).
+    if (saved?.typ === 'oauth' && saved.purpose === 'connect' && (saved as { as?: unknown }).as) return redirect(`/desktop-account.html#error=${why}`, [drop])
+    return fail(why)
+  }
+
   const code = q.get('code')
   if (!saved || saved.typ !== 'oauth' || !code || q.get('state') !== saved.state) return fail('state')
 

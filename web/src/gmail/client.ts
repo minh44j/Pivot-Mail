@@ -70,13 +70,83 @@ interface Req {
   url?: string
 }
 
-/** A request with the mailbox's key. One refresh on 401, and a few polite retries when Gmail asks us to slow down (429) or is busy (5xx). */
+/* ---------- staying under Gmail's speed limit ---------- */
+
+/**
+ * Gmail lets each mailbox spend about 250 "quota units" a second (a moving average that allows short bursts); a message
+ * costs 5, a send 100 (Google's published table). Above it Gmail answers "too many requests". Every request here first
+ * spends from its mailbox's budget: 150 units a second (room for the desktop app and a browser tab open together) with a
+ * burst of 500 (the newest 100 messages), so the first screen of mail still arrives at once and a big first sync then flows steadily under the
+ * limit. When Gmail still says "slow down", the whole mailbox pauses (not each request on its own, which made it worse).
+ */
+export const RATE_UNITS_PER_SECOND = 150
+export const BURST_UNITS = 500
+const buckets = new Map<string, { tokens: number; at: number; pausedUntil: number }>()
+
+function bucketOf(accountId: string) {
+  let b = buckets.get(accountId)
+  if (!b) {
+    b = { tokens: BURST_UNITS, at: Date.now(), pausedUntil: 0 }
+    buckets.set(accountId, b)
+  }
+  return b
+}
+
+/** Waits until this mailbox may spend `units` (a request's cost), then spends them. */
+export async function spend(accountId: string, units: number): Promise<void> {
+  const need = Math.max(1, Math.min(units, BURST_UNITS))
+  for (;;) {
+    const b = bucketOf(accountId)
+    const now = Date.now()
+    b.tokens = Math.min(BURST_UNITS, b.tokens + ((now - b.at) / 1000) * RATE_UNITS_PER_SECOND)
+    b.at = now
+    if (now < b.pausedUntil) {
+      await wait(b.pausedUntil - now)
+      continue
+    }
+    if (b.tokens >= need) {
+      b.tokens -= need
+      return
+    }
+    await wait(Math.ceil(((need - b.tokens) / RATE_UNITS_PER_SECOND) * 1000))
+  }
+}
+
+/** Gmail said "slow down": this mailbox sends nothing for `ms`, and starts again with an empty budget. */
+export function slowDown(accountId: string, ms: number): void {
+  const b = bucketOf(accountId)
+  b.pausedUntil = Math.max(b.pausedUntil, Date.now() + ms)
+  b.tokens = 0
+  b.at = Date.now()
+}
+
+/** Tests only: forget every mailbox's budget. */
+export function resetBudgets(): void {
+  buckets.clear()
+}
+
+/** What a request costs in Gmail's quota units (Gmail API usage-limits table). */
+export function costOf(method: string, path: string): number {
+  const p = path.replace(/\?.*$/, '')
+  if (/\/messages\/send$/.test(p) || /\/upload\//.test(p) || p === '') return 100
+  if (/\/messages\/batchModify$/.test(p)) return 50
+  if (/\/threads\/[^/]+(\/modify|\/trash|\/untrash)?$/.test(p)) return 10
+  if (/\/drafts/.test(p)) return method === 'PUT' ? 15 : method === 'GET' ? 5 : 10
+  if (/\/labels/.test(p)) return method === 'GET' ? 1 : 5
+  if (/\/history$/.test(p)) return 2
+  if (/\/profile$/.test(p)) return 1
+  return 5 // messages.list, messages.get, attachments.get
+}
+
+/** A request with the mailbox's key. One refresh on 401, and polite retries when Gmail asks us to slow down (429) or is busy (5xx). */
 async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T> {
   const url = new URL(o.url ?? `${BASE}${path}`)
   for (const [k, v] of o.params ?? []) url.searchParams.append(k, v)
   const idempotent = o.idempotent ?? (o.method ?? 'GET') === 'GET'
   let refreshed = false
+  const units = costOf(o.method ?? 'GET', o.url ? '' : path)
   for (let attempt = 0; ; attempt++) {
+    await spend(accountId, units)
     const token = await accessToken(accountId, false)
     const headers: Record<string, string> = { authorization: `Bearer ${token}` }
     if (o.body !== undefined) headers['content-type'] = 'application/json'
@@ -99,7 +169,14 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
     const retryable = busy || (idempotent && res.status >= 500)
     if (retryable && attempt < 4) {
       const ra = Number(res.headers.get('retry-after'))
-      await wait(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 30) * 1000 : 500 * 2 ** attempt)
+      if (busy) {
+        // "Too many requests": the whole mailbox waits (1, 2, 4, 8 s), not just this request.
+        slowDown(accountId, Number.isFinite(ra) && ra > 0 ? Math.min(ra, 30) * 1000 : 1000 * 2 ** attempt)
+      } else {
+        // A Gmail server hiccup: quick retries (0.5, 1, 2, 4 s); after about 7 s a change the person made is put back and
+        // explained, instead of leaving them waiting.
+        await wait(Number.isFinite(ra) && ra > 0 ? Math.min(ra, 30) * 1000 : 500 * 2 ** attempt)
+      }
       continue
     }
     // The saved permission is not enough: handled like an ended permission (the app offers "Reconnect").
@@ -197,6 +274,7 @@ async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessa
   const paths = ids.map((id) => `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?${qs}`)
   const boundary = `pm_batch_${Math.random().toString(36).slice(2)}`
   for (let attempt = 0; attempt < 2; attempt++) {
+    await spend(accountId, 5 * ids.length)
     const token = await accessToken(accountId, attempt > 0)
     let res: Response
     try {
@@ -211,7 +289,10 @@ async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessa
     }
     batchNetworkFailures = 0
     if (res.status === 401 && attempt === 0) continue
-    if (res.status === 429 || res.status === 403 || res.status >= 500) return { ok: [], busy: ids, retry: [] } // slow down, then again
+    if (res.status === 429 || res.status === 403 || res.status >= 500) {
+      slowDown(accountId, 2000)
+      return { ok: [], busy: ids, retry: [] } // slow down, then again
+    }
     if (!res.ok) {
       // 400 / 404 / 405 / 415: Gmail does not accept batches from here; one by one from now on.
       if ([400, 404, 405, 415].includes(res.status)) batchUnavailable = true
@@ -231,6 +312,7 @@ async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessa
       else if (isBusy(x)) busy.push(ids[i] as string)
       else retry.push(ids[i] as string)
     })
+    if (busy.length > 0) slowDown(accountId, 1000)
     return { ok, busy, retry }
   }
   throw new Error('batch not authorised')

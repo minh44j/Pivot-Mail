@@ -3,6 +3,7 @@ import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { GET, POST, PATCH } from '../../web/api/auth/index.ts'
+import { GET as CONNECT_GET, POST as CONNECT_POST } from '../../web/api/accounts/connect.ts'
 
 process.env.SESSION_SECRET = 'x'.repeat(40)
 process.env.GOOGLE_CLIENT_ID_SCL = 'scl-id.apps.googleusercontent.com'
@@ -44,12 +45,13 @@ http
       res.end(JSON.stringify({ accounts: [], configured: true }))
       return
     }
-    if (url.pathname.startsWith('/api/auth')) {
+    if (url.pathname.startsWith('/api/auth') || url.pathname === '/api/accounts/connect') {
       const headers = new Headers()
       for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v)
       const method = req.method ?? 'GET'
       const r = new Request(url.href, { method, headers, body: ['GET', 'HEAD'].includes(method) ? undefined : Buffer.concat(chunks) })
-      const out: Response = method === 'POST' ? await POST(r) : method === 'PATCH' ? await PATCH(r) : await GET(r)
+      const out: Response =
+        url.pathname === '/api/accounts/connect' ? (method === 'POST' ? await CONNECT_POST(r) : await CONNECT_GET(r)) : method === 'POST' ? await POST(r) : method === 'PATCH' ? await PATCH(r) : await GET(r)
       res.statusCode = out.status
       out.headers.forEach((v, k) => {
         if (k !== 'set-cookie') res.setHeader(k, v)

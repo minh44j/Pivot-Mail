@@ -1,7 +1,7 @@
 import { GET as start } from '../api/_lib/auth/start.js'
 import { GET as callback } from '../api/_lib/auth/callback.js'
 import { GET as session } from '../api/_lib/auth/session.js'
-import { GET as connect } from '../api/accounts/connect.js'
+import { GET as connect, POST as connectPass } from '../api/accounts/connect.js'
 import { GET as list } from '../api/accounts/index.js'
 import { GET as token } from '../api/accounts/token.js'
 import { POST as disconnect } from '../api/accounts/disconnect.js'
@@ -243,6 +243,48 @@ const opsRe = tables.mail_accounts.find((a) => a.email === 'ops@pivotscl.com')!
 ok('an administrator reconnecting it as "personal" does not turn it into a personal mailbox', loc(c.end!).startsWith('/?connected=') && opsRe.kind === 'shared' && opsRe.created_by === opsBefore.created_by)
 ok('...but the saved permission is renewed', tables.mail_tokens.some((x) => x.account_id === opsRe.id && open(x.refresh_token_enc, 'ops@pivotscl.com') === 'OPS-REFRESH-2'))
 ok('...and it is logged as a reconnection', tables.audit_log.some((a) => a.action === 'account.reconnected'))
+
+// ================= "Add account" from the desktop app (regression 2026-11-19) =================
+// The app is signed in inside its own window; the browser that shows Google's page may not be. Choosing Pivot Travel Management
+// then first asked to sign in to mail.pivotscl.com (a pivotscl.com Google page). The app now hands over a two-minute pass.
+{
+  const ask = (init: RequestInit) => connectPass(req(SCL, '/api/accounts/connect', { method: 'POST', ...init }))
+  const body = JSON.stringify({ company: 'tmc', kind: 'personal' })
+  ok('pass: refused without the app\'s own header (a website cannot ask for one)', (await ask({ body, headers: { ...sess('ann@pivotscl.com').headers, 'content-type': 'application/json' } })).status === 403)
+  ok('pass: refused without a sign-in', (await ask({ body, headers: { 'x-pivot-desktop': '1', 'content-type': 'application/json' } })).status === 401)
+  ok('pass: a shared mailbox needs an administrator', (await ask({ body: JSON.stringify({ company: 'tmc', kind: 'shared' }), headers: { ...sess('ann@pivotscl.com').headers, 'x-pivot-desktop': '1' } })).status === 403)
+  const got = await ask({ body, headers: { ...sess('ann@pivotscl.com').headers, 'x-pivot-desktop': '1', 'content-type': 'application/json' } })
+  const url = ((await got.json()) as { url?: string }).url ?? ''
+  ok('pass: the signed-in app gets an Add-account address with a pass', got.status === 200 && url.startsWith('/api/accounts/connect?company=tmc&kind=personal&t='))
+
+  // the browser, NOT signed in, opens it
+  const r1 = await connect(req(SCL, url))
+  const g = new URL(loc(r1))
+  ok('pass: the browser goes straight to Pivot Travel Management\'s Google page (no Pivot Shipping sign-in first)', g.origin === 'https://accounts.google.com' && g.searchParams.get('client_id') === 'tmc-id' && g.searchParams.get('hd') === 'pivottmc.com', g.href)
+  claims = { iss: 'https://accounts.google.com', aud: 'tmc-id', exp: Math.floor(Date.now() / 1000) + 600, nonce: g.searchParams.get('nonce'), email: 'ann.travel@pivottmc.com', email_verified: true, hd: 'pivottmc.com', name: 'Ann (Travel)' }
+  grant = { scope: 'openid email profile https://www.googleapis.com/auth/gmail.modify', refresh_token: 'TMC-REFRESH-1' }
+  const end = await callback(req(SCL, `/api/auth/google/callback?code=x&state=${g.searchParams.get('state')}`, { headers: { cookie: `pm_oauth=${encodeURIComponent(cookieOf(r1, 'pm_oauth'))}` } }))
+  const ann = tables.app_users.find((u) => u.email === 'ann@pivotscl.com')!
+  const acc = tables.mail_accounts.find((a) => a.email === 'ann.travel@pivottmc.com')
+  ok('pass: finished without a browser sign-in, the mailbox belongs to the app\'s person', loc(end) === '/desktop-account.html#added=ann.travel%40pivottmc.com' && !!acc && acc.company === 'tmc' && tables.mailbox_access.some((x) => x.user_id === ann.id && x.account_id === acc.id), loc(end))
+  ok('pass: ...and no browser session was created on the way', !end.headers.getSetCookie().some((c) => c.startsWith('__Host-pm_session=')))
+
+  const r2 = await connect(req(SCL, url.replace('company=tmc', 'company=scl')))
+  ok('pass: only for the company it was made for', loc(r2) === '/desktop-account.html#error=expired')
+  const r3 = await connect(req(SCL, url.slice(0, -3) + 'AAA'))
+  ok('pass: a tampered pass is refused', loc(r3) === '/desktop-account.html#error=expired')
+  const stale = signToken({ typ: 'connect-pass', company: 'tmc', kind: 'personal', as: { email: 'ann@pivotscl.com', name: 'N', company: 'scl', iat: Math.floor(Date.now() / 1000) } }, SECRET, -1)
+  ok('pass: an expired pass is refused', loc(await connect(req(SCL, `/api/accounts/connect?company=tmc&kind=personal&t=${encodeURIComponent(stale)}`))) === '/desktop-account.html#error=expired')
+  ann.sessions_valid_after = new Date(Date.now() + 5000).toISOString()
+  ok('pass: "sign out of all devices" also cancels a pass made before it', loc(await connect(req(SCL, url))) === '/desktop-account.html#error=session')
+  ann.sessions_valid_after = null
+  const sessTok = signToken({ typ: 'session', email: 'ann@pivotscl.com', name: 'N', company: 'scl' }, SECRET, 3600)
+  ok('pass: an ordinary session cookie is not accepted as a pass', loc(await connect(req(SCL, `/api/accounts/connect?company=tmc&kind=personal&t=${encodeURIComponent(sessTok)}`))) === '/desktop-account.html#error=expired')
+  // cancelled on Google's page
+  const r4 = await connect(req(SCL, url))
+  const cancelled = await callback(req(SCL, `/api/auth/google/callback?error=access_denied`, { headers: { cookie: `pm_oauth=${encodeURIComponent(cookieOf(r4, 'pm_oauth'))}` } }))
+  ok('pass: cancelling on Google\'s page ends on the app\'s result page, not the website\'s sign-in', loc(cancelled) === '/desktop-account.html#error=cancelled')
+}
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

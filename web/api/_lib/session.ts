@@ -38,10 +38,32 @@ function isSession(s: Cookie | null): s is Cookie {
  * and a role change takes effect without waiting for the cookie to expire.
  */
 export async function currentUser(req: Request): Promise<Me | null> {
+  const s = sessionOf(req)
+  return s ? userOf(s) : null
+}
+
+/** What the session cookie says (who signed in, where, when), checked; null without a valid session. */
+export function sessionOf(req: Request): SessionClaims | null {
   const secret = sessionSecret()
   if (!secret) return null
   const s = verifyToken<Cookie>(parseCookies(req.headers.get('cookie'))[SESSION_COOKIE], secret)
-  if (!isSession(s)) return null
+  return isSession(s) ? { email: s.email, name: s.name, company: s.company, iat: s.iat } : null
+}
+
+export interface SessionClaims {
+  email: string
+  name: string
+  company: 'scl' | 'tmc'
+  /** when that sign-in happened (seconds): "sign out of all devices" refuses everything issued before it */
+  iat: number
+}
+
+/**
+ * The person behind a sign-in, re-checked against the database (disabled, signed out everywhere, role changes). Used for the
+ * session cookie, and for the desktop app's "Add account" pass, which carries the app's own sign-in (see accounts/connect).
+ */
+export async function userOf(s: SessionClaims): Promise<Me | null> {
+  if (!s || typeof s.email !== 'string' || !s.email.includes('@') || (s.company !== 'scl' && s.company !== 'tmc') || typeof s.iat !== 'number') return null
   if (!dbConfigured()) return { id: null, email: s.email, name: s.name, company: s.company, role: roleFor(s.email), title: '' }
   const row = (await select<AppUser>('app_users', `email=${eq(s.email)}&select=*`))[0]
   // "Sign out of all devices" (or access turned off): sessions issued before that moment no longer count.

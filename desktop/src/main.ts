@@ -330,6 +330,37 @@ function plainToast(t: MailToast): boolean {
   }
 }
 
+/**
+ * "Add account": Google's permission page opens in the normal browser, which may not be signed in to Pivot Mail (it then
+ * asked to sign in first, always for the website's own company: choosing Pivot Travel Management showed a pivotscl.com page).
+ * The app first asks the server for a two-minute pass carrying its own sign-in, good for this company and kind only; the
+ * browser goes straight to the right company's Google page. Without a pass (an older server, no connection): as before.
+ */
+async function openConnect(u: URL): Promise<void> {
+  // The page already asked for the pass (web/src/auth.ts connectClick): open it as it is.
+  if (u.searchParams.has('t')) {
+    void shell.openExternal(u.href)
+    return
+  }
+  const company = u.searchParams.get('company')
+  const kind = u.searchParams.get('kind') === 'shared' ? 'shared' : 'personal'
+  try {
+    const res = await session.defaultSession.fetch(new URL('/api/accounts/connect', u.origin).href, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-pivot-desktop': '1' },
+      body: JSON.stringify({ company, kind }),
+    })
+    const r = (await res.json().catch(() => null)) as { url?: unknown } | null
+    if (res.ok && r && typeof r.url === 'string' && r.url.startsWith('/api/accounts/connect?')) {
+      void shell.openExternal(new URL(r.url, u.origin).href)
+      return
+    }
+  } catch {
+    /* fall back below */
+  }
+  void shell.openExternal(u.href)
+}
+
 /* ------------------------------------------------------------------ navigation rules */
 
 function isSameSite(url: URL): boolean {
@@ -354,7 +385,7 @@ function guard(contents: WebContents): void {
       } else if (u.pathname.startsWith('/api/accounts/connect')) {
         // "Add account" asks Google for mailbox permission: that happens in the browser too; the new mailbox shows here afterwards.
         e.preventDefault()
-        void shell.openExternal(u.href)
+        void openConnect(u)
       }
       return
     }

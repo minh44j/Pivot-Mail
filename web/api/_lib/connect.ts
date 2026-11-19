@@ -3,7 +3,8 @@ import type { CompanyId } from './config.js'
 import { dbConfigured, eq, insert, select, update } from './db.js'
 import { exchangeCodeFull, checkClaims } from './google.js'
 import { originOf, redirect } from './http.js'
-import { currentUser } from './session.js'
+import { currentUser, userOf } from './session.js'
+import type { SessionClaims } from './session.js'
 import { seal, vaultReady } from './vault.js'
 
 
@@ -14,6 +15,8 @@ interface Saved {
   company: CompanyId
   next: string
   kind?: 'personal' | 'shared'
+  /** "Add account" started from the desktop app with its pass: the app's sign-in (the browser may have none) */
+  as?: SessionClaims
 }
 
 /**
@@ -21,12 +24,14 @@ interface Saved {
  * encrypted refresh token. Nothing about the mail itself is read or stored here.
  */
 export async function finishConnect(p: { req: Request; host: string; secure: boolean; code: string; saved: Saved; company: Company; client: { clientId: string; clientSecret: string }; drop: string }): Promise<Response> {
-  const fail = (code: string) => redirect(`/?connect_error=${code}`, [p.drop])
+  // Started from the desktop app (its pass): the browser shows a small result page and the person returns to the app.
+  const fromApp = !!p.saved.as
+  const fail = (code: string) => redirect(fromApp ? `/desktop-account.html#error=${code}` : `/?connect_error=${code}`, [p.drop])
   if (!dbConfigured() || !vaultReady()) return fail('config')
 
   let me
   try {
-    me = await currentUser(p.req)
+    me = p.saved.as ? await userOf(p.saved.as) : await currentUser(p.req)
   } catch {
     return fail('unavailable')
   }
@@ -65,5 +70,5 @@ export async function finishConnect(p: { req: Request; host: string; secure: boo
   } catch {
     return fail('unavailable')
   }
-  return redirect(`/?connected=${encodeURIComponent(check.email)}`, [p.drop])
+  return redirect(fromApp ? `/desktop-account.html#added=${encodeURIComponent(check.email)}` : `/?connected=${encodeURIComponent(check.email)}`, [p.drop])
 }

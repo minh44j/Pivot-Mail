@@ -95,6 +95,30 @@ export async function fetchAccounts(): Promise<AuthAccount[] | null> {
 
 export const connectUrl = (company: 'scl' | 'tmc', kind: 'personal' | 'shared'): string => `/api/accounts/connect?company=${company}&kind=${kind}`
 
+/**
+ * Clicking "Add account". In the desktop app, Google's permission page opens in the person's normal browser, which may not be
+ * signed in to Pivot Mail (it then asked to sign in first, always for this website's own company: choosing Pivot Travel
+ * Management showed a pivotscl.com Google page). So the app's page first asks for a two-minute pass carrying its sign-in and
+ * opens the address with the pass. In a browser tab the ordinary link is used (that browser is the one signed in).
+ */
+export function connectClick(company: 'scl' | 'tmc', kind: 'personal' | 'shared') {
+  return (e: { preventDefault(): void }) => {
+    if (typeof window === 'undefined' || !(window as unknown as { pivotDesktop?: unknown }).pivotDesktop) return
+    e.preventDefault()
+    void (async () => {
+      let to = connectUrl(company, kind)
+      try {
+        const res = await fetch('/api/accounts/connect', { method: 'POST', headers: { 'content-type': 'application/json', 'x-pivot-desktop': '1' }, body: JSON.stringify({ company, kind }) })
+        const r = (await res.json().catch(() => null)) as { url?: unknown } | null
+        if (res.ok && r && typeof r.url === 'string' && r.url.startsWith('/api/accounts/connect?')) to = r.url
+      } catch {
+        /* the ordinary link */
+      }
+      window.location.href = to // the app opens it in the browser
+    })()
+  }
+}
+
 export async function disconnectAccount(id: string): Promise<boolean> {
   try {
     const res = await fetch('/api/accounts/disconnect', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })

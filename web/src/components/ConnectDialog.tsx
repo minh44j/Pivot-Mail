@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { COMPANIES } from '../data/companies'
 import type { CompanyId } from '../data/companies'
-import { connectUrl } from '../auth'
+import { connectClick, connectUrl } from '../auth'
 import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 import { GoogleG } from './SignIn'
@@ -87,7 +87,7 @@ export function ConnectDialog({ isAdmin, initial, onClose }: Props) {
                     Back
                   </button>
                 )}
-                <a className="si-google" href={connectUrl(co.id, kind)} autoFocus>
+                <a className="si-google" href={connectUrl(co.id, kind)} onClick={connectClick(co.id, kind)} autoFocus>
                   <GoogleG />
                   Continue with Google
                 </a>
