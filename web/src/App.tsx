@@ -72,6 +72,7 @@ import { PerformancePage } from './components/PerformancePage'
 import { SettingsPage } from './components/SettingsPage'
 import { SettingsContext, mergeColours } from './settings'
 import { MAC_SYSTEM_KEYS, MOD, combo, isMac } from './shortcuts'
+import { watchForUpdates } from './update'
 import { rememberCopiedEmail } from './emailClipboard'
 import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
@@ -684,6 +685,24 @@ export default function App() {
     })
   }, [loadAccounts, loadCases, showToast])
 
+
+  /** A newer Pivot Mail on the website: reload quietly when nobody is using it, else offer Refresh (see update.ts). */
+  const composeOpen = useRef(false)
+  useEffect(() => {
+    composeOpen.current = compose !== null
+  }, [compose])
+  useEffect(() => {
+    const w = watchForUpdates({
+      busy: () => {
+        if (composeOpen.current) return true
+        const a = document.activeElement as HTMLElement | null
+        // Typing somewhere (a form, a signature, a note) counts as busy; the search box does not.
+        return !!a && !a.closest('.tb-search') && (a.isContentEditable || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')
+      },
+      tell: (refresh) => showToast('Pivot Mail was updated. Refresh to use the newest version.', { kind: 'info', action: { label: 'Refresh', onClick: refresh } }),
+    })
+    return () => w.stop()
+  }, [showToast])
 
   /** Clicking a new-mail alert: that mailbox's Inbox opens, with the message open (several messages: just the Inbox). */
   const openFromAlert = useRef<string | null>(null)
