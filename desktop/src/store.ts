@@ -101,6 +101,7 @@ export class MailStore {
       -- Fold the write-ahead log into the file every ~40 MB instead of every 4 MB: each fold waits for the disk (slow on Windows),
       -- so a big first sync spends far less time waiting.
       PRAGMA wal_autocheckpoint = 10000;
+      PRAGMA journal_size_limit = 8388608; -- after each fold the log file is cut back to 8 MB (no 40 MB left lying on disk)
       CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, date TEXT NOT NULL, json TEXT NOT NULL);
       CREATE INDEX IF NOT EXISTS messages_account_date ON messages (account_id, date DESC);
       CREATE INDEX IF NOT EXISTS messages_thread ON messages (account_id, json_extract(json, '$.threadId'));

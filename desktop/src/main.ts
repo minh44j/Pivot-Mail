@@ -761,7 +761,7 @@ function filesToClipboard(paths: string[]): Promise<boolean> {
     // inside the script text.
     // One clipboard entry per file (its file address), the first also carrying the classic file list, as Finder writes them.
     // The Mac asks the program that copied for the data when someone pastes, so the helper stays running until something
-    // else is copied (or 30 minutes, or Pivot Mail quits): when it ended straight away, only the first file was left.
+    // else is copied (or 8 hours, or Pivot Mail quits): when it ended straight away, only the first file was left.
     const jxa =
       'ObjC.import("AppKit");' +
       'const list = ObjC.unwrap($.NSProcessInfo.processInfo.environment.objectForKey("PM_CLIP_FILES")).split("\\n");' +
@@ -770,10 +770,10 @@ function filesToClipboard(paths: string[]): Promise<boolean> {
       ' if (i === 0) it.setPropertyListForType($(list), "NSFilenamesPboardType"); items.addObject(it) });' +
       'const pb = $.NSPasteboard.generalPasteboard; pb.clearContents; const ok = pb.writeObjects(items); const c0 = pb.changeCount;' +
       '$.NSFileHandle.fileHandleWithStandardOutput.writeData($((ok ? "ok " : "no ") + pb.pasteboardItems.count + "/" + list.length + "\\n").dataUsingEncoding($.NSUTF8StringEncoding));' +
-      'for (let i = 0; i < 1800 && pb.changeCount === c0; i++) delay(1); ""'
+      'for (let i = 0; i < 28800 && pb.changeCount === c0; i++) delay(1); ""'
     clipHelper?.kill()
     return new Promise((resolve) => {
-      const h = spawn('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { env: { ...process.env, PM_CLIP_FILES: paths.join('\n') }, stdio: ['ignore', 'pipe', 'pipe'] })
+      const h = spawn('/usr/bin/osascript', ['-l', 'JavaScript', '-e', jxa], { env: { ...process.env, PM_CLIP_FILES: paths.join('\n') }, stdio: ['ignore', 'pipe', 'ignore'] })
       clipHelper = h
       let said = ''
       let finished = false
@@ -792,10 +792,17 @@ function filesToClipboard(paths: string[]): Promise<boolean> {
           done(said.trim())
         }
       })
-      h.on('exit', () => {
+      // 'close' (not 'exit'): everything it printed has been read by then.
+      h.on('close', () => {
         if (clipHelper === h) clipHelper = null
         clearTimeout(timer)
         if (!said.includes('\n')) done(said.trim() || 'helper ended')
+      })
+      // osascript could not start at all (blocked by a company policy, too many processes): the copy just reports failure.
+      h.on('error', (e: NodeJS.ErrnoException) => {
+        if (clipHelper === h) clipHelper = null
+        clearTimeout(timer)
+        done(`cannot start: ${e.code ?? e.message}`)
       })
     })
   }
