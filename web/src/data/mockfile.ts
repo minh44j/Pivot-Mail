@@ -9,9 +9,11 @@ import { formatSize } from '../util'
 export type PreviewKind = 'pdf' | 'image' | 'text' | 'none'
 
 export function previewKind(a: Attachment): PreviewKind {
-  if (a.mime === 'application/pdf') return 'pdf'
-  if (/^image\/(png|jpe?g|gif|webp)$/.test(a.mime)) return 'image'
-  if (a.mime === 'text/plain') return 'text'
+  // By type, or by the name's ending when the type is unknown (a file attached from the computer often has none).
+  const ext = (/\.([a-z0-9]+)$/i.exec(a.name)?.[1] ?? '').toLowerCase()
+  if (a.mime === 'application/pdf' || ext === 'pdf') return 'pdf'
+  if (/^image\/(png|jpe?g|gif|webp|bmp)$/.test(a.mime) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) return 'image'
+  if (/^text\//.test(a.mime) || a.mime === 'application/json' || /^(txt|csv|log|json|md|xml|eml|ics)$/.test(ext)) return 'text'
   return 'none'
 }
 
@@ -45,12 +47,18 @@ const realBytes = new Map<string, Uint8Array>()
 
 /** Makes sure a real attachment's bytes are available (sample attachments are generated on the spot). */
 export async function ensureBytes(a: Attachment): Promise<void> {
-  if (!a.source || realBytes.has(a.id)) return
+  if (realBytes.has(a.id)) return
+  // A file just attached in the composer: its own content, read from the computer.
+  if (a.file) {
+    realBytes.set(a.id, new Uint8Array(await a.file.arrayBuffer()))
+    return
+  }
+  if (!a.source) return
   const { getAttachmentBytes } = await import('../gmail/client')
   realBytes.set(a.id, await getAttachmentBytes(a.source.accountId, a.source.messageId, a.source.attachmentId))
 }
 
-export const isReady = (a: Attachment): boolean => !a.source || realBytes.has(a.id)
+export const isReady = (a: Attachment): boolean => (!a.source && !a.file) || realBytes.has(a.id)
 
 export function mockBytes(a: Attachment): Uint8Array {
   const real = realBytes.get(a.id)

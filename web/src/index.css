@@ -1086,6 +1086,12 @@ small {
 .composer-chips {
   padding: 8px 0;
 }
+.compose-att { cursor: default; padding-right: 8px; }
+.chip-open { display: inline-flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.chip-open:hover .chip-name { text-decoration: underline; text-underline-offset: 2px; }
+.chip-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.chip-x { cursor: pointer; border-radius: 6px; padding: 2px 6px; transition: background 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+.chip-x:hover { background: var(--fill-2); color: var(--label); }
 .editor {
   flex: 1;
   min-height: 200px;
@@ -5138,3 +5144,10 @@ button.ref-chip:hover { background: #cdeee1; }
 @media (min-width: 900px) {
   .topbar { padding-bottom: 9px; }
 }
+
+/* The address a link in a mail really goes to, while the pointer rests on it (as a browser shows it), and "Copied". */
+.link-peek { position: fixed; z-index: 82; max-width: min(640px, 70vw); padding: 5px 10px; border-radius: 8px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 6px 18px rgba(15, 31, 53, 0.18), 0 0 0 0.5px rgba(0, 0, 0, 0.14); color: var(--label-2); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; animation: peek-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.copied-pop { position: fixed; z-index: 86; padding: 5px 10px; border-radius: 8px; background: var(--label); color: var(--content); font-size: 12px; font-weight: 600; pointer-events: none; transform: translate(-50%, -130%); animation: copied-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes peek-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@keyframes copied-in { from { opacity: 0; transform: translate(-50%, -100%) scale(0.96); } to { opacity: 1; transform: translate(-50%, -130%); } }
+@media (prefers-reduced-motion: reduce) { .link-peek, .copied-pop { animation: none; } }

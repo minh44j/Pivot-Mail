@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { platform } from '../platform'
+import { ContextMenu } from './ContextMenu'
+import type { MenuEntry } from './ContextMenu'
 import type { Message } from '../types'
 import { sanitizeEmailHtml, splitQuotedHtml, splitQuotedText } from '../mailhtml'
 import { inlineImageUri } from '../gmail/inline'
@@ -50,13 +54,86 @@ function HtmlFrame({ html }: { html: string }) {
       window.clearTimeout(stop)
     }
   }, [html])
+  // Right-click inside the mail (links, selected text, pictures) and the link a pointer rests on (where it really goes).
+  const [menu, setMenu] = useState<{ x: number; y: number; href: string; linkText: string; sel: string; img: string; flagged: boolean; doc: Document } | null>(null)
+  const [hover, setHover] = useState<{ href: string; left: number; bottom: number } | null>(null)
+  const [copied, setCopied] = useState<{ x: number; y: number; text: string } | null>(null)
   const onLoad = () => {
     measure()
-    const d = ref.current?.contentDocument
+    const f = ref.current
+    const d = f?.contentDocument
     d?.addEventListener('load', measure, true) // (capture: image load events do not bubble)
-    ref.current?.contentWindow?.addEventListener('resize', measure) // a wider or narrower window or reading pane re-wraps the text
+    f?.contentWindow?.addEventListener('resize', measure) // a wider or narrower window or reading pane re-wraps the text
+    if (!f || !d) return
+    const linkOf = (t: EventTarget | null) => (t instanceof (d.defaultView?.Element ?? Element) ? (t as Element).closest('a[href]') : null) as HTMLAnchorElement | null
+    d.addEventListener('contextmenu', (e) => {
+      const a = linkOf(e.target)
+      const img = e.target instanceof (d.defaultView?.HTMLImageElement ?? HTMLImageElement) ? (e.target as HTMLImageElement).src : ''
+      const sel = d.getSelection()?.toString() ?? ''
+      e.preventDefault() // the app's own menu: the same in the Windows and Mac apps (which have none) and in a browser
+      const r = f.getBoundingClientRect()
+      setHover(null)
+      setMenu({ x: r.left + e.clientX, y: r.top + e.clientY, href: a?.href ?? '', linkText: (a?.textContent ?? '').trim(), sel, img: /^https?:/.test(img) ? img : '', flagged: !!a?.hasAttribute('data-mismatch'), doc: d })
+    })
+    d.addEventListener('pointerdown', () => setMenu(null))
+    d.addEventListener('mouseover', (e) => {
+      const a = linkOf(e.target)
+      if (!a) return
+      const r = f.getBoundingClientRect()
+      setHover({ href: a.href, left: Math.max(8, r.left), bottom: Math.max(8, window.innerHeight - Math.min(r.bottom, window.innerHeight)) })
+    })
+    d.addEventListener('mouseout', (e) => {
+      if (linkOf(e.target) && !linkOf((e as MouseEvent).relatedTarget)) setHover(null)
+    })
+  }
+  const copy = async (text: string) => {
+    const at = menu
+    setMenu(null)
+    const ok = await platform.copyText(text).catch(() => false)
+    if (at) {
+      setCopied({ x: at.x, y: at.y, text: ok ? 'Copied' : 'Copy was blocked' })
+      window.setTimeout(() => setCopied(null), 1400)
+    }
+  }
+  function selectAll(d: Document) {
+    setMenu(null)
+    if (d.body) {
+      d.defaultView?.focus()
+      d.getSelection()?.selectAllChildren(d.body)
+    }
+  }
+  const entries = (): MenuEntry[] => {
+    if (!menu) return []
+    const out: MenuEntry[] = []
+    const mail = menu.href.startsWith('mailto:') ? decodeURIComponent(menu.href.slice(7).split('?')[0] ?? '') : ''
+    if (mail) {
+      out.push({ type: 'head', label: mail })
+      out.push({ type: 'item', label: 'Copy email address', icon: 'copy', onSelect: () => void copy(mail) })
+    } else if (/^https?:/i.test(menu.href)) {
+      let host = ''
+      try {
+        host = new URL(menu.href).host
+      } catch {
+        /* shown without */
+      }
+      // Where the link really goes (a link's text can say one address and go to another).
+      out.push({ type: 'head', label: menu.flagged ? `⚠ Goes to ${host} (not what the text says)` : `Goes to ${host}` })
+      out.push({ type: 'item', label: 'Open link', icon: 'popout', onSelect: () => {
+        setMenu(null)
+        window.open(menu.href, '_blank', 'noopener,noreferrer')
+      } })
+      out.push({ type: 'item', label: 'Copy link address', icon: 'link', onSelect: () => void copy(menu.href) })
+      if (menu.linkText && menu.linkText !== menu.href) out.push({ type: 'item', label: 'Copy link text', icon: 'copy', onSelect: () => void copy(menu.linkText) })
+    }
+    if (menu.img) out.push({ type: 'item', label: 'Copy picture address', icon: 'link', onSelect: () => void copy(menu.img) })
+    if (out.length) out.push({ type: 'sep' })
+    out.push({ type: 'item', label: 'Copy', icon: 'copy', disabled: !menu.sel, onSelect: () => void copy(menu.sel) })
+    const doc = menu.doc
+    out.push({ type: 'item', label: 'Select all', onSelect: () => selectAll(doc) })
+    return out
   }
   return (
+    <>
     <iframe
       ref={ref}
       className="html-frame"
@@ -67,6 +144,22 @@ function HtmlFrame({ html }: { html: string }) {
       style={dark ? { height: h, background: '#fff', borderRadius: 10 } : { height: h }}
       onLoad={onLoad}
     />
+    {menu && createPortal(<ContextMenu x={menu.x} y={menu.y} entries={entries()} onClose={() => setMenu(null)} />, document.body)}
+    {hover &&
+      createPortal(
+        <div className="link-peek" style={{ left: hover.left, bottom: hover.bottom }} aria-hidden="true">
+          {hover.href.length > 120 ? `${hover.href.slice(0, 117)}…` : hover.href}
+        </div>,
+        document.body,
+      )}
+    {copied &&
+      createPortal(
+        <div className="copied-pop" style={{ left: copied.x, top: copied.y }} role="status">
+          {copied.text}
+        </div>,
+        document.body,
+      )}
+    </>
   )
 }
 

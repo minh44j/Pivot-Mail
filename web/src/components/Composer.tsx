@@ -11,6 +11,9 @@ import { formatSize } from '../util'
 import { EMAIL_RE, bareAddress } from '../data/contacts'
 import { matchCopiedEmail } from '../emailClipboard'
 import { FileIcon } from './FileIcon'
+import { AttachmentPreview } from './AttachmentPreview'
+import { ensureBytes, mockBlob, mockBytes } from '../data/mockfile'
+import { desktop } from '../desktop'
 import { RecipientField } from './RecipientField'
 import { Icon } from './Icon'
 import { WhenDialog } from './WhenDialog'
@@ -322,6 +325,33 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     setLinkOpen(false)
   }
 
+  /** Attached files: looked at before sending (see AttachmentPreview), saved, or copied. */
+  const [preview, setPreview] = useState<number | null>(null)
+  const saveAttachment = async (a: Attachment) => {
+    try {
+      await ensureBytes(a)
+      platform.saveBlob(mockBlob(a), a.name)
+    } catch {
+      onToast('Could not open that file. Please try again.')
+    }
+  }
+  const copyAttachment = async (a: Attachment) => {
+    try {
+      await ensureBytes(a)
+    } catch {
+      onToast('Could not open that file. Please try again.')
+      return
+    }
+    const app = desktop()
+    if (app?.copyFiles) {
+      const n = await app.copyFiles([{ name: a.name, mime: a.mime, bytes: mockBytes(a) }]).catch(() => 0)
+      onToast(n === 1 ? `Copied ${a.name}. Paste it with ${combo('V')} into a folder, an email or a chat.` : 'The copy did not work. Please try again.')
+      return
+    }
+    const r = await platform.copyBlob(mockBlob(a))
+    onToast(r === 'copied' ? `Copied ${a.name}` : 'This browser can only copy pictures. Use Download instead.')
+  }
+
   const addFiles = (files: FileList | File[]) => {
     const added: Attachment[] = Array.from(files).map((f, i) => ({
       id: `n${Date.now()}-${i}`,
@@ -419,6 +449,9 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
         addFiles(e.dataTransfer.files)
       }}
       onKeyDown={(e) => {
+        // Keys from a window shown on top of the composer (the attachment preview, a dialog) reach here too, through React:
+        // they belong to that window. Esc in the preview closed the whole mail being written (2026-11-19).
+        if (!e.currentTarget.contains(e.target as Node)) return
         const mod = e.ctrlKey || e.metaKey
         if ((mod && e.key === 'Enter') || (e.altKey && !mod && e.key.toLowerCase() === 's')) {
           e.preventDefault()
@@ -499,11 +532,14 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
         </label>
         {d.attachments.length > 0 && (
           <div className="chips composer-chips">
-            {d.attachments.map((a) => (
-              <span key={a.id} className="chip">
-                <FileIcon name={a.name} mime={a.mime} size={22} />
-                <span className="chip-name">{a.name}</span>
-                <span className="chip-size">{formatSize(a.size)}</span>
+            {d.attachments.map((a, i) => (
+              <span key={a.id} className="chip compose-att">
+                {/* Click to see inside before sending (PDF, pictures, text and CSV); Download and Copy are there too. */}
+                <button type="button" className="chip-open" onClick={() => setPreview(i)} title={`Preview ${a.name}`} aria-label={`Preview ${a.name}`}>
+                  <FileIcon name={a.name} mime={a.mime} size={22} />
+                  <span className="chip-name">{a.name}</span>
+                  <span className="chip-size">{formatSize(a.size)}</span>
+                </button>
                 <button type="button" className="chip-x" aria-label={`Remove ${a.name}`} onClick={() => setD({ ...d, attachments: d.attachments.filter((x) => x.id !== a.id) })}>
                   ×
                 </button>
@@ -640,6 +676,16 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           dangerouslySetInnerHTML={{ __html: initialHtml }}
         />
         {dragging && <div className="drop-hint">Drop files to attach</div>}
+        {preview !== null && d.attachments.length > 0 && (
+          <AttachmentPreview
+            files={d.attachments}
+            index={Math.min(preview, d.attachments.length - 1)}
+            onIndex={(i) => setPreview(Math.max(0, Math.min(d.attachments.length - 1, i)))}
+            onClose={() => setPreview(null)}
+            onDownload={(a) => void saveAttachment(a)}
+            onCopy={(a) => void copyAttachment(a)}
+          />
+        )}
       </div>
       {later && (
         <WhenDialog

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Attachment } from '../types'
-import { ensureBytes, isReady, mockBlob, mockBytes, previewKind } from '../data/mockfile'
+import { ensureBytes, isReady, mockBytes, previewKind } from '../data/mockfile'
 import { formatSize } from '../util'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
@@ -33,7 +34,14 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
     }
   }, [a])
   const have = ready >= 0 && a ? isReady(a) : false
-  const url = useMemo(() => (a && have ? URL.createObjectURL(mockBlob(a)) : ''), [a, have])
+  // The file's real kind, also when its type is unknown (often for files attached from the computer): a PDF must be shown
+  // as a PDF, not offered as a download.
+  const url = useMemo(() => {
+    if (!a || !have) return ''
+    const ext = (/\.([a-z0-9]+)$/i.exec(a.name)?.[1] ?? '').toLowerCase()
+    const type = kind === 'pdf' ? 'application/pdf' : kind === 'image' ? (a.mime.startsWith('image/') ? a.mime : `image/${ext === 'jpg' ? 'jpeg' : ext}`) : a.mime
+    return URL.createObjectURL(new Blob([mockBytes(a) as BlobPart], { type }))
+  }, [a, have, kind])
   const text = useMemo(() => (a && kind === 'text' && have ? new TextDecoder().decode(mockBytes(a)) : ''), [a, kind, have])
 
   useEffect(
@@ -63,7 +71,8 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
   if (!a) return null
   const ext = (a.name.split('.').pop() ?? 'file').toUpperCase()
 
-  return (
+  // On top of everything (the composer and the reading pane can otherwise trap it under other content).
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal preview" role="dialog" aria-modal="true" aria-label={`Preview of ${a.name}`}>
         <div className="preview-head">
@@ -96,7 +105,7 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
           {!url && kind !== 'none' && (
             <div className="preview-none">
               <p className="muted" role="status">
-                {failed ? 'Could not fetch this file from Gmail. Try Download.' : 'Loading…'}
+                {failed ? (a.file ? 'Could not open this file. Try Download.' : 'Could not fetch this file from Gmail. Try Download.') : 'Loading…'}
               </p>
             </div>
           )}
@@ -117,6 +126,7 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

@@ -2149,6 +2149,9 @@ export default function App() {
       const k = e.key
       const lk = k.length === 1 ? k.toLowerCase() : k
       if (help || jump || refOpen || ctx) return // dialogs and menus own the keyboard
+      // ...also menus and previews opened by a part of the screen (a link's menu in a mail, an attachment preview):
+      // arrows, Enter and Esc there must not also move or close things in the mail list underneath.
+      if (document.querySelector('.ctx, .modal-backdrop')) return
       // Mac: ⌘Q quits, ⌘H hides, ⌘M minimises, ⌘W closes, as in every Mac app (Pivot Mail uses Control for these letters).
       if (isMac && e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && MAC_SYSTEM_KEYS.includes(lk)) return
 

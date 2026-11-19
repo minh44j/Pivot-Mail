@@ -185,6 +185,8 @@ export function AttachmentBar({ attachments, zipName, onToast, onForwardWith }: 
   }
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Keys from the preview shown on top (it is drawn over everything but still sits under this bar for React) are not ours.
+    if (!e.currentTarget.contains(e.target as Node)) return
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
       e.preventDefault()
       setSelected(new Set(attachments.map((a) => a.id)))
