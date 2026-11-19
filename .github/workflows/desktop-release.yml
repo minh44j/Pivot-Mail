@@ -135,6 +135,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           v=$(node -p "require('./package.json').version")
+          # Fixed-name copies too: the website's "Download for Windows / Mac" buttons link to
+          # releases/latest/download/PivotMail-Setup.exe and PivotMail-mac.dmg, which always give the newest version.
+          cp "release/PivotMail-Setup-$v.exe" release/PivotMail-Setup.exe
+          cp "release/PivotMail-$v-mac.dmg" release/PivotMail-mac.dmg
           # --target: the tag points at exactly the commit that was built and tested above.
           gh release create "v$v" --target "$GITHUB_SHA" --title "Pivot Mail $v (Windows and Mac)" --notes "Windows: download PivotMail-Setup-$v.exe and double-click it; installed copies update themselves. Mac: download PivotMail-$v-mac.dmg, open it and drag Pivot Mail to Applications (first time: System Settings > Privacy & Security > Open Anyway)." \
-            "release/PivotMail-Setup-$v.exe" "release/PivotMail-Package-$v.exe" "release/PivotMail-Package-$v.exe.blockmap" "release/latest.yml" "release/PivotMail-$v-mac.dmg"
+            "release/PivotMail-Setup-$v.exe" "release/PivotMail-Package-$v.exe" "release/PivotMail-Package-$v.exe.blockmap" "release/latest.yml" "release/PivotMail-$v-mac.dmg" release/PivotMail-Setup.exe release/PivotMail-mac.dmg

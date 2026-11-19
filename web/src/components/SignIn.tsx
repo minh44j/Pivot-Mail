@@ -1,6 +1,8 @@
 import { AUTH_ERRORS, startUrl } from '../auth'
 import type { AuthConfig } from '../auth'
 import { Icon } from './Icon'
+import { desktop } from '../desktop'
+import { DOWNLOADS, thisComputer } from '../downloads'
 
 interface Props {
   config: AuthConfig | null
@@ -78,6 +80,53 @@ function CompanyButton({ id, name, domain, href, autoFocus }: { id: 'scl' | 'tmc
  * with "Continue with Google"), floating in the middle of the page; full screen on phones. Only a real Google Workspace
  * sign-in; there is no preview or demo door.
  */
+/** "Download the desktop app": Windows and Mac, like the store buttons on other services. Hidden inside the app itself. */
+function DesktopDownloads() {
+  if (desktop()) return null
+  const mine = thisComputer()
+  const items = [
+    {
+      os: 'windows' as const,
+      name: 'Windows',
+      href: DOWNLOADS.windows,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M0 0h11.377v11.372H0zM12.623 0H24v11.372H12.623zM0 12.623h11.377V24H0zM12.623 12.623H24V24H12.623z" />
+        </svg>
+      ),
+    },
+    {
+      os: 'mac' as const,
+      name: 'Mac',
+      href: DOWNLOADS.mac,
+      icon: (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+        </svg>
+      ),
+    },
+  ]
+  // The visitor's own computer first.
+  if (mine === 'mac') items.reverse()
+  return (
+    <section className="si-dl" aria-labelledby="si-dl-title">
+      <h2 id="si-dl-title">Download the desktop app</h2>
+      <div className="si-dl-row">
+        {items.map((d) => (
+          <a key={d.os} className={`si-dl-btn${d.os === mine ? ' mine' : ''}`} href={d.href} download data-os={d.os} aria-label={`Download Pivot Mail for ${d.name}`}>
+            {d.icon}
+            <span>
+              <small>Download for</small>
+              {d.name}
+            </span>
+          </a>
+        ))}
+      </div>
+      <p className="si-dl-note">Windows 10 and 11 · macOS 12 or newer · Apple silicon and Intel</p>
+    </section>
+  )
+}
+
 export function SignIn({ config, error }: Props) {
   const real = config?.configured === true
   const err = error ? (AUTH_ERRORS[error] ?? { title: 'Sign-in failed', text: 'Please try again.', denied: false }) : null
@@ -92,52 +141,55 @@ export function SignIn({ config, error }: Props) {
         <span className="si-glow g3" />
         <span className="si-dots" />
       </div>
-      <section className="si-card" aria-labelledby="signin-title">
-        <div className="si-hero" aria-hidden="true">
-          <span className="si-glow g1" />
-          <span className="si-glow g2" />
-          <span className="si-dots" />
-        </div>
-        <header className="si-head">
-          <img className="si-logo" src="/icon-192.png" alt="" width={72} height={72} draggable={false} />
-          <span className="si-word">
-            <b>Pivot</b> Mail
-          </span>
-        </header>
-        <div className="si-sheet">
-          <h1 id="signin-title">Welcome back</h1>
-          <p className="si-lead">Sign in with your Pivot work account.</p>
-          {err && (
-            <div className="si-error" role="alert">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M12 8v5M12 16.5v.01" />
-              </svg>
-              <span>
-                <b>{err.title}</b>
-                {err.text}
-              </span>
-            </div>
-          )}
-          <div role="group" aria-label="Choose your company">
-            {shown.map((c, i) => (
-              <CompanyButton key={c.id} id={c.id} name={c.name} domain={c.domain} href={real ? (config.company ? startUrl() : startUrl(c.id)) : undefined} autoFocus={real && shown.length === 1 && i === 0} />
-            ))}
+      <div className="si-stack">
+        <section className="si-card" aria-labelledby="signin-title">
+          <div className="si-hero" aria-hidden="true">
+            <span className="si-glow g1" />
+            <span className="si-glow g2" />
+            <span className="si-dots" />
           </div>
-          {!real && (
-            <p id="signin-note" className="si-note">
-              Google sign-in is not connected yet.
-            </p>
-          )}
-        </div>
-        <footer className="si-foot">
-          <span>
-            <Icon name="lock" size={13} />
-            Encrypted · Internal use only
-          </span>
-          <a href="mailto:it@pivotscl.com">Need help?</a>
-        </footer>
-      </section>
+          <header className="si-head">
+            <img className="si-logo" src="/icon-192.png" alt="" width={72} height={72} draggable={false} />
+            <span className="si-word">
+              <b>Pivot</b> Mail
+            </span>
+          </header>
+          <div className="si-sheet">
+            <h1 id="signin-title">Welcome back</h1>
+            <p className="si-lead">Sign in with your Pivot work account.</p>
+            {err && (
+              <div className="si-error" role="alert">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 8v5M12 16.5v.01" />
+                </svg>
+                <span>
+                  <b>{err.title}</b>
+                  {err.text}
+                </span>
+              </div>
+            )}
+            <div role="group" aria-label="Choose your company">
+              {shown.map((c, i) => (
+                <CompanyButton key={c.id} id={c.id} name={c.name} domain={c.domain} href={real ? (config.company ? startUrl() : startUrl(c.id)) : undefined} autoFocus={real && shown.length === 1 && i === 0} />
+              ))}
+            </div>
+            {!real && (
+              <p id="signin-note" className="si-note">
+                Google sign-in is not connected yet.
+              </p>
+            )}
+          </div>
+          <footer className="si-foot">
+            <span>
+              <Icon name="lock" size={13} />
+              Encrypted · Internal use only
+            </span>
+            <a href="mailto:it@pivotscl.com">Need help?</a>
+          </footer>
+        </section>
+        <DesktopDownloads />
+      </div>
     </main>
   )
 }
