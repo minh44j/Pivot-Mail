@@ -41,21 +41,21 @@ function HtmlFrame({ html }: { html: string }) {
     const pad = cs ? parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom) + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom) : 0
     setH(Math.max(40, Math.ceil(wrap.getBoundingClientRect().height + (Number.isFinite(pad) ? pad : 0))))
   }
-  // Follow the content as it changes (pictures arriving, fonts, a wider or narrower window), for as long as it is shown.
-  const watch = useRef<ResizeObserver | null>(null)
+  // Measured while the mail settles (as before), and again whenever a picture inside finishes loading, however late.
+  useEffect(() => {
+    const t = window.setInterval(measure, 400)
+    const stop = window.setTimeout(() => window.clearInterval(t), 4000)
+    return () => {
+      window.clearInterval(t)
+      window.clearTimeout(stop)
+    }
+  }, [html])
   const onLoad = () => {
     measure()
-    watch.current?.disconnect()
     const d = ref.current?.contentDocument
-    const wrap = d?.getElementById('pm-mail')
-    const RO = (d?.defaultView as (Window & { ResizeObserver?: typeof ResizeObserver }) | null)?.ResizeObserver
-    if (wrap && RO) {
-      watch.current = new RO(() => measure())
-      watch.current.observe(wrap)
-    }
+    d?.addEventListener('load', measure, true) // (capture: image load events do not bubble)
+    ref.current?.contentWindow?.addEventListener('resize', measure) // a wider or narrower window or reading pane re-wraps the text
   }
-  useEffect(() => () => watch.current?.disconnect(), [])
-
   return (
     <iframe
       ref={ref}
