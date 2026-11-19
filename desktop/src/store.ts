@@ -216,10 +216,16 @@ export class MailStore {
     let match = words.map((w) => `"${w}"*`).join(' AND ')
     // A reference typed with or without spaces and dashes ("MSKU 765432-1", "msku7654321", "7654321") also matches its joined form.
     const joined = words.join('').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
-    if (/\d/.test(joined) && joined.length >= 5 && joined.length <= 30) match = `(${match}) OR refs : "${joined}"*`
+    const isRef = /\d/.test(joined) && joined.length >= 5 && joined.length <= 30
+    if (isRef) match = `(${match}) OR refs : "${joined}"*`
     const n = Math.min(Math.max(1, limit), 2000)
-    // 1. What the word index matched (row numbers only: cheap).
-    const found = (this.db.prepare('SELECT rowid AS r FROM search_index WHERE search_index MATCH ? LIMIT 1001').all(match) as { r: number }[]).map((x) => x.r)
+    const ids = (m: string) => (this.db.prepare('SELECT rowid AS r FROM search_index WHERE search_index MATCH ? LIMIT 1001').all(m) as { r: number }[]).map((x) => x.r)
+    // 1. What the word index matched (row numbers only: cheap). A reference typed in pieces ("MSKU 1043210") is looked up in
+    //    its joined form first: one direct entry, where the piece "MSKU" alone matches every container number (100 ms on a
+    //    Mac with 50,000 messages). The joined form already covers the pieces written side by side; only when it finds
+    //    nothing are the pieces searched one by one.
+    let found = isRef && words.length > 1 ? ids(`refs : "${joined}"*`) : []
+    if (found.length === 0) found = ids(match)
     if (found.length === 0) return []
     const marks = accountIds.map(() => '?').join(',')
     let hits: { r: number }[]
