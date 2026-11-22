@@ -6,14 +6,31 @@ import { formatSize } from '../util'
  * Here every file is generated in the browser so Preview, Download and Copy can be tried.
  */
 
-export type PreviewKind = 'pdf' | 'image' | 'text' | 'none'
+export type PreviewKind = 'pdf' | 'image' | 'video' | 'audio' | 'text' | RichKind | 'none'
+/** Shown by the sealed preview page (public preview.html, src/preview/main.ts). */
+export type RichKind = 'word' | 'sheet' | 'slides' | 'mail' | 'outlook' | 'zip' | 'tiff'
+export const RICH: ReadonlySet<PreviewKind> = new Set<PreviewKind>(['word', 'sheet', 'slides', 'mail', 'outlook', 'zip', 'tiff'])
 
+/**
+ * How an attachment is previewed: by its type, or by the name's ending when the type is unknown or generic (a file attached
+ * from the computer often has none, and Gmail often says application/octet-stream). Every common office and mail format has a
+ * preview (Minhaj 2026-11-22); the old binary .doc and .ppt formats and HEIC photos have none.
+ */
 export function previewKind(a: Attachment): PreviewKind {
-  // By type, or by the name's ending when the type is unknown (a file attached from the computer often has none).
   const ext = (/\.([a-z0-9]+)$/i.exec(a.name)?.[1] ?? '').toLowerCase()
-  if (a.mime === 'application/pdf' || ext === 'pdf') return 'pdf'
-  if (/^image\/(png|jpe?g|gif|webp|bmp)$/.test(a.mime) || /^(png|jpe?g|gif|webp|bmp)$/.test(ext)) return 'image'
-  if (/^text\//.test(a.mime) || a.mime === 'application/json' || /^(txt|csv|log|json|md|xml|eml|ics)$/.test(ext)) return 'text'
+  const t = a.mime.toLowerCase()
+  if (t === 'application/pdf' || ext === 'pdf') return 'pdf'
+  if (/^image\/tiff?$/.test(t) || /^tiff?$/.test(ext)) return 'tiff'
+  if (/^image\/(png|jpe?g|pjpeg|gif|webp|bmp|avif|svg\+xml|x-icon|vnd\.microsoft\.icon)$/.test(t) || /^(png|jpe?g|jfif|gif|webp|bmp|avif|svg|ico)$/.test(ext)) return 'image'
+  if (/wordprocessingml/.test(t) || /^(docx|docm|dotx)$/.test(ext)) return 'word'
+  if (/spreadsheetml|ms-excel|opendocument\.spreadsheet|^text\/(csv|tab-separated-values)$/.test(t) || /^(xlsx|xlsm|xlsb|xls|ods|csv|tsv)$/.test(ext)) return 'sheet'
+  if (/presentationml/.test(t) || /^(pptx|ppsx|pptm)$/.test(ext)) return 'slides'
+  if (t === 'message/rfc822' || ext === 'eml') return 'mail'
+  if (t === 'application/vnd.ms-outlook' || ext === 'msg') return 'outlook'
+  if (/^application\/(x-)?zip(-compressed)?$/.test(t) || ext === 'zip') return 'zip'
+  if (/^video\/(mp4|webm|ogg|quicktime)$/.test(t) || /^(mp4|m4v|webm|mov)$/.test(ext)) return 'video'
+  if (/^audio\//.test(t) || /^(mp3|wav|m4a|aac|ogg|oga|opus|flac)$/.test(ext)) return 'audio'
+  if (/^text\//.test(t) || t === 'application/json' || t === 'application/xml' || /^(txt|log|json|md|xml|ics|vcf|html?)$/.test(ext)) return 'text'
   return 'none'
 }
 

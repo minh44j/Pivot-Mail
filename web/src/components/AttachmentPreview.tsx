@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Attachment } from '../types'
-import { ensureBytes, isReady, mockBytes, previewKind } from '../data/mockfile'
+import { RICH, ensureBytes, isReady, mockBytes, previewKind } from '../data/mockfile'
+import type { RichKind } from '../data/mockfile'
+import { RichFrame } from './RichFrame'
 import { formatSize } from '../util'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
@@ -43,10 +45,27 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
   const url = useMemo(() => {
     if (!a || !have) return ''
     const ext = (/\.([a-z0-9]+)$/i.exec(a.name)?.[1] ?? '').toLowerCase()
-    const type = kind === 'pdf' ? 'application/pdf' : kind === 'image' ? (a.mime.startsWith('image/') ? a.mime : `image/${ext === 'jpg' ? 'jpeg' : ext}`) : a.mime
+    const type =
+      kind === 'pdf'
+        ? 'application/pdf'
+        : kind === 'image'
+          ? a.mime.startsWith('image/')
+            ? a.mime
+            : `image/${ext === 'jpg' || ext === 'jfif' ? 'jpeg' : ext === 'svg' ? 'svg+xml' : ext === 'ico' ? 'x-icon' : ext}`
+          : kind === 'video'
+            ? a.mime.startsWith('video/')
+              ? a.mime
+              : `video/${ext === 'mov' ? 'quicktime' : ext === 'm4v' ? 'mp4' : ext}`
+            : kind === 'audio'
+              ? a.mime.startsWith('audio/')
+                ? a.mime
+                : `audio/${ext === 'mp3' ? 'mpeg' : ext === 'm4a' ? 'mp4' : ext}`
+              : a.mime
     return URL.createObjectURL(new Blob([mockBytes(a) as BlobPart], { type }))
   }, [a, have, kind])
   const text = useMemo(() => (a && kind === 'text' && have ? new TextDecoder().decode(mockBytes(a)) : ''), [a, kind, have])
+  const rich = RICH.has(kind)
+  const richBytes = useMemo(() => (a && rich && have ? mockBytes(a) : null), [a, rich, have])
   const drawn = kind === 'pdf' && !nativePdf()
   const pdfBytes = useMemo(() => (a && drawn && have ? mockBytes(a) : null), [a, drawn, have])
   const [drawFailedId, setDrawFailedId] = useState('')
@@ -130,6 +149,18 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
           )}
           {url && kind === 'image' && <img key={url} src={url} alt={a.name} className="preview-img" />}
           {url && kind === 'text' && <pre className="preview-text">{text}</pre>}
+          {url && kind === 'video' && <video key={url} src={url} controls className="preview-media" aria-label={a.name} />}
+          {url && kind === 'audio' && <audio key={url} src={url} controls className="preview-audio" aria-label={a.name} />}
+          {richBytes && (
+            <RichFrame
+              key={a.id}
+              kind={kind as RichKind}
+              bytes={richBytes}
+              name={a.name}
+              // Keys pressed inside the document (Esc, arrows) still close the preview and move between attachments.
+              onKey={(k) => (k === 'Escape' ? onClose() : k === 'ArrowRight' ? index < files.length - 1 && onIndex(index + 1) : index > 0 && onIndex(index - 1))}
+            />
+          )}
           {kind === 'none' && (
             <div className="preview-none">
               <FileIcon name={a.name} mime={a.mime} size={64} />

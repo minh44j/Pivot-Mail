@@ -12,9 +12,16 @@
     "check:api": "tsc -p api/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@kenjiuno/msgreader": "1.29.0",
+    "docx-preview": "0.4.1",
+    "jszip": "3.10.2",
     "pdfjs-dist": "6.5.438",
+    "postal-mime": "4.2.0",
+    "pptx-preview": "1.0.7",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "utif2": "4.1.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
@@ -25,5 +32,9 @@
     "tsx": "^4.20.0",
     "typescript": "~7.0.2",
     "vite": "^8.3.6"
+  },
+  "overrides": {
+    "echarts": "6.1.0",
+    "uuid": "11.1.1"
   }
 }
