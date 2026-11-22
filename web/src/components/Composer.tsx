@@ -8,7 +8,9 @@ import type { Template } from '../data/templates'
 import { platform } from '../platform'
 import { bodyText, escapeHtml, safeUrl, sanitizeHtml, signatureHtml, signatureText, textToHtml } from '../richtext'
 import { formatSize } from '../util'
-import { EMAIL_RE, bareAddress } from '../data/contacts'
+import { EMAIL_RE, bareAddress, suggestContacts } from '../data/contacts'
+import type { Contact } from '../data/contacts'
+import { createPortal } from 'react-dom'
 import { matchCopiedEmail } from '../emailClipboard'
 import { FileIcon } from './FileIcon'
 import { AttachmentPreview } from './AttachmentPreview'
@@ -129,6 +131,54 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   const sync = () => {
     const el = ed.current
     if (el) setD((p) => ({ ...p, body: el.innerHTML }))
+  }
+
+  // ---- @-mentions, as in Outlook (Minhaj 2026-11-22): type @ and part of a name, pick the person; the mail shows "@Name" as a
+  // link to their address and they are added to To (unless already a recipient).
+  const [mention, setMention] = useState<{ q: string; x: number; y: number; node: Text; at: number } | null>(null)
+  const [mentionActive, setMentionActive] = useState(0)
+  const mentionList: Contact[] = mention ? suggestContacts(mention.q, [], 6) : []
+  const checkMention = () => {
+    const sel = document.getSelection()
+    const node = sel?.anchorNode
+    if (!sel || !sel.isCollapsed || !node || node.nodeType !== Node.TEXT_NODE || !ed.current?.contains(node) || node.parentElement?.closest('a, [data-sig], [data-quote]')) {
+      setMention(null)
+      return
+    }
+    const text = node as Text
+    const m = /(?:^|[\s(])@([\p{L}\p{N}._'-]{0,40})$/u.exec(text.data.slice(0, sel.anchorOffset))
+    if (!m) {
+      setMention(null)
+      return
+    }
+    const at = sel.anchorOffset - (m[1] ?? '').length - 1
+    const r = document.createRange()
+    r.setStart(text, at)
+    r.setEnd(text, at + 1)
+    const box = r.getBoundingClientRect()
+    const q = m[1] ?? ''
+    if (mention?.q !== q) setMentionActive(0)
+    setMention({ q, x: box.left, y: box.bottom, node: text, at })
+  }
+  const pickMention = (c: Contact) => {
+    const sel = document.getSelection()
+    if (!mention || !sel || !mention.node.isConnected) return setMention(null)
+    const end = sel.anchorNode === mention.node ? sel.anchorOffset : Math.min(mention.node.length, mention.at + 1 + mention.q.length)
+    const r = document.createRange()
+    r.setStart(mention.node, mention.at)
+    r.setEnd(mention.node, end)
+    sel.removeAllRanges()
+    sel.addRange(r)
+    const href = safeUrl(c.email)
+    if (!href) return setMention(null)
+    document.execCommand('insertHTML', false, `<a href="${escapeHtml(href)}">@${escapeHtml(c.name)}</a>&nbsp;`)
+    setMention(null)
+    const all = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => bareAddress(t.trim()).toLowerCase())
+    if (!all.includes(c.email.toLowerCase())) {
+      const token = /[,;<>"]/.test(c.name) || !c.name ? c.email : `${c.name} <${c.email}>`
+      setD((p) => ({ ...p, to: [...p.to.split(/[;,\n]/).map((t) => t.trim()).filter(Boolean), token].join(', ') + ', ' }))
+    }
+    sync()
   }
 
   const exec = (cmd: string, value?: string) => {
@@ -656,7 +706,15 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           aria-multiline="true"
           aria-label="Message body"
           spellCheck
-          onInput={sync}
+          onInput={() => {
+            sync()
+            checkMention()
+          }}
+          onKeyUp={(e) => {
+            if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) checkMention()
+          }}
+          onClick={checkMention}
+          onBlur={() => setMention(null)}
           onMouseDown={(e) => {
             // Clicking blank space below the text: put the caret in the writing area, never in the signature or quote.
             const el = ed.current
@@ -685,6 +743,16 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             else document.execCommand('insertText', false, pasted)
           }}
           onKeyDown={(e) => {
+            if (mention && mentionList.length > 0 && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
+              e.preventDefault()
+              e.stopPropagation()
+              const n = mentionList.length
+              if (e.key === 'ArrowDown') setMentionActive((i) => (i + 1) % n)
+              else if (e.key === 'ArrowUp') setMentionActive((i) => (i - 1 + n) % n)
+              else if (e.key === 'Escape') setMention(null)
+              else pickMention(mentionList[Math.min(mentionActive, n - 1)]!)
+              return
+            }
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
               e.preventDefault()
               openLink()
@@ -692,6 +760,38 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           }}
           dangerouslySetInnerHTML={{ __html: initialHtml }}
         />
+        {mention &&
+          mentionList.length > 0 &&
+          createPortal(
+            <div
+              className="ctx att-ctx mention-menu"
+              role="listbox"
+              aria-label="Mention someone"
+              style={{ left: Math.max(8, Math.min(mention.x, window.innerWidth - 300)), ...(mention.y + 260 > window.innerHeight ? { bottom: window.innerHeight - mention.y + 24 } : { top: mention.y + 4 }) }}
+            >
+              {mentionList.map((c, i) => (
+                <button
+                  key={c.email}
+                  type="button"
+                  role="option"
+                  aria-selected={i === Math.min(mentionActive, mentionList.length - 1)}
+                  className={i === Math.min(mentionActive, mentionList.length - 1) ? 'on' : undefined}
+                  onMouseDown={(e) => e.preventDefault() /* keep the caret in the mail */}
+                  onMouseEnter={() => setMentionActive(i)}
+                  onClick={() => pickMention(c)}
+                >
+                  <span className="mention-avatar" aria-hidden="true">
+                    {(c.name.trim()[0] ?? '?').toUpperCase()}
+                  </span>
+                  <span className="mention-text">
+                    <strong>{c.name}</strong>
+                    <small>{c.email}</small>
+                  </span>
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )}
         {dragging && <div className="drop-hint">Drop files to attach</div>}
         {preview !== null && d.attachments.length > 0 && (
           <AttachmentPreview

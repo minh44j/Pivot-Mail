@@ -42,7 +42,11 @@ export function FolderJump({ mode, accounts, folders, cases, caseNames, accountI
 
   const all = useMemo<Item[]>(() => {
     const out: Item[] = []
-    if (mode === 'go' && accounts.length > 1) out.push({ sel: { accountId, kind: 'all', id: 'inbox' }, label: 'All inboxes', sub: `${accounts.length} mailboxes`, icon: 'inbox', tone: 'blue' })
+    if (mode === 'go' && accounts.length > 1) {
+      out.push({ sel: { accountId, kind: 'all', id: 'inbox' }, label: 'All inboxes', sub: `${accounts.length} mailboxes`, icon: 'inbox', tone: 'blue' })
+      out.push({ sel: { accountId, kind: 'all', id: 'sent' }, label: 'All sent', sub: `${accounts.length} mailboxes`, icon: 'send', tone: 'green' })
+      out.push({ sel: { accountId, kind: 'all', id: 'drafts' }, label: 'All drafts', sub: `${accounts.length} mailboxes`, icon: 'draft', tone: 'gray' })
+    }
     for (const a of accounts) {
       if (mode === 'move' && a.id !== accountId) continue
       for (const f of FOLDERS.filter((x) => mode === 'go' || (x.id !== 'snoozed' && x.id !== 'scheduled'))) out.push({ sel: { accountId: a.id, kind: 'folder', id: f.id }, label: f.label, sub: a.email, icon: f.icon, tone: f.tone })

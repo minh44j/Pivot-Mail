@@ -549,6 +549,10 @@ function createWindow(hidden = false, load = true): void {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: true,
+      // Chromium's own PDF viewer (off by default in Electron): attached PDFs show in the preview with zoom, search and print.
+      // Without it the preview showed only a "download" placeholder (2026-11-22); the website now draws the pages itself
+      // when no viewer is present, so older installs show them too.
+      plugins: true,
       // Keep checking mail while the window is hidden in the tray.
       backgroundThrottling: false,
     },

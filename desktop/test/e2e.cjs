@@ -95,6 +95,20 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   ok('D44 the small window closes and the full Pivot Mail window opens', after.length === 1 && after[0].visible && after[0].url.startsWith(BASE) && after[0].size[0] >= 900)
   ok('D7 ...showing Pivot Mail (the welcome screen for a person with no mailbox yet)', (await win.getByRole('heading', { name: /Welcome, Ann/ }).count()) === 1)
   macShot('3-mac-main-window.png')
+  // Attached PDFs show in the preview inside the app window: a PDF in a frame of the real Pivot Mail page (its security rules
+  // and the app's navigation rules) opens in the PDF viewer, not as a download (Minhaj 2026-11-22: "it shows download").
+  const dl0 = await app.evaluate(({ session }) => { global.__dl = global.__dl || []; if (!global.__dlOn) { global.__dlOn = true; session.defaultSession.on('will-download', (_e, item) => global.__dl.push(item.getFilename())) } return global.__dl.length })
+  await win.evaluate(() => {
+    const pdf = '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 200]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF'
+    const f = document.createElement('iframe'); f.id = 'pm-pdf-test'; f.style.cssText = 'position:fixed;left:0;top:0;width:600px;height:400px;z-index:99999;border:0'
+    f.src = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' })); document.body.appendChild(f)
+  })
+  await new Promise((r) => setTimeout(r, 3000))
+  const pdfView = await app.evaluate(({ BrowserWindow }) => ({ frames: BrowserWindow.getAllWindows()[0].webContents.mainFrame.framesInSubtree.map((f) => f.url.split('/').slice(0, 3).join('/')), downloads: global.__dl.length }))
+  console.log('   PDF in the app window:', JSON.stringify({ ...pdfView, viewerEnabled: await win.evaluate(() => navigator.pdfViewerEnabled) }))
+  if (process.platform === 'darwin') macShot('3b-mac-pdf-in-app.png')
+  await win.evaluate(() => document.getElementById('pm-pdf-test')?.remove())
+  ok('D74 a PDF opens in the app window\'s PDF viewer (shown, not downloaded)', pdfView.frames.some((u) => u.startsWith('chrome-extension:')) && pdfView.downloads === dl0, pdfView)
   await app.evaluate(({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows()[0]
     w.setOverlayIcon = (img, desc) => global.__overlay.push(img ? desc : null)

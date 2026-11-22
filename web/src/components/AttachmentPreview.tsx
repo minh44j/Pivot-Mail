@@ -1,10 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Attachment } from '../types'
 import { ensureBytes, isReady, mockBytes, previewKind } from '../data/mockfile'
 import { formatSize } from '../util'
 import { FileIcon } from './FileIcon'
 import { Icon } from './Icon'
+import { PdfPages } from './PdfPages'
+
+/** The browser's own PDF viewer is missing in the Windows and Mac apps (Electron leaves it off): pages are drawn instead. */
+const nativePdf = (): boolean => typeof navigator === 'undefined' || (navigator as Navigator & { pdfViewerEnabled?: boolean }).pdfViewerEnabled !== false
 
 interface Props {
   files: Attachment[]
@@ -43,6 +47,12 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
     return URL.createObjectURL(new Blob([mockBytes(a) as BlobPart], { type }))
   }, [a, have, kind])
   const text = useMemo(() => (a && kind === 'text' && have ? new TextDecoder().decode(mockBytes(a)) : ''), [a, kind, have])
+  const drawn = kind === 'pdf' && !nativePdf()
+  const pdfBytes = useMemo(() => (a && drawn && have ? mockBytes(a) : null), [a, drawn, have])
+  const [drawFailedId, setDrawFailedId] = useState('')
+  const drawFailed = !!a && drawFailedId === a.id
+  const failId = a?.id ?? ''
+  const onDrawFail = useCallback(() => setDrawFailedId(failId), [failId])
 
   useEffect(
     () => () => {
@@ -109,7 +119,15 @@ export function AttachmentPreview({ files, index, onIndex, onClose, onDownload, 
               </p>
             </div>
           )}
-          {url && kind === 'pdf' && <iframe key={url} src={url} title={`Preview of ${a.name}`} className="preview-frame" />}
+          {url && kind === 'pdf' && !drawn && <iframe key={url} src={url} title={`Preview of ${a.name}`} className="preview-frame" />}
+          {pdfBytes && !drawFailed && <PdfPages key={a.id} bytes={pdfBytes} name={a.name} onFail={onDrawFail} />}
+          {drawn && drawFailed && (
+            <div className="preview-none">
+              <p className="muted" role="status">
+                Could not show this PDF. Try Download.
+              </p>
+            </div>
+          )}
           {url && kind === 'image' && <img key={url} src={url} alt={a.name} className="preview-img" />}
           {url && kind === 'text' && <pre className="preview-text">{text}</pre>}
           {kind === 'none' && (

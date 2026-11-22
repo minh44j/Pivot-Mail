@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react'
 import { MOD } from '../shortcuts'
 import { suggestContacts } from '../data/contacts'
 import { Icon } from './Icon'
+import { SEARCH_SCOPES } from '../searchScope'
+import type { SearchIn } from '../searchScope'
 
 const OPERATORS: { op: string; desc: string; needsValue: boolean }[] = [
   { op: 'from:', desc: 'Sender name or address', needsValue: true },
@@ -31,8 +33,10 @@ interface Props {
   onQuery: (q: string) => void
   recent: string[]
   saved: string[]
-  searchAll: boolean
-  onSearchAll: (v: boolean) => void
+  searchIn: SearchIn
+  onSearchIn: (v: SearchIn) => void
+  /** The open folder's name, when it is none of Inbox, Sent, Drafts, Archive (offered first) */
+  hereLabel: string | null
   onCommit: (q: string) => void
   onSave: (q: string) => void
   onRemoveSaved: (q: string) => void
@@ -155,13 +159,12 @@ export function SearchBox(p: Props) {
             )
           })}
           <div className="suggest-foot">
-            <div className="seg" role="group" aria-label="Search scope">
-              <button type="button" aria-pressed={!p.searchAll} className={!p.searchAll ? 'on' : ''} onClick={() => p.onSearchAll(false)}>
-                This folder
-              </button>
-              <button type="button" aria-pressed={p.searchAll} className={p.searchAll ? 'on' : ''} onClick={() => p.onSearchAll(true)}>
-                All folders
-              </button>
+            <div className="seg" role="group" aria-label="Search in">
+              {[...(p.hereLabel ? [{ id: 'here' as const, label: p.hereLabel }] : []), ...SEARCH_SCOPES].map((o) => (
+                <button key={o.id} type="button" aria-pressed={p.searchIn === o.id} className={p.searchIn === o.id ? 'on' : ''} onClick={() => p.onSearchIn(o.id)}>
+                  {o.label}
+                </button>
+              ))}
             </div>
             {p.query.trim() !== '' && !p.saved.includes(p.query.trim()) && (
               <button type="button" className="link" onClick={() => p.onSave(p.query.trim())}>

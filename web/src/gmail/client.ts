@@ -144,7 +144,7 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
   for (const [k, v] of o.params ?? []) url.searchParams.append(k, v)
   const idempotent = o.idempotent ?? (o.method ?? 'GET') === 'GET'
   let refreshed = false
-  const units = costOf(o.method ?? 'GET', o.url ? '' : path)
+  const units = costOf(o.method ?? 'GET', o.url ? new URL(o.url).pathname : path)
   for (let attempt = 0; ; attempt++) {
     await spend(accountId, units)
     const token = await accessToken(accountId, false)
@@ -418,6 +418,43 @@ export interface Sent {
   id: string
   threadId: string
   labelIds?: string[]
+}
+
+type PeoplePage = { people?: GPerson[]; connections?: GPerson[]; nextPageToken?: string }
+interface GPerson {
+  names?: { displayName?: string }[]
+  emailAddresses?: { value?: string }[]
+}
+
+/**
+ * A mailbox's colleagues (its Workspace directory) and saved Google contacts, for the To box and @-mentions. Uses the
+ * permission the mailbox already gave (directory.readonly, contacts.readonly). Up to 5 pages of 1,000 from each; a source
+ * Google refuses (switched off for the Workspace, say) is skipped: suggestions then come from the person's mail alone.
+ */
+export async function listPeople(accountId: string): Promise<{ name: string; email: string }[]> {
+  const out: { name: string; email: string }[] = []
+  const sources: [string, Params, 'people' | 'connections'][] = [
+    ['https://people.googleapis.com/v1/people:listDirectoryPeople', [['readMask', 'names,emailAddresses'], ['sources', 'DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'], ['pageSize', '1000']], 'people'],
+    ['https://people.googleapis.com/v1/people/me/connections', [['personFields', 'names,emailAddresses'], ['pageSize', '1000']], 'connections'],
+  ]
+  for (const [url, params, key] of sources) {
+    let token = ''
+    for (let page = 0; page < 5; page++) {
+      let r: PeoplePage
+      try {
+        r = await greq<PeoplePage>(accountId, '', { url, params: token ? [...params, ['pageToken', token]] : params })
+      } catch {
+        break
+      }
+      for (const p of r[key] ?? []) {
+        const name = p.names?.[0]?.displayName ?? ''
+        for (const e of p.emailAddresses ?? []) if (e.value) out.push({ name, email: e.value })
+      }
+      token = r.nextPageToken ?? ''
+      if (!token) break
+    }
+  }
+  return out
 }
 
 /** Above this, Gmail may refuse the ordinary send address as too large (it is the size the old code switched at). */

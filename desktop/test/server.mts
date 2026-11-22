@@ -22,6 +22,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   return realFetch(input, init)
 }) as typeof fetch
 
+// The live site's security headers (web/vercel.json), so the app is tested under the rules it really runs with. Leaves out the
+// two that only make sense on https (this server is http://localhost).
+const LIVE: [string, string][] = (JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, '../../web/vercel.json'), 'utf8')) as { headers: { headers: { key: string; value: string }[] }[] }).headers[0]!.headers
+  .filter((h) => h.key !== 'Strict-Transport-Security')
+  .map((h) => [h.key, h.key === 'Content-Security-Policy' ? h.value.replace(/;\s*upgrade-insecure-requests/, '') : h.value])
+
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml' }
 
 http
@@ -65,6 +71,7 @@ http
     let file = path.join(DIST, decodeURIComponent(url.pathname))
     if (!file.startsWith(DIST) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) file = path.join(DIST, 'index.html')
     res.setHeader('content-type', TYPES[path.extname(file)] ?? 'application/octet-stream')
+    for (const [k, v] of LIVE) res.setHeader(k, v)
     res.end(fs.readFileSync(file))
   })
   .listen(PORT, () => console.log(`test server on ${PORT}`))

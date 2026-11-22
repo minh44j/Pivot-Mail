@@ -8,10 +8,11 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test:api": "tsx tests/auth.test.mts && tsx tests/accounts.test.mts && tsx tests/gmail.test.mts && tsx tests/compose.test.mts && tsx tests/cases.test.mts && tsx tests/activity.test.mts && tsx tests/title.test.mts && tsx tests/pivotos.test.mts && tsx tests/users.test.mts && tsx tests/hardening.test.mts && tsx tests/desktop.test.mts",
+    "test:api": "tsx tests/auth.test.mts && tsx tests/accounts.test.mts && tsx tests/gmail.test.mts && tsx tests/compose.test.mts && tsx tests/cases.test.mts && tsx tests/activity.test.mts && tsx tests/title.test.mts && tsx tests/pivotos.test.mts && tsx tests/users.test.mts && tsx tests/hardening.test.mts && tsx tests/desktop.test.mts && tsx tests/contacts.test.mts",
     "check:api": "tsc -p api/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "pdfjs-dist": "6.5.438",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },
@@ -21,8 +22,8 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.90.0",
+    "tsx": "^4.20.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.6",
-    "tsx": "^4.20.0"
+    "vite": "^8.3.6"
   }
 }

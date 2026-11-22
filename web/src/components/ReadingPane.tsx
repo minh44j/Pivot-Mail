@@ -58,6 +58,21 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
         </button>
         <h2>{subject}</h2>
         <div className="reader-actions">
+          {/* Reply, Reply all and Forward on the subject row, where the eye already is (Minhaj 2026-11-22; they were at the very
+              bottom of the conversation). The words hide when the pane is narrow; the names stay for screen readers. */}
+          {!isDraft && (
+            <>
+              <button type="button" className="ra-reply" onClick={onReply} aria-label="Reply" title="Reply">
+                <Icon name="reply" size={16} /> <span className="ra-label">Reply</span>
+              </button>
+              <button type="button" className="ra-reply" onClick={onReplyAll} aria-label="Reply all" title="Reply all">
+                <Icon name="replyAll" size={16} /> <span className="ra-label">Reply all</span>
+              </button>
+              <button type="button" className="ra-reply" onClick={onForward} aria-label="Forward" title="Forward">
+                <Icon name="forward" size={16} /> <span className="ra-label">Forward</span>
+              </button>
+            </>
+          )}
           {isDraft && (
             <button type="button" className="primary" onClick={onEditDraft}>
               <Icon name="draft" size={16} /> Continue editing
@@ -175,19 +190,6 @@ export function ReadingPane({ messages, onReply, onReplyAll, onForward, onBack, 
             </article>
           )
         })}
-        {!isDraft && (
-          <div className="reply-row">
-            <button type="button" onClick={onReply}>
-              <Icon name="reply" size={16} /> Reply
-            </button>
-            <button type="button" onClick={onReplyAll}>
-              <Icon name="replyAll" size={16} /> Reply all
-            </button>
-            <button type="button" onClick={onForward}>
-              <Icon name="forward" size={16} /> Forward
-            </button>
-          </div>
-        )}
       </div>
       {details}
       </div>

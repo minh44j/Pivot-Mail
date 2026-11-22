@@ -11,6 +11,7 @@ import type { IconName, Tone } from './Icon'
 import type { Notice } from './Notices'
 import type { Weather } from '../weather'
 import type { RefAnchor } from './RefGenerator'
+import type { SearchIn } from '../searchScope'
 
 export interface HistoryItem {
   id: number
@@ -54,8 +55,9 @@ interface Props {
   registerSearch: (el: HTMLInputElement | null) => void
   recent: string[]
   saved: string[]
-  searchAll: boolean
-  onSearchAll: (v: boolean) => void
+  searchIn: SearchIn
+  onSearchIn: (v: SearchIn) => void
+  hereLabel: string | null
   onCommit: (q: string) => void
   onSave: (q: string) => void
   onRemoveSaved: (q: string) => void
@@ -189,8 +191,9 @@ export function Toolbar(p: Props) {
           onQuery={p.onQuery}
           recent={p.recent}
           saved={p.saved}
-          searchAll={p.searchAll}
-          onSearchAll={p.onSearchAll}
+          searchIn={p.searchIn}
+          onSearchIn={p.onSearchIn}
+          hereLabel={p.hereLabel}
           onCommit={p.onCommit}
           onSave={p.onSave}
           onRemoveSaved={p.onRemoveSaved}

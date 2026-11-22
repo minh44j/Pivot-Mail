@@ -10,7 +10,8 @@ import { Icon } from './Icon'
 interface Props {
   chips: string[]
   onRemoveChip: (tok: string) => void
-  allFolders: boolean
+  /** While searching somewhere other than the open folder: where ("Sent", "All folders") */
+  scopeChip: string | null
   rows: Row[]
   selectedId: string | null
   density: Density
@@ -55,7 +56,7 @@ function refTag(subject: string, client?: (ref: string) => string | undefined) {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, refClient, sample = true, onOpen, actions, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, scopeChip, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, refClient, sample = true, onOpen, actions, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -132,9 +133,9 @@ export function MessageList({ chips, onRemoveChip, allFolders, rows, selectedId,
           </div>
         )}
       </header>
-      {(chips.length > 0 || allFolders) && (
+      {(chips.length > 0 || scopeChip) && (
         <div className="smart-row filter-row" role="group" aria-label="Search filters">
-          {allFolders && <span className="filter-chip static">All folders</span>}
+          {scopeChip && <span className="filter-chip static">{scopeChip}</span>}
           {chips.map((c) => (
             <span key={c} className="filter-chip">
               {c}

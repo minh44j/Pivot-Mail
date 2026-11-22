@@ -26,7 +26,7 @@ import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
 import { fetchChanges } from './gmail/history'
 import type { Changes } from './gmail/history'
 import { applyLabelIds } from './gmail/map'
-import { createLabel, createDraft, deleteDraft, deleteLabel, listDrafts, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
+import { createLabel, createDraft, deleteDraft, deleteLabel, listDrafts, listPeople, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
 import { buildMime, extractInlineImages, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
 import { inlineImageUri } from './gmail/inline'
 import type { OutAttachment } from './gmail/compose'
@@ -50,7 +50,8 @@ import type { HistoryItem } from './components/Toolbar'
 import type { Notice, NoticeKind } from './components/Notices'
 import { sanitizeEmailHtml } from './mailhtml'
 import { SIG_HTML, escapeHtml, htmlToPlain, textToHtml } from './richtext'
-import { bareAddress, displayName } from './data/contacts'
+import { bareAddress, contactsFromMail, displayName, hasContactPool, mergeContacts, setContactPool } from './data/contacts'
+import type { Contact } from './data/contacts'
 import { WhenDialog } from './components/WhenDialog'
 import { fmtWhen } from './when'
 import type { WhenMode } from './when'
@@ -77,6 +78,9 @@ import { watchForUpdates } from './update'
 import { rememberCopiedEmail } from './emailClipboard'
 import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
+import { GMAIL_SCOPE, SEARCH_SCOPES, defaultSearchIn } from './searchScope'
+import type { SearchIn } from './searchScope'
+import { inOrder, moveBefore } from './accountOrder'
 import { FolderJump } from './components/FolderJump'
 import { ShortcutHelp } from './components/ShortcutHelp'
 import { BulkPanel } from './components/BulkPanel'
@@ -196,7 +200,6 @@ export default function App() {
   const [picked, setPicked] = useState<string[]>([])
   const anchorId = useRef<string | null>(null)
   const [query, setQuery] = useState('')
-  const [searchAll, setSearchAll] = usePersisted<boolean>('pm.searchall', false, (v) => v === 'true' || v === 'false')
   const [recent, setRecent] = useStored<string[]>('pm.recent', [], isStrings)
   const [saved, setSaved] = useStored<string[]>('pm.saved', [], isStrings)
   const [smart, setSmart] = useState<SmartKey[]>([])
@@ -392,13 +395,20 @@ export default function App() {
   const [gmailInfo, setGmailInfo] = useState<Record<string, { total: number } | 'error'>>({})
   const [connectDlg, setConnectDlg] = useState<{ company: CompanyId; kind: 'personal' | 'shared' } | 'new' | null>(null)
   const [confirmRemove, setConfirmRemove] = useState<AuthAccount | null>(null)
+  // The mailboxes in the order the person dragged them into (kept on this computer).
+  const [accOrder, setAccOrder] = usePersisted<string>('pm.accorder', '', (v) => /^[\w,-]*$/.test(v))
   const accountList = useMemo<Account[]>(
     () =>
-      realMode
-        ? (realAccounts ?? []).map((a) => ({ id: a.id, name: a.name, email: a.email, shared: a.kind === 'shared', signature: a.name, status: a.status, company: a.company }))
-        : [...ACCOUNTS.filter((a) => !removedIds.includes(a.id)), ...addedAccounts],
-    [realMode, realAccounts, addedAccounts, removedIds],
+      inOrder(
+        realMode
+          ? (realAccounts ?? []).map((a) => ({ id: a.id, name: a.name, email: a.email, shared: a.kind === 'shared', signature: a.name, status: a.status, company: a.company }))
+          : [...ACCOUNTS.filter((a) => !removedIds.includes(a.id)), ...addedAccounts],
+        accOrder ? accOrder.split(',') : [],
+      ),
+    [realMode, realAccounts, addedAccounts, removedIds, accOrder],
   )
+  const moveAccount = (moving: string, before: string | null) =>
+    setAccOrder(moveBefore(accountList.map((a) => a.id), moving, before).join(','))
 
   /* ---------- fast sync: ask Gmail what changed, every few seconds ---------- */
   const historyIds = useRef(new Map<string, string>())
@@ -536,7 +546,7 @@ export default function App() {
     async (s: FolderSel, force = false) => {
       const accounts = realAccountsRef.current
       const jobs: { accountId: string; t: Target }[] =
-        s.kind === 'all' ? accounts.map((x) => ({ accountId: x.id, t: { kind: 'folder', id: 'inbox' } })) : [{ accountId: s.accountId, t: { kind: s.kind, id: s.id } }]
+        s.kind === 'all' ? accounts.map((x) => ({ accountId: x.id, t: { kind: 'folder', id: s.id } })) : [{ accountId: s.accountId, t: { kind: s.kind, id: s.id } }]
       const my = ++runId.current
       setSyncing(true)
       let current = ''
@@ -953,6 +963,21 @@ export default function App() {
 
   // Real mail: fetch whenever another folder (or mailbox) is opened.
   const selKey = `${sel.accountId}|${sel.kind}|${sel.id}`
+  // Where a search looks: starts as the open folder, changed under the search box; a new folder starts over.
+  const [scopePick, setScopePick] = useState<{ key: string; v: SearchIn } | null>(null)
+  const searchIn: SearchIn = scopePick?.key === selKey ? scopePick.v : defaultSearchIn(sel)
+  const setSearchIn = (v: SearchIn) => setScopePick({ key: selKey, v })
+  /** Is this message in the place the search looks (the open folder, or the scope chosen under the search box)? */
+  const inSearchScope = useCallback(
+    (m: Message): boolean => {
+      if (searchIn === 'all') return m.folder !== 'deleted'
+      if (searchIn !== 'here') return m.folder === searchIn
+      if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
+      if (sel.kind === 'label') return m.labels.includes(sel.id)
+      return m.folder === sel.id
+    },
+    [searchIn, sel],
+  )
   useEffect(() => {
     if (!realMode || !hasReal) return
     const [accountId, kind, id] = selKey.split('|') as [string, FolderSel['kind'], string]
@@ -968,6 +993,34 @@ export default function App() {
    */
   const [osSigs, setOsSigs] = useStored<Record<string, OsSignaturePerson[]>>('pm.ossigs', {}, isOsSigs)
   const realIds = realAccounts?.map((x) => x.id).join(',') ?? ''
+  // Contacts for the To box and @-mentions: the people in this person's own mail first, then their company directory and saved
+  // Google contacts. (The sample list stays for the demo only.)
+  const [people, setPeople] = useState<Contact[]>([])
+  useEffect(() => {
+    if (!realMode || !realIds) return
+    let live = true
+    const ids = realIds.split(',')
+    void Promise.all(ids.map((id) => listPeople(id).catch(() => []))).then((lists) => {
+      if (live) setPeople(mergeContacts(...lists.map((l) => l.map((p) => ({ name: p.name || p.email.split('@')[0]!, email: p.email, company: p.email.split('@')[1] })))))
+    })
+    return () => {
+      live = false
+    }
+  }, [realMode, realIds])
+  useEffect(() => {
+    if (!realMode) {
+      setContactPool(null)
+      return
+    }
+    // Signed in: never the sample people, not even for the first moment.
+    if (!hasContactPool()) setContactPool(people)
+    // A few seconds after mail stops arriving, not on every message (a first sync brings thousands).
+    const t = window.setTimeout(() => {
+      const mine = (realAccountsRef.current ?? []).map((a) => a.email)
+      setContactPool(mergeContacts(contactsFromMail(messagesRef.current, mine), people))
+    }, 1500)
+    return () => window.clearTimeout(t)
+  }, [realMode, messages, people])
   useEffect(() => {
     if (!realMode || !realIds) return
     let live = true
@@ -1168,7 +1221,7 @@ export default function App() {
 
   const [now] = useState(() => new Date())
   const liveQuery = query.trim()
-  const liveKey = `${liveQuery}\u0000${selKey}\u0000${searchAll ? 1 : 0}`
+  const liveKey = `${liveQuery}\u0000${selKey}\u0000${searchIn}`
   const liveOn = realMode && liveQuery !== '' && liveSearch !== null && liveSearch.key === liveKey
   const liveKeyRef = useRef(liveKey)
   useEffect(() => {
@@ -1187,14 +1240,14 @@ export default function App() {
     if (!realMode || liveQuery === '') return
     let cancelled = false
     const t = window.setTimeout(() => {
-      const [, kind, id = ''] = selKey.split('|')
+      const [, kind] = selKey.split('|')
       const targets = kind === 'all' ? realAccountsRef.current.map((x) => x.id) : [accountId]
       const found = platform.cache.search(targets, liveQuery)
       if (!found) return
       void found.then((hits) => {
         if (cancelled) return
-        // The same places Gmail searches: the open folder or label, or (all mail / search everywhere) everything except Deleted.
-        const inScope = hits.filter((m) => (searchAll || kind === 'all' ? m.folder !== 'deleted' : kind === 'label' ? m.labels.includes(id) : kind === 'folder' ? m.folder === id : true))
+        // The same places Gmail searches (the scope under the search box).
+        const inScope = hits.filter(inSearchScope)
         if (inScope.length === 0) return
         addStored(inScope)
         addLiveHits(liveKey, inScope.map((m) => m.id))
@@ -1204,14 +1257,15 @@ export default function App() {
       cancelled = true
       window.clearTimeout(t)
     }
-  }, [realMode, liveQuery, liveKey, accountId, searchAll, selKey, addLiveHits, addStored])
+  }, [realMode, liveQuery, liveKey, accountId, inSearchScope, selKey, addLiveHits, addStored])
   /** Real mail: Gmail's own search (any age). Results appear as they arrive; until then the loaded mail is filtered locally. */
   useEffect(() => {
     if (!realMode || liveQuery === '') return
     const t = window.setTimeout(() => {
       const acc = accountId
-      const folderQ: Record<string, string> = { inbox: 'in:inbox', sent: 'in:sent', drafts: 'in:drafts', deleted: 'in:trash', archive: '-in:inbox -in:sent -in:drafts -in:trash -in:spam' }
-      const scopeQ = searchAll || selKey.split('|')[1] === 'all' ? '' : selKey.split('|')[1] === 'label' ? `label:"${selKey.split('|')[2]}"` : selKey.split('|')[1] === 'folder' ? (folderQ[selKey.split('|')[2] ?? ''] ?? '') : ''
+      const [, kind, id = ''] = selKey.split('|')
+      const folderQ: Record<string, string> = { ...GMAIL_SCOPE, deleted: 'in:trash' }
+      const scopeQ = searchIn === 'all' ? '' : searchIn !== 'here' ? GMAIL_SCOPE[searchIn] : kind === 'label' ? `label:"${id}"` : kind === 'folder' ? (folderQ[id] ?? '') : ''
       const ids = new Set<string>()
       const targets = selKey.split('|')[1] === 'all' ? realAccountsRef.current.map((x) => x.id) : [acc]
       void Promise.all(
@@ -1243,7 +1297,7 @@ export default function App() {
         .catch(() => showToast('Gmail search is not available right now. Showing mail already loaded.'))
     }, 450)
     return () => window.clearTimeout(t)
-  }, [realMode, liveQuery, liveKey, accountId, searchAll, selKey, ensureLabels, mergeIn, showToast, addLiveHits])
+  }, [realMode, liveQuery, liveKey, accountId, searchIn, selKey, ensureLabels, mergeIn, showToast, addLiveHits])
 
   /** Messages of the open folder or label, before search and smart filters. */
   const scope = useMemo(
@@ -1255,13 +1309,14 @@ export default function App() {
           const days = realAccounts?.find((x) => x.id === m.accountId)?.syncWindowDays ?? 90
           if (new Date(m.date).getTime() < now.getTime() - days * 86_400_000) return false
         }
-        if (sel.kind === 'all') return searchAll && query.trim() !== '' ? m.folder !== 'deleted' : m.folder === 'inbox'
+        const searching = query.trim() !== ''
+        if (sel.kind === 'all') return searching ? inSearchScope(m) : m.folder === sel.id
         if (m.accountId !== accountId) return false
-        if (searchAll && query.trim() !== '') return m.folder !== 'deleted'
+        if (searching) return inSearchScope(m)
         if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
         return sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id)
       }),
-    [messages, accountId, sel, searchAll, query, liveOn, liveSearch, realMode, realAccounts, now],
+    [messages, accountId, sel, inSearchScope, query, liveOn, liveSearch, realMode, realAccounts, now],
   )
   const smartCounts = useMemo(() => Object.fromEntries(SMART.map((d) => [d.id, scope.filter((m) => d.test(m, now)).length])) as Record<SmartKey, number>, [scope, now])
   const toggleSmart = (k: SmartKey) => setSmart((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
@@ -1604,14 +1659,14 @@ export default function App() {
   }
   const markAllRead = () => {
     const ids = scope.filter((m) => m.unread).map((m) => m.id)
-    if (ids.length === 0 && !(realMode && sel.kind !== 'label' && (sel.kind === 'all' || (sel.kind === 'folder' && sel.id === 'inbox')))) return
+    if (ids.length === 0 && !(realMode && sel.kind !== 'label' && ((sel.kind === 'all' && sel.id === 'inbox') || (sel.kind === 'folder' && sel.id === 'inbox')))) return
     if (realMode) {
       const before = scope.filter((m) => m.unread).map((m) => ({ ...m }))
       const set = new Set(ids)
       touch(ids)
       setMessages((prev) => prev.map((m) => (set.has(m.id) ? { ...m, unread: false } : m)))
       // The Inbox: Gmail may hold more unread mail than this device has loaded, so ask Gmail for all of it (up to 2,000 a mailbox).
-      const wholeInbox = sel.kind === 'all' || (sel.kind === 'folder' && sel.id === 'inbox')
+      const wholeInbox = (sel.kind === 'all' && sel.id === 'inbox') || (sel.kind === 'folder' && sel.id === 'inbox')
       const accountsAll = [...new Set(before.map((m) => m.accountId))]
       const inboxAccounts = wholeInbox ? (sel.kind === 'all' ? realAccountsRef.current.filter((x) => x.status !== 'needs_reconnect').map((x) => x.id) : [sel.accountId]) : []
       const accounts = [...new Set([...accountsAll, ...inboxAccounts])]
@@ -2183,6 +2238,7 @@ export default function App() {
   }
   const goTo = (s: FolderSel) => {
     setScreen('mail')
+    setQuery('')
     setSel(s)
     setSelectedId(null)
     setView('list')
@@ -2375,7 +2431,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? 'All inboxes' : sel.id
+  const title = sel.kind === 'folder' ? (FOLDER_TITLES[sel.id] ?? sel.id) : sel.kind === 'case' ? `Case ${sel.id}` : sel.kind === 'all' ? ({ inbox: 'All inboxes', sent: 'All sent', drafts: 'All drafts' } as const)[sel.id] : sel.id
   const showReader = pane !== 'off'
 
   // Windows app with nobody signed in: the app's own small sign-in window takes over (see the effect above); show only the splash.
@@ -2504,8 +2560,9 @@ export default function App() {
         onQuery={setQuery}
         recent={recent}
         saved={saved}
-        searchAll={searchAll}
-        onSearchAll={setSearchAll}
+        searchIn={searchIn}
+        onSearchIn={setSearchIn}
+        hereLabel={defaultSearchIn(sel) === 'here' ? title : null}
         onCommit={commitSearch}
         onSave={(q) => setSaved([q, ...saved.filter((x) => x !== q)].slice(0, 12))}
         onRemoveSaved={(q) => setSaved(saved.filter((x) => x !== q))}
@@ -2583,6 +2640,7 @@ export default function App() {
       <main className="workspace" data-pane={pane} data-view={noMailbox ? 'welcome' : view} data-folders={foldersOpen ? "on" : "off"}>
         <FolderPane
           accounts={accountList}
+          onMoveAccount={moveAccount}
           sample={!realMode}
           unreadOverride={realMode ? inboxUnread : undefined}
           onAddAccount={() => (realMode ? setConnectDlg('new') : setAccDlg({ mode: 'add' }))}
@@ -2602,11 +2660,11 @@ export default function App() {
           messages={messages}
           selection={sel}
           folders={foldersView}
-          cases={cases}
-          caseNames={caseNames}
           onFolderAction={folderAction}
           onReorder={reorderFolder}
           onSelect={(s) => {
+            // A folder picked in the sidebar shows that folder: a search under way ends (Minhaj 2026-11-22).
+            setQuery('')
             setSel(s)
             setSelectedId(null)
             setView('list')
@@ -2625,7 +2683,7 @@ export default function App() {
         <MessageList
           chips={queryChips}
           onRemoveChip={removeChip}
-          allFolders={searchAll && query.trim() !== ''}
+          scopeChip={query.trim() !== '' && searchIn !== defaultSearchIn(sel) ? (searchIn === 'all' ? 'All folders' : searchIn === 'here' ? title : `In ${SEARCH_SCOPES.find((o) => o.id === searchIn)?.label ?? ''}`) : null}
           rows={rows}
           selectedId={selectedRow?.msg.id ?? selectedId}
           density={density}
