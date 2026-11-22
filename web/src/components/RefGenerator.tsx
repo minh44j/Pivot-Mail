@@ -30,7 +30,7 @@ interface Props {
     /** The server is connected to Pivot OS: numbers and pick-lists come from there */
     linked: boolean
     onCreate: (c: NewCase) => Promise<{ ok: true; ref: string; subject: string | null } | { ok: false; message: string }>
-    picks: (kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null, company?: 'scl' | 'tmc') => Promise<OsPick[]>
+    picks: (kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null, company?: 'scl' | 'tmc', mode?: Mode) => Promise<OsPick[]>
   }
 }
 
@@ -156,12 +156,32 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
     const q = portFocus === 'from' ? from : portFocus === 'to' ? to : ''
     if (!linked || !picks || !portFocus || q.trim().length < 2) return
     let alive = true
-    const t = window.setTimeout(() => void picks('port', q.trim(), null, coCode).then((r) => alive && setPortHits(r)), 250)
+    // Only ports the chosen mode can use: a sea job is never offered an airport (same rule as Pivot OS, 2026-11-20).
+    const t = window.setTimeout(() => void picks('port', q.trim(), null, coCode, mode).then((r) => alive && setPortHits(r)), 250)
     return () => {
       alive = false
       window.clearTimeout(t)
     }
-  }, [linked, picks, portFocus, from, to, coCode])
+  }, [linked, picks, portFocus, from, to, coCode, mode])
+  // Switching the mode drops a picked port the new mode can't use (Pivot OS does the same).
+  const [originKind, setOriginKind] = useState<string | null>(null)
+  const [destKind, setDestKind] = useState<string | null>(null)
+  const pickMode = (m: Mode) => {
+    setMode(m)
+    setPortHits([])
+    const forbidden = m === 'sea' ? 'AIRPORT' : m === 'air' ? 'SEAPORT' : null
+    if (!forbidden) return
+    if (originKind === forbidden) {
+      setOriginId(null)
+      setOriginKind(null)
+      setFrom('')
+    }
+    if (destKind === forbidden) {
+      setDestId(null)
+      setDestKind(null)
+      setTo('')
+    }
+  }
   const left = anchor ? Math.max(8, Math.min(anchor.right - PANEL_W, window.innerWidth - PANEL_W - 8)) : 0
   const top = anchor ? anchor.bottom + 8 : 0
 
@@ -503,7 +523,7 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
                   <Section icon="boxes" tone="purple" title="Moves by" plain>
                     <div className="rg-modes" role="radiogroup" aria-label="Moves by">
                       {MODES.map((m) => (
-                        <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={`rg-mode${mode === m.id ? ' on' : ''}`} data-tone={m.tone} onClick={() => setMode(m.id)}>
+                        <button key={m.id} type="button" role="radio" aria-checked={mode === m.id} className={`rg-mode${mode === m.id ? ' on' : ''}`} data-tone={m.tone} onClick={() => pickMode(m.id)}>
                           <Icon name={m.icon} size={16} />
                           {m.label}
                         </button>
@@ -558,9 +578,11 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
                                         if (w === 'from') {
                                           setFrom(portLabel(p))
                                           setOriginId(p.id)
+                                          setOriginKind(p.kind ?? null)
                                         } else {
                                           setTo(portLabel(p))
                                           setDestId(p.id)
+                                          setDestKind(p.kind ?? null)
                                         }
                                         setPortFocus(null)
                                       }}

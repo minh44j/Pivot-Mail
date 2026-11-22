@@ -35,6 +35,8 @@ export interface OsPick {
   locode?: string
   city?: string | null
   country?: string
+  /** ports: SEAPORT | AIRPORT | INLAND (Pivot OS) */
+  kind?: string
   /** salespeople: the client's own rep */
   suggested?: boolean
 }
@@ -75,8 +77,8 @@ export async function fetchCasesInfo(): Promise<{ cases: CaseRecord[]; linked: b
 export const openCase = (c: NewCase) => call<{ case: CaseRecord; subject: string | null }>('POST', c)
 
 /** Pivot OS pick-lists, when the link is on. Failures give an empty list (the form still works with typed text). */
-export async function fetchPicks(kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null, company?: 'scl' | 'tmc'): Promise<OsPick[]> {
-  const qs = `?directory=${kind}&q=${encodeURIComponent(q)}${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ''}${company ? `&company=${company}` : ''}`
+export async function fetchPicks(kind: 'client' | 'port' | 'sales', q: string, clientId?: string | null, company?: 'scl' | 'tmc', mode?: 'sea' | 'air' | 'land'): Promise<OsPick[]> {
+  const qs = `?directory=${kind}&q=${encodeURIComponent(q)}${clientId ? `&clientId=${encodeURIComponent(clientId)}` : ''}${company ? `&company=${company}` : ''}${kind === 'port' && mode ? `&mode=${mode}` : ''}`
   const r = await call<{ results: OsPick[] }>('GET', undefined, qs)
   return r.ok ? r.data.results : []
 }
