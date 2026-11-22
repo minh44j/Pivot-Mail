@@ -1,7 +1,7 @@
 import { decodeWords, extractBodies, folderOf, parseAddresses, b64urlToBytes } from '../src/gmail/mime'
 import type { GMessage, GPart } from '../src/gmail/mime'
 import { toMessage, unescapeSnippet } from '../src/gmail/map'
-import { buildBatch, parseBatch, costOf, spend, slowDown, resetBudgets, BURST_UNITS, RATE_UNITS_PER_SECOND } from '../src/gmail/client'
+import { buildBatch, parseBatch, costOf, spend, slowDown, resetBudgets, BURST_UNITS, RATE_UNITS_PER_SECOND, sendRaw, GmailError, SEND_UNCONFIRMED } from '../src/gmail/client'
 
 let pass = 0, fail = 0
 const ok = (n: string, c: boolean) => { if (c) pass++; else fail++; console.log((c ? 'PASS ' : 'FAIL ') + n) }
@@ -161,6 +161,76 @@ ok('the budget stays under Gmail\'s 250 units a second per mailbox (room for two
   slowDown('B', 700)
   const t3 = Date.now(); await spend('B', 1)
   ok('"slow down" from Gmail pauses that whole mailbox', Date.now() - t3 >= 650)
+  resetBudgets()
+}
+
+// ---- sending a large message (2026-11-22: Minhaj's 7 MB mail with six company documents always failed).
+// Gmail's /upload address answers without the header browsers need to read a reply from another site, so in the browser
+// every answer from it, success included, arrives as a network error. Stand-in for Gmail + the token address below.
+{
+  const realFetch = globalThis.fetch
+  const realTimeout = globalThis.setTimeout
+  // waits (budget, look-ups) pass instantly here
+  globalThis.setTimeout = ((fn: () => void) => realTimeout(fn, 0)) as unknown as typeof setTimeout
+  let calls: { url: string; body: unknown; type: string }[] = []
+  let gmail: (url: string, init: RequestInit) => Response | Promise<Response> = () => new Response('{}')
+  globalThis.fetch = (async (input: string | URL | Request, init: RequestInit = {}) => {
+    const url = String(input)
+    if (url.startsWith('/api/accounts/token')) return new Response(JSON.stringify({ accessToken: 'tok', expiresAt: Date.now() + 3600_000 }), { headers: { 'content-type': 'application/json' } })
+    calls.push({ url, body: init.body, type: new Headers(init.headers).get('content-type') ?? '' })
+    return gmail(url, init)
+  }) as typeof fetch
+  const isUpload = (u: string) => u.includes('/upload/')
+  const corsBlocked = () => Promise.reject(new TypeError('Failed to fetch'))
+  const big = Buffer.from('X'.repeat(7 * 1024 * 1024)).toString('base64url') // a 7 MB message
+  const small = Buffer.from('Subject: hi\r\n\r\nhello').toString('base64url')
+  const sentList = (id: string | null) => new Response(JSON.stringify(id ? { messages: [{ id, threadId: 'T' + id }] } : {}), { headers: { 'content-type': 'application/json' } })
+
+  // 1. Gmail accepts the large message on the ordinary address: sent, the upload address is never touched
+  calls = []
+  gmail = (u) => (isUpload(u) ? corsBlocked() : new Response(JSON.stringify({ id: 'S1', threadId: 'T1' })))
+  let r = await sendRaw('acc1', big, undefined, 'pm-1@pivottmc.com')
+  ok('send: a 7 MB message goes to the ordinary send address (the browser can read its answer) and is sent', r.id === 'S1' && calls.length === 1 && !isUpload(calls[0]!.url))
+
+  // 2. Gmail refuses it there as too large: the upload address, whose answer the browser cannot read; the message is then
+  //    found in the mailbox by its Message-ID, so it counts as sent (not reported as failed and sent twice)
+  calls = []
+  let lookups = 0
+  gmail = (u) => {
+    if (isUpload(u)) return corsBlocked()
+    if (u.includes('/messages/send')) return new Response(JSON.stringify({ error: { code: 413 } }), { status: 413 })
+    lookups++
+    return sentList(lookups >= 3 ? 'S2' : null) // Gmail lists it after a few seconds
+  }
+  r = await sendRaw('acc1', big, 'thr9', 'pm-2@pivottmc.com')
+  const up = calls.find((c) => isUpload(c.url))
+  ok('send: too large for the ordinary address: upload address, then found in the mailbox, so it counts as sent', r.id === 'S2' && !!up && lookups === 3)
+  const sentBytes = up && up.body instanceof Blob ? Buffer.from(await up.body.arrayBuffer()) : Buffer.alloc(0)
+  ok('send: the upload carries the message bytes exactly, and the conversation', up?.type.startsWith('multipart/related; boundary=') === true && sentBytes.includes(Buffer.from(big, 'base64url')) && sentBytes.includes(Buffer.from('{"threadId":"thr9"}')))
+  ok('send: the search looks for this message\'s own Message-ID', calls.some((c) => decodeURIComponent(c.url).includes('rfc822msgid:pm-2@pivottmc.com')))
+
+  // 3. ...and never found: an honest "not confirmed", not a plain failure (it may have gone out)
+  gmail = (u) => (isUpload(u) ? corsBlocked() : u.includes('/messages/send') ? new Response('{}', { status: 413 }) : sentList(null))
+  let err: unknown = null
+  try { await sendRaw('acc1', big, undefined, 'pm-3@pivottmc.com') } catch (e) { err = e }
+  ok('send: not found after the upload: "not confirmed" (check Sent), not "failed"', err instanceof GmailError && err.message === SEND_UNCONFIRMED)
+
+  // 4. a real refusal on the ordinary address (a small mail, error 400) is reported with its number; no upload
+  calls = []
+  gmail = () => new Response(JSON.stringify({ error: { code: 400, message: 'Invalid To header' } }), { status: 400 })
+  err = null
+  try { await sendRaw('acc1', small, undefined, 'pm-4@pivottmc.com') } catch (e) { err = e }
+  ok('send: a refused small mail fails with Gmail\'s number, without trying the upload address', err instanceof GmailError && err.status === 400 && !calls.some((c) => isUpload(c.url)))
+
+  // 5. a server error on the ordinary address is NOT retried by upload (it may have gone out already)
+  calls = []
+  gmail = (u) => (isUpload(u) ? corsBlocked() : new Response('{}', { status: 500 }))
+  err = null
+  try { await sendRaw('acc1', big, undefined, 'pm-5@pivottmc.com') } catch (e) { err = e }
+  ok('send: a Gmail server error is not sent a second way (it may have gone out)', err instanceof GmailError && err.status === 500 && !calls.some((c) => isUpload(c.url)))
+
+  globalThis.fetch = realFetch
+  globalThis.setTimeout = realTimeout
   resetBudgets()
 }
 

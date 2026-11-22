@@ -63,7 +63,7 @@ interface Req {
   /** JSON body */
   body?: unknown
   /** A raw body (message upload) with its content type */
-  raw?: { type: string; data: string }
+  raw?: { type: string; data: string | Blob }
   /** false for sends: never repeat a request that may already have been processed (only 401 and 429 are safe to repeat) */
   idempotent?: boolean
   /** full address instead of the usual API base (media upload) */
@@ -420,24 +420,48 @@ export interface Sent {
   labelIds?: string[]
 }
 
-const MAX_JSON_RAW = 4 * 1024 * 1024
+/** Above this, Gmail may refuse the ordinary send address as too large (it is the size the old code switched at). */
+const SMALL_RAW = 4 * 1024 * 1024
+/** Thrown when a large message went to Gmail's upload address and Gmail's answer could not be read nor the message found. */
+export const SEND_UNCONFIRMED = 'send-unconfirmed'
 
-/** Sends a finished raw message (URL-safe base64). Larger ones use Gmail's upload endpoint. Never retried after a server error: it might already have gone out. */
-export async function sendRaw(accountId: string, raw: string, threadId?: string): Promise<Sent> {
-  if (raw.length <= MAX_JSON_RAW) return greq<Sent>(accountId, '/messages/send', { method: 'POST', body: { raw, ...(threadId ? { threadId } : {}) }, idempotent: false })
+/**
+ * Sends a finished raw message (URL-safe base64). Never retried after a server error: it might already have gone out.
+ *
+ * Every size goes to the ordinary address first. Gmail's upload address (/upload/...) answers WITHOUT the permission header
+ * browsers need to read a reply from another site (checked 2026-11-22: its answers carry no Access-Control-Allow-Origin,
+ * where Drive's upload address and Gmail's ordinary address do). So the browser saw every large send fail, even one Gmail
+ * accepted. Minhaj's 7 MB mail with six company documents could not be sent. The upload address is now only a fallback when
+ * Gmail refuses the ordinary one as too large; its unreadable answer is then settled by finding the message in the mailbox.
+ */
+export async function sendRaw(accountId: string, raw: string, threadId?: string, messageId?: string): Promise<Sent> {
+  try {
+    return await greq<Sent>(accountId, '/messages/send', { method: 'POST', body: { raw, ...(threadId ? { threadId } : {}) }, idempotent: false })
+  } catch (e) {
+    const tooLarge = e instanceof GmailError && (e.status === 413 || (e.status === 400 && raw.length > SMALL_RAW))
+    if (!tooLarge) throw e
+  }
   const b = `pm${Math.random().toString(36).slice(2)}`
-  const bytes = atob(raw.replace(/-/g, '+').replace(/_/g, '/'))
-  const data = [`--${b}`, 'Content-Type: application/json; charset=UTF-8', '', JSON.stringify(threadId ? { threadId } : {}), `--${b}`, 'Content-Type: message/rfc822', '', bytes, `--${b}--`].join('\r\n')
-  return greq<Sent>(accountId, '', { method: 'POST', url: 'https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart', raw: { type: `multipart/related; boundary=${b}`, data }, idempotent: false })
+  // Binary, not a text string: the message bytes go out exactly as built.
+  const data = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(threadId ? { threadId } : {})}\r\n--${b}\r\nContent-Type: message/rfc822\r\n\r\n`, b64urlToBytes(raw) as BlobPart, `\r\n--${b}--`])
+  try {
+    return await greq<Sent>(accountId, '', { method: 'POST', url: 'https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send?uploadType=multipart', raw: { type: `multipart/related; boundary=${b}`, data }, idempotent: false })
+  } catch (e) {
+    if (e instanceof GmailError || !messageId) throw e
+    // The browser could not read Gmail's answer: look for the message itself (Gmail can take a few seconds to list it).
+    const found = await findSentByMessageId(accountId, messageId, 10, 3000)
+    if (found) return found
+    throw new GmailError(0, SEND_UNCONFIRMED)
+  }
 }
 
 /**
  * Did a send that seemed to fail actually go through? Looks for our own Message-ID in the mailbox
  * (a few tries, because Gmail's search can take a moment to see a new message).
  */
-export async function findSentByMessageId(accountId: string, messageId: string): Promise<{ id: string; threadId: string } | null> {
-  for (let i = 0; i < 3; i++) {
-    if (i > 0) await wait(2000)
+export async function findSentByMessageId(accountId: string, messageId: string, tries = 3, gapMs = 2000): Promise<{ id: string; threadId: string } | null> {
+  for (let i = 0; i < tries; i++) {
+    if (i > 0) await wait(gapMs)
     try {
       const r = await listMessageIds(accountId, { q: `rfc822msgid:${messageId}`, max: 1, includeSpamTrash: true })
       if (r.ids[0]) return r.ids[0]

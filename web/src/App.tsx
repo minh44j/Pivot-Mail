@@ -19,7 +19,7 @@ import type { DayStat, StaffMember } from './data/performance'
 import { CASE_ERRORS, fetchCasesInfo, fetchOsFacts, fetchPicks, openCase, updateCase } from './cases'
 import type { OsFacts } from './cases'
 import type { CaseRecord, NewCase } from './cases'
-import { GmailError, SESSION_ENDED, findSentByMessageId, getLabel, listMessageIds, getMetadataMany, getProfile, getThreadFull, listLabels } from './gmail/client'
+import { GmailError, SEND_UNCONFIRMED, SESSION_ENDED, findSentByMessageId, getLabel, listMessageIds, getMetadataMany, getProfile, getThreadFull, listLabels } from './gmail/client'
 import type { GLabel } from './gmail/client'
 import { toMessage } from './gmail/map'
 import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
@@ -308,7 +308,7 @@ export default function App() {
   /** One status card. Wording that says something went wrong is shown as an error without every caller having to say so. */
   const showToast = useCallback(
     (text: string, opts?: { kind?: NoticeKind; action?: Notice['action'] }) => {
-      const kind = opts?.kind ?? (/\b(couldn'?t|could not|can'?t|cannot|failed|not sent|not allowed|error|refused|blocked|over gmail|please attach|did not accept|didn'?t|not available|unavailable|is not a gmail|can only be|only mail that|put back|try again|offline, so)/i.test(text) ? 'error' : 'success')
+      const kind = opts?.kind ?? (/\b(couldn'?t|could not|can'?t|cannot|failed|not sent|not allowed|error|refused|blocked|over gmail|please attach|did not accept|did not confirm|didn'?t|not available|unavailable|is not a gmail|can only be|only mail that|put back|try again|offline, so)/i.test(text) ? 'error' : 'success')
       const id = ++noticeSeq.current
       setNotices((l) => [...l.filter((n) => n.text !== text).slice(-2), { id, kind, text, action: opts?.action }])
       setNoticeLog((l) => [{ id, kind, text, at: new Date() }, ...l].slice(0, 15))
@@ -1422,6 +1422,9 @@ export default function App() {
     const msg = e instanceof Error ? e.message : ''
     if (msg.startsWith('reattach:')) return `Please attach “${msg.slice(9)}” again, then send.`
     if (msg === 'toolarge') return 'The attachments are over Gmail\'s 25 MB limit.'
+    if (msg === SEND_UNCONFIRMED) return 'Gmail did not confirm the send. Check Sent before sending again.'
+    // The number tells us why next time (2026-11-22: a bare "could not send" left no way to find the cause).
+    if (e instanceof GmailError && e.status > 0) return `Gmail could not send the message (error ${e.status}).`
     return 'Gmail could not send the message.'
   }
 
@@ -1433,7 +1436,7 @@ export default function App() {
     const raw = await outgoing(d, acc, false, mid)
     let sent: { id: string; threadId: string }
     try {
-      sent = await sendRaw(acc.id, raw, d.reply?.threadId)
+      sent = await sendRaw(acc.id, raw, d.reply?.threadId, mid)
     } catch (e) {
       // The connection dropped or Gmail hiccuped: the message may be sent already. Look before anyone repeats it.
       const maybe = !(e instanceof GmailError) || e.status >= 500
