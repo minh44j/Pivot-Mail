@@ -8,7 +8,8 @@ import { desktop } from '../desktop'
 
 export interface KeyValueStore {
   get(key: string): string | null
-  set(key: string, value: string): void
+  /** false: the browser would not keep it (storage full or blocked); it lasts only until the app closes */
+  set(key: string, value: string): boolean
   remove(key: string): void
 }
 
@@ -25,8 +26,10 @@ const storage: KeyValueStore = {
   set(key, value) {
     try {
       localStorage.setItem(key, value)
+      return true
     } catch {
       memory.set(key, value)
+      return false
     }
   },
   remove(key) {

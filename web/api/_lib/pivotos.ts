@@ -1,3 +1,4 @@
+import { logFail } from './http.js'
 import { createHmac } from 'node:crypto'
 import type { CompanyId } from './config.js'
 
@@ -67,11 +68,18 @@ export async function callOs<T>(
     })
     const parsed: unknown = await res.json().catch(() => undefined)
     const data = (parsed && typeof parsed === 'object' ? parsed : {}) as T & { error?: string }
-    if (!res.ok) return { ok: false, status: res.status, message: typeof data.error === 'string' ? data.error : 'Pivot OS did not accept the request.' }
+    if (!res.ok) {
+      console.error(`[pivot-mail] Pivot OS ${method} ${url.pathname} answered ${res.status}`)
+      return { ok: false, status: res.status, message: typeof data.error === 'string' ? data.error : 'Pivot OS did not accept the request.' }
+    }
     // A success must carry JSON data; anything else (a web page) is a wrong answer, not an empty one.
-    if (!parsed || typeof parsed !== 'object') return { ok: false, status: 502, message: 'Pivot OS sent an unexpected answer.' }
+    if (!parsed || typeof parsed !== 'object') {
+      console.error(`[pivot-mail] Pivot OS ${method} ${url.pathname} answered ${res.status} without JSON`)
+      return { ok: false, status: 502, message: 'Pivot OS sent an unexpected answer.' }
+    }
     return { ok: true, data }
-  } catch {
+  } catch (e) {
+    logFail(`Pivot OS ${method} ${url.pathname}`, e)
     return { ok: false, status: 502, message: 'Pivot OS could not be reached.' }
   }
 }

@@ -91,12 +91,22 @@ function sigInBody(html: string, accounts: Account[], accountId: string): string
 /** Files cannot be stored in the saved draft; only their names and sizes are. */
 const forStorage = (d: ComposeInit): ComposeInit => ({ ...d, attachments: d.attachments.map(({ file: _file, ...a }) => a) })
 
+/**
+ * Keeps the unsent message on this computer. Pasted pictures can fill the browser's storage (a few MB): then the text is kept
+ * without them, and if even that does not fit the person is told, instead of "Draft saved" over nothing (audit 2026-11-22).
+ */
+function keepLocally(d: ComposeInit): 'saved' | 'nopics' | 'failed' {
+  if (platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(d)))) return 'saved'
+  const body = d.body.replace(/<img\b[^>]*\bsrc\s*=\s*["']?data:[^>]*>/gi, '')
+  return platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage({ ...d, body }))) ? 'nopics' : 'failed'
+}
+
 export function Composer({ init, accounts, offline, noSchedule, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
   const [later, setLater] = useState(false)
-  const [saved, setSaved] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [saved, setSaved] = useState<'idle' | 'saving' | 'saved' | 'nopics' | 'failed'>('idle')
   const [dragging, setDragging] = useState(false)
   // The new message window opens at the size of the reading pane. The corner button switches to a small floating window.
   const [rect, setRect] = useState<Box | null>(readerBox)
@@ -233,17 +243,14 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     }
     touched.current = true
     setSaved('saving')
-    const t = window.setTimeout(() => {
-      platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(d)))
-      setSaved('saved')
-    }, 1200)
+    const t = window.setTimeout(() => setSaved(keepLocally(d)), 1200)
     return () => window.clearTimeout(t)
   }, [d])
 
   // Closing the window keeps what was typed, even inside the 1.2 s autosave delay.
   useEffect(
     () => () => {
-      if (touched.current && !finished.current) platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(latest.current)))
+      if (touched.current && !finished.current) keepLocally(latest.current)
     },
     [],
   )
@@ -514,9 +521,9 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           send()
         } else if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's') {
           e.preventDefault()
-          platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage(latest.current)))
-          setSaved('saved')
-          onToast('Draft saved')
+          const r = keepLocally(latest.current)
+          setSaved(r)
+          onToast(r === 'saved' ? 'Draft saved' : r === 'nopics' ? 'Draft saved without pictures. Storage full.' : 'Draft not saved. Storage full.')
         } else if (mod && e.shiftKey && e.key.toLowerCase() === 'l') {
           e.preventDefault()
           exec('insertUnorderedList')
@@ -525,7 +532,9 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     >
       <div className="composer-head">
         <strong className="grow ellipsis">{d.subject || 'New message'}</strong>
-        <span className="muted">{saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : ''}</span>
+        <span className={saved === 'failed' || saved === 'nopics' ? 'save-warn' : 'muted'}>
+          {saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : saved === 'nopics' ? 'Saved without pictures' : saved === 'failed' ? 'Not saved. Storage full.' : ''}
+        </span>
         <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'}>
           <Icon name={expanded ? 'collapse' : 'expand'} />
         </button>

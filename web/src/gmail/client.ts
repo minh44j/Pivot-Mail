@@ -39,7 +39,11 @@ const inflight = new Map<string, Promise<string>>()
 
 async function accessToken(accountId: string, force = false): Promise<string> {
   const k = keys.get(accountId)
-  if (!force && k && k.expiresAt > Date.now() + 60_000) return k.token
+  if (!force && k && k.expiresAt > Date.now() + 60_000) {
+    // In its last 5 minutes the key is renewed in the background, so a send or an open never waits for our server (2-5 s).
+    if (k.expiresAt < Date.now() + 5 * 60_000 && !inflight.has(accountId)) void accessToken(accountId, true).catch(() => undefined)
+    return k.token
+  }
   const pending = inflight.get(accountId)
   if (pending) return pending
   const p = (async () => {
@@ -68,6 +72,8 @@ interface Req {
   idempotent?: boolean
   /** full address instead of the usual API base (media upload) */
   url?: string
+  /** Something a person is waiting for: ahead of the background sync (see spend). Changes (anything but GET) always are. */
+  now?: boolean
 }
 
 /* ---------- staying under Gmail's speed limit ---------- */
@@ -92,17 +98,29 @@ function bucketOf(accountId: string) {
   return b
 }
 
-/** Waits until this mailbox may spend `units` (a request's cost), then spends them. */
-export async function spend(accountId: string, units: number): Promise<void> {
+/**
+ * Waits until this mailbox may spend `units` (a request's cost), then spends them.
+ *
+ * `now` is for something a person just did (send, archive, open a mail): it goes at once and the budget may go below zero,
+ * so the background sync waits to pay it back. Without it a send (100 units) could wait as long as the sync ran, because the
+ * sync's small requests always took the refill first (2026-11-22, "sending takes too much time"). Gmail's own pause after
+ * "too many requests" is still obeyed.
+ */
+export async function spend(accountId: string, units: number, now = false): Promise<void> {
   const need = Math.max(1, Math.min(units, BURST_UNITS))
   for (;;) {
     const b = bucketOf(accountId)
-    const now = Date.now()
-    b.tokens = Math.min(BURST_UNITS, b.tokens + ((now - b.at) / 1000) * RATE_UNITS_PER_SECOND)
-    b.at = now
-    if (now < b.pausedUntil) {
-      await wait(b.pausedUntil - now)
+    const t = Date.now()
+    b.tokens = Math.min(BURST_UNITS, b.tokens + ((t - b.at) / 1000) * RATE_UNITS_PER_SECOND)
+    b.at = t
+    if (t < b.pausedUntil) {
+      await wait(b.pausedUntil - t)
       continue
+    }
+    // An action never pushes the debt past one burst: Gmail allows 250 a second, this budget runs at 150.
+    if (now && b.tokens - need >= -BURST_UNITS) {
+      b.tokens -= need
+      return
     }
     if (b.tokens >= need) {
       b.tokens -= need
@@ -146,7 +164,7 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
   let refreshed = false
   const units = costOf(o.method ?? 'GET', o.url ? new URL(o.url).pathname : path)
   for (let attempt = 0; ; attempt++) {
-    await spend(accountId, units)
+    await spend(accountId, units, o.now ?? (o.method ?? 'GET') !== 'GET')
     const token = await accessToken(accountId, false)
     const headers: Record<string, string> = { authorization: `Bearer ${token}` }
     if (o.body !== undefined) headers['content-type'] = 'application/json'
@@ -185,7 +203,7 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
   }
 }
 
-const gget = <T>(accountId: string, path: string, params: Params = []): Promise<T> => greq<T>(accountId, path, { params })
+const gget = <T>(accountId: string, path: string, params: Params = [], now = false): Promise<T> => greq<T>(accountId, path, { params, now })
 
 export interface GLabel {
   id: string
@@ -200,19 +218,19 @@ export interface IdPage {
   next?: string
 }
 
-export async function listMessageIds(accountId: string, o: { labelIds?: string[]; q?: string; pageToken?: string; max?: number; includeSpamTrash?: boolean }): Promise<IdPage> {
+export async function listMessageIds(accountId: string, o: { labelIds?: string[]; q?: string; pageToken?: string; max?: number; includeSpamTrash?: boolean; now?: boolean }): Promise<IdPage> {
   const params: [string, string][] = [['maxResults', String(o.max ?? 100)]]
   for (const l of o.labelIds ?? []) params.push(['labelIds', l])
   if (o.q) params.push(['q', o.q])
   if (o.pageToken) params.push(['pageToken', o.pageToken])
   if (o.includeSpamTrash) params.push(['includeSpamTrash', 'true'])
-  const r = await gget<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>(accountId, '/messages', params)
+  const r = await gget<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>(accountId, '/messages', params, o.now)
   return { ids: r.messages ?? [], next: r.nextPageToken }
 }
 
 const META: Params = [['format', 'metadata'], ...['From', 'To', 'Cc', 'Subject', 'Date'].map((h): [string, string] => ['metadataHeaders', h])]
 
-export const getMetadata = (accountId: string, id: string): Promise<GMessage> => gget<GMessage>(accountId, `/messages/${encodeURIComponent(id)}`, META)
+export const getMetadata = (accountId: string, id: string, now = false): Promise<GMessage> => gget<GMessage>(accountId, `/messages/${encodeURIComponent(id)}`, META, now)
 
 /* ---------- many message headers in one request (Gmail batch) ---------- */
 
@@ -269,12 +287,12 @@ const isBusy = (x: { status: number; body: unknown } | null) => !x || x.status =
  * One batch request. Messages that are gone (404) are left out; `busy` ones (Gmail asked to slow down) can go in a later batch;
  * anything else that failed (`retry`) is fetched one by one, which also renews an expired sign-in.
  */
-async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessage[]; busy: string[]; retry: string[] }> {
+async function batchOnce(accountId: string, ids: string[], now = false): Promise<{ ok: GMessage[]; busy: string[]; retry: string[] }> {
   const qs = new URLSearchParams(META).toString()
   const paths = ids.map((id) => `/gmail/v1/users/me/messages/${encodeURIComponent(id)}?${qs}`)
   const boundary = `pm_batch_${Math.random().toString(36).slice(2)}`
   for (let attempt = 0; attempt < 2; attempt++) {
-    await spend(accountId, 5 * ids.length)
+    await spend(accountId, 5 * ids.length, now)
     const token = await accessToken(accountId, attempt > 0)
     let res: Response
     try {
@@ -318,10 +336,10 @@ async function batchOnce(accountId: string, ids: string[]): Promise<{ ok: GMessa
   throw new Error('batch not authorised')
 }
 
-async function metadataOneByOne(accountId: string, ids: string[]): Promise<GMessage[]> {
+async function metadataOneByOne(accountId: string, ids: string[], now = false): Promise<GMessage[]> {
   const got = await pool(ids, 4, async (id) => {
     try {
-      return await getMetadata(accountId, id)
+      return await getMetadata(accountId, id, now)
     } catch (e) {
       if (e instanceof GmailError && e.status === 404) return null // deleted meanwhile
       throw e
@@ -331,18 +349,18 @@ async function metadataOneByOne(accountId: string, ids: string[]): Promise<GMess
 }
 
 /** A batch, and again (after 1 s, then 3 s) for any messages Gmail asked to slow down on; what is still left goes one by one. */
-async function batchWithBackoff(accountId: string, ids: string[]): Promise<GMessage[]> {
+async function batchWithBackoff(accountId: string, ids: string[], now = false): Promise<GMessage[]> {
   const ok: GMessage[] = []
   let todo = ids
   for (const pause of [0, 1000, 3000]) {
     if (todo.length === 0) return ok
     if (pause) await wait(pause)
-    const r = await batchOnce(accountId, todo)
+    const r = await batchOnce(accountId, todo, now)
     ok.push(...r.ok)
-    if (r.retry.length) ok.push(...(await metadataOneByOne(accountId, r.retry)))
+    if (r.retry.length) ok.push(...(await metadataOneByOne(accountId, r.retry, now)))
     todo = r.busy
   }
-  if (todo.length) ok.push(...(await metadataOneByOne(accountId, todo)))
+  if (todo.length) ok.push(...(await metadataOneByOne(accountId, todo, now)))
   return ok
 }
 
@@ -350,17 +368,17 @@ async function batchWithBackoff(accountId: string, ids: string[]): Promise<GMess
  * Headers of many messages, fast: 20 per request (two requests in flight) instead of one request each. Falls back to one by one
  * if batching is not available. Messages deleted meanwhile are simply left out. Results keep the order of `ids`.
  */
-export async function getMetadataMany(accountId: string, ids: string[]): Promise<GMessage[]> {
+export async function getMetadataMany(accountId: string, ids: string[], now = false): Promise<GMessage[]> {
   if (ids.length === 0) return []
-  if (batchUnavailable || Date.now() < batchPausedUntil || ids.length === 1) return metadataOneByOne(accountId, ids)
+  if (batchUnavailable || Date.now() < batchPausedUntil || ids.length === 1) return metadataOneByOne(accountId, ids, now)
   const chunks: string[][] = []
   for (let i = 0; i < ids.length; i += BATCH_SIZE) chunks.push(ids.slice(i, i + BATCH_SIZE))
   const parts = await pool(chunks, 2, async (chunk) => {
     try {
-      return await batchWithBackoff(accountId, chunk)
+      return await batchWithBackoff(accountId, chunk, now)
     } catch (e) {
       if (e instanceof GmailError) throw e
-      return metadataOneByOne(accountId, chunk)
+      return metadataOneByOne(accountId, chunk, now)
     }
   })
   const byId = new Map(parts.flat().map((g) => [g.id, g]))
@@ -369,11 +387,11 @@ export async function getMetadataMany(accountId: string, ids: string[]): Promise
 
 /** The whole conversation with bodies and attachment details. */
 export async function getThreadFull(accountId: string, threadId: string): Promise<GMessage[]> {
-  return (await gget<{ messages?: GMessage[] }>(accountId, `/threads/${encodeURIComponent(threadId)}`, [['format', 'full']])).messages ?? []
+  return (await gget<{ messages?: GMessage[] }>(accountId, `/threads/${encodeURIComponent(threadId)}`, [['format', 'full']], true)).messages ?? []
 }
 
 export async function getAttachmentBytes(accountId: string, messageId: string, attachmentId: string): Promise<Uint8Array> {
-  const r = await gget<{ data?: string }>(accountId, `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`)
+  const r = await gget<{ data?: string }>(accountId, `/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`, [], true)
   return b64urlToBytes(r.data ?? '')
 }
 
@@ -416,7 +434,7 @@ export const deleteLabel = (accountId: string, id: string) => greq(accountId, `/
 
 /** A message exactly as Gmail holds it (its .eml source), for "Forward as attachment". */
 export async function getRawMessage(accountId: string, id: string): Promise<Uint8Array> {
-  const r = await gget<{ raw?: string }>(accountId, `/messages/${encodeURIComponent(id)}`, [['format', 'raw']])
+  const r = await gget<{ raw?: string }>(accountId, `/messages/${encodeURIComponent(id)}`, [['format', 'raw']], true)
   if (!r.raw) throw new Error('no source')
   return b64urlToBytes(r.raw)
 }
@@ -507,7 +525,7 @@ export async function findSentByMessageId(accountId: string, messageId: string, 
   for (let i = 0; i < tries; i++) {
     if (i > 0) await wait(gapMs)
     try {
-      const r = await listMessageIds(accountId, { q: `rfc822msgid:${messageId}`, max: 1, includeSpamTrash: true })
+      const r = await listMessageIds(accountId, { q: `rfc822msgid:${messageId}`, max: 1, includeSpamTrash: true, now: true })
       if (r.ids[0]) return r.ids[0]
     } catch {
       /* try again, then give up */

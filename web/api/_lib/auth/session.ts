@@ -1,5 +1,5 @@
 import { update, eq } from '../db.js'
-import { hostOf, json, originOf } from '../http.js'
+import { hostOf, json, originOf, logFail } from '../http.js'
 import { currentUser } from '../session.js'
 
 /** Who is signed in. The role and the disabled flag are re-read on every call, so changes take effect at once. */
@@ -9,7 +9,8 @@ export async function GET(req: Request): Promise<Response> {
     const me = await currentUser(req)
     if (!me) return json({ user: null }, 401)
     return json({ user: { email: me.email, name: me.name, company: me.company, role: me.role, title: me.title } })
-  } catch {
+  } catch (e) {
+    logFail('_lib/auth/session', e)
     return json({ user: null, error: 'unavailable' }, 503)
   }
 }
@@ -35,7 +36,8 @@ export async function PATCH(req: Request): Promise<Response> {
     if (title === null) return json({ error: 'invalid' }, 400)
     await update('app_users', `id=${eq(me.id)}`, { title })
     return json({ title })
-  } catch {
+  } catch (e) {
+    logFail('_lib/auth/session', e)
     return json({ error: 'unavailable' }, 503)
   }
 }

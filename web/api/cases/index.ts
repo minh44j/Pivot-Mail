@@ -1,5 +1,5 @@
 import { dbConfigured, eq, insert, rpc, select, update } from '../_lib/db.js'
-import { hostOf, json, originOf } from '../_lib/http.js'
+import { hostOf, json, originOf, logFail } from '../_lib/http.js'
 import { callOs, osConfig } from '../_lib/pivotos.js'
 import { currentUser } from '../_lib/session.js'
 import type { Me } from '../_lib/session.js'
@@ -71,7 +71,8 @@ async function guard(req: Request, needOrigin: boolean): Promise<{ me: Me } | Re
   try {
     const me = await currentUser(req)
     return me && me.id ? { me } : err('session', 401)
-  } catch {
+  } catch (e) {
+    logFail('cases/index', e)
     return err('unavailable', 503)
   }
 }
@@ -144,7 +145,8 @@ export async function GET(req: Request): Promise<Response> {
     }
     const rows = await select<CaseRow>('cases', `company=${inList(allowed)}&select=${COLS}&order=created_at.desc&limit=1000`)
     return json({ cases: rows.map(shape), company: g.me.company, companies: allowed, linked: osConfig() !== null })
-  } catch {
+  } catch (e) {
+    logFail('cases/index', e)
     return err('unavailable', 503)
   }
 }
@@ -217,7 +219,8 @@ export async function POST(req: Request): Promise<Response> {
     }
     await insert('audit_log', { actor_email: me.email, action: 'case.opened', detail: { ref, company: co, source } })
     return json({ case: shape({ ...row, opener: { name: me.name, email: me.email } }), subject: issued?.subject ?? null }, 201)
-  } catch {
+  } catch (e) {
+    logFail('cases/index', e)
     return err('unavailable', 503)
   }
 }
@@ -243,7 +246,8 @@ export async function PATCH(req: Request): Promise<Response> {
     await insert('audit_log', { actor_email: me.email, action: 'case.updated', detail: { ref, fields: Object.keys(patch) } })
     const [row] = await select<CaseRow>('cases', `ref=${eq(ref)}&select=${COLS}`)
     return json({ case: row ? shape(row) : null })
-  } catch {
+  } catch (e) {
+    logFail('cases/index', e)
     return err('unavailable', 503)
   }
 }

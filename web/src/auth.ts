@@ -50,12 +50,16 @@ export async function saveTitle(title: string): Promise<string | null> {
   }
 }
 
-/** everywhere: also ends this person's sessions on every other computer and phone. */
-export async function signOut(everywhere = false): Promise<void> {
+/**
+ * everywhere: also ends this person's sessions on every other computer and phone. True when the server confirmed it. (A plain
+ * sign-out that cannot reach the server still ends here: the cookie expires; "everywhere" must not pretend.)
+ */
+export async function signOut(everywhere = false): Promise<boolean> {
   try {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ everywhere }) })
+    const res = await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ everywhere }) })
+    return res.ok
   } catch {
-    /* the cookie simply expires */
+    return false
   }
 }
 
@@ -102,9 +106,11 @@ export interface OsSignaturePerson {
 }
 
 /** The official signature of each of this person's mailboxes, by mailbox id ({} when Pivot OS is not linked or not reached). */
-export async function fetchOsSignatures(): Promise<Record<string, OsSignaturePerson[]>> {
+/** null: could not be fetched (try again later); {} : fetched, nothing to use. */
+export async function fetchOsSignatures(): Promise<Record<string, OsSignaturePerson[]> | null> {
   const r = await getJson<{ signatures?: Record<string, OsSignaturePerson[]> }>('/api/accounts/signatures')
-  return r && r.status === 200 && r.data.signatures && typeof r.data.signatures === 'object' ? r.data.signatures : {}
+  if (!r || r.status >= 500) return null
+  return r.status === 200 && r.data.signatures && typeof r.data.signatures === 'object' ? r.data.signatures : {}
 }
 
 export const connectUrl = (company: 'scl' | 'tmc', kind: 'personal' | 'shared'): string => `/api/accounts/connect?company=${company}&kind=${kind}`

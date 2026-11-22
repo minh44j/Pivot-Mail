@@ -28,3 +28,17 @@ export function redirect(location: string, cookies: string[] = []): Response {
 export function safeNext(next: string | null): string {
   return next && /^\/(?!\/)[\w\-./?=&%#]*$/.test(next) ? next : '/'
 }
+
+/**
+ * Writes a server failure to the Vercel log. Every route used to turn its errors into a quiet "unavailable" answer with
+ * nothing logged, so the dashboard showed zero errors whatever happened (audit 2026-11-22). Only the error's kind and
+ * message, shortened, with anything shaped like a key or token blanked; never request bodies or headers.
+ */
+export function logFail(where: string, e: unknown): void {
+  const kind = e instanceof Error ? e.name : typeof e
+  const msg = (e instanceof Error ? e.message : String(e))
+    .replace(/(ya29\.|1\/\/|Bearer\s+|eyJ)[\w.\-/+=]+/g, '$1…')
+    .replace(/[A-Za-z0-9_-]{40,}/g, '…')
+    .slice(0, 300)
+  console.error(`[pivot-mail] ${where} failed: ${kind}: ${msg}`)
+}

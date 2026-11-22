@@ -88,7 +88,16 @@ async function clearAll(): Promise<void> {
     tx.objectStore(META).clear()
     await done(tx)
   } catch {
-    /* nothing to clear */
+    // Could not be emptied (a broken or blocked database): the whole database is removed instead, so the previous person's
+    // mail copy never stays on a shared computer (audit 2026-11-22).
+    await new Promise<void>((resolve) => {
+      try {
+        const req = indexedDB.deleteDatabase(DB)
+        req.onsuccess = req.onerror = req.onblocked = () => resolve()
+      } catch {
+        resolve() // no database support at all: nothing was ever stored
+      }
+    })
   }
 }
 

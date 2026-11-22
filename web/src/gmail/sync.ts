@@ -35,11 +35,11 @@ export function queryFor(t: Target, windowDays: number, labels: GLabel[]): ListQ
   }
 }
 
-async function pageIds(accountId: string, query: ListQuery, cap: number): Promise<{ id: string; threadId: string }[]> {
+async function pageIds(accountId: string, query: ListQuery, cap: number, now = false): Promise<{ id: string; threadId: string }[]> {
   const out: { id: string; threadId: string }[] = []
   let token: string | undefined
   do {
-    const page = await listMessageIds(accountId, { ...query, pageToken: token, max: Math.min(100, cap - out.length) })
+    const page = await listMessageIds(accountId, { ...query, pageToken: token, max: Math.min(100, cap - out.length), now })
     out.push(...page.ids)
     token = page.next
   } while (token && out.length < cap)
@@ -70,10 +70,12 @@ export async function syncQuery(p: {
   onGone?: (ids: string[]) => void
   /** Every message the query matched (as "account:id"), including ones already known and therefore not fetched again */
   onIds?: (ids: string[]) => void
+  /** Someone is waiting for this (a search): ahead of the background sync (client.ts spend) */
+  now?: boolean
 }): Promise<number> {
   const cap = p.cap ?? 500
   // The list and the "with attachments" list are asked for together (one wait instead of two).
-  const [ids, att] = await Promise.all([pageIds(p.accountId, p.query, cap), pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap)])
+  const [ids, att] = await Promise.all([pageIds(p.accountId, p.query, cap, p.now), pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap, p.now)])
   if (p.isCancelled?.()) return 0
   p.onIds?.(ids.map((x) => `${p.accountId}:${x.id}`))
   const withAtt = new Set(att.map((x) => x.id))
@@ -83,7 +85,7 @@ export async function syncQuery(p: {
   for (let i = 0; i < need.length; i += 40) {
     if (p.isCancelled?.()) return i
     const chunk = need.slice(i, i + 40)
-    const got = await getMetadataMany(p.accountId, chunk.map((x) => x.id))
+    const got = await getMetadataMany(p.accountId, chunk.map((x) => x.id), p.now)
     const msgs = got.map((g) => toMessage(p.accountId, g, p.labelNames)).filter((m): m is Message => m !== null)
     for (const m of msgs) m.hasAttachments = withAtt.has(m.id.split(':')[1] ?? '')
     p.onBatch(msgs)

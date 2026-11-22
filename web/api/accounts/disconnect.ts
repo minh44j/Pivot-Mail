@@ -2,7 +2,7 @@ import { clientFor } from '../_lib/config.js'
 import type { CompanyId } from '../_lib/config.js'
 import { dbConfigured, eq, insert, remove, select } from '../_lib/db.js'
 import { revokeToken } from '../_lib/google.js'
-import { hostOf, json, originOf } from '../_lib/http.js'
+import { hostOf, json, originOf, logFail } from '../_lib/http.js'
 import { currentUser } from '../_lib/session.js'
 import { open } from '../_lib/vault.js'
 
@@ -30,7 +30,8 @@ export async function POST(req: Request): Promise<Response> {
     await remove('mail_accounts', `id=${eq(id)}`) // cascades to the token and the access rows
     await insert('audit_log', { actor_email: me.email, action: 'account.disconnected', detail: { email: account.email } })
     return json({ ok: true })
-  } catch {
+  } catch (e) {
+    logFail('accounts/disconnect', e)
     return json({ error: 'unavailable' }, 503)
   }
 }

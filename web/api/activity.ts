@@ -1,5 +1,5 @@
 import { dbConfigured, eq, insert, rpc, select } from './_lib/db.js'
-import { hostOf, json, originOf } from './_lib/http.js'
+import { hostOf, json, originOf, logFail } from './_lib/http.js'
 import { currentUser } from './_lib/session.js'
 
 /**
@@ -38,7 +38,8 @@ export async function GET(req: Request): Promise<Response> {
     if (!DAY.test(from) || !DAY.test(to) || dayNum(to) < dayNum(from) || dayNum(to) - dayNum(from) > 120 * 86_400_000) return err('invalid', 400)
     const rows = await rpc<Record<string, unknown>[]>('performance_report', { p_from: from, p_to: to, p_tz: validTz(q.get('tz')) })
     return json({ rows })
-  } catch {
+  } catch (e) {
+    logFail('activity', e)
     return err('unavailable', 503)
   }
 }
@@ -80,7 +81,8 @@ export async function POST(req: Request): Promise<Response> {
       return json({ ok: true, saved })
     }
     return err('invalid', 400)
-  } catch {
+  } catch (e) {
+    logFail('activity', e)
     return err('unavailable', 503)
   }
 }

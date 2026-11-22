@@ -1159,6 +1159,27 @@ small {
 .composer-head .muted {
   font-size: 12px;
 }
+/* The draft could not be kept on this computer (storage full): said in the warning colour, fading in like the rest. */
+.composer-head .save-warn {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b42318;
+  animation: save-warn-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+:root[data-theme='dark'] .composer-head .save-warn {
+  color: #ff8a80;
+}
+@keyframes save-warn-in {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .composer-head .save-warn {
+    animation: none;
+  }
+}
 .composer-head .icon-btn {
   display: inline-grid;
 }

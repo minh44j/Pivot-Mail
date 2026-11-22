@@ -2,7 +2,7 @@ import type { Company } from './config.js'
 import type { CompanyId } from './config.js'
 import { dbConfigured, eq, insert, select, update } from './db.js'
 import { exchangeCodeFull, checkClaims } from './google.js'
-import { originOf, redirect } from './http.js'
+import { originOf, redirect, logFail } from './http.js'
 import { currentUser, userOf } from './session.js'
 import type { SessionClaims } from './session.js'
 import { seal, vaultReady } from './vault.js'
@@ -32,7 +32,8 @@ export async function finishConnect(p: { req: Request; host: string; secure: boo
   let me
   try {
     me = p.saved.as ? await userOf(p.saved.as) : await currentUser(p.req)
-  } catch {
+  } catch (e) {
+    logFail('_lib/connect', e)
     return fail('unavailable')
   }
   if (!me || !me.id) return fail('session')
@@ -67,7 +68,8 @@ export async function finishConnect(p: { req: Request; host: string; secure: boo
     await insert('mail_tokens', { account_id: account.id, refresh_token_enc: seal(result.refreshToken, check.email), key_version: 1, scopes: result.scope, granted_by: me.id, revoked_at: null }, 'account_id')
     await insert('mailbox_access', { user_id: me.id, account_id: account.id, granted_by: me.id }, 'user_id,account_id')
     await insert('audit_log', { actor_email: me.email, action: existing ? 'account.reconnected' : 'account.connected', account_id: account.id, detail: { kind: existing?.kind ?? kind, company: p.company.id, otherAddress: check.email !== me.email } })
-  } catch {
+  } catch (e) {
+    logFail('_lib/connect', e)
     return fail('unavailable')
   }
   return redirect(fromApp ? `/desktop-account.html#added=${encodeURIComponent(check.email)}` : `/?connected=${encodeURIComponent(check.email)}`, [p.drop])

@@ -5,7 +5,7 @@ import { signToken, verifyToken } from '../crypto.js'
 import { checkClaims, exchangeCode } from '../google.js'
 import { finishConnect } from '../connect.js'
 import { roleFor, signInUser } from '../users.js'
-import { OAUTH_COOKIE, SESSION_COOKIE, SESSION_SECONDS, hostOf, originOf, redirect } from '../http.js'
+import { OAUTH_COOKIE, SESSION_COOKIE, SESSION_SECONDS, hostOf, originOf, redirect, logFail } from '../http.js'
 
 interface OauthState extends Record<string, unknown> {
   typ?: string
@@ -60,7 +60,8 @@ export async function GET(req: Request): Promise<Response> {
     const result = await signInUser(check.email, company.id, check.name)
     if (!result.ok) return fail(result.reason)
     if (result.user) role = result.user.role
-  } catch {
+  } catch (e) {
+    logFail('_lib/auth/callback', e)
     return fail('unavailable')
   }
   const session = signToken({ typ: 'session', email: check.email, name: check.name, company: company.id, role }, secret, SESSION_SECONDS)

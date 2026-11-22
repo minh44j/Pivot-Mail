@@ -164,6 +164,39 @@ ok('the budget stays under Gmail\'s 250 units a second per mailbox (room for two
   resetBudgets()
 }
 
+// ---- a person's action never waits behind the background sync (2026-11-22: "sending takes too much time").
+// A send costs 100 units; the sync's small requests (5 units) kept the budget near empty, and each time the send woke up a
+// small request had already taken the refill, so the send could wait as long as the sync ran.
+{
+  resetBudgets()
+  let running = true
+  let synced = 0
+  const worker = async () => {
+    while (running) {
+      await spend('S', 5)
+      synced++
+      await new Promise((r) => setTimeout(r, 1))
+    }
+  }
+  const workers = Array.from({ length: 8 }, () => worker())
+  await new Promise((r) => setTimeout(r, 600)) // the sync is busy and the burst is used up
+  const t0 = Date.now()
+  const sendDone = Promise.race([spend('S', 100, true).then(() => Date.now() - t0), new Promise<number>((r) => setTimeout(() => r(-1), 5000))])
+  const ms = await sendDone
+  ok(`send goes ahead of a busy sync (${ms} ms; -1 = still waiting after 5 s)`, ms >= 0 && ms < 300)
+  const before = synced
+  await new Promise((r) => setTimeout(r, 300))
+  ok(`...and the sync then pays for it: it slows down instead of overspending (${synced - before} requests in 0.3 s)`, synced - before <= 3)
+  const t1 = Date.now(); await spend('S', 100, true)
+  ok('even when the budget is already spent ahead, the next action still goes at once', Date.now() - t1 < 50)
+  running = false
+  await Promise.all(workers)
+  slowDown('S', 400)
+  const t2 = Date.now(); await spend('S', 100, true)
+  ok('but "slow down" from Gmail is still obeyed by actions too', Date.now() - t2 >= 350)
+  resetBudgets()
+}
+
 // ---- sending a large message (2026-11-22: Minhaj's 7 MB mail with six company documents always failed).
 // Gmail's /upload address answers without the header browsers need to read a reply from another site, so in the browser
 // every answer from it, success included, arrives as a network error. Stand-in for Gmail + the token address below.

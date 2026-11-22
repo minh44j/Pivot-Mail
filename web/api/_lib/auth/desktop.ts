@@ -1,7 +1,7 @@
 import { protocolFor, sessionSecret } from '../config.js'
 import { setCookie } from '../cookies.js'
 import { sha256b64url, signToken, verifyToken } from '../crypto.js'
-import { SESSION_COOKIE, SESSION_SECONDS, hostOf, json, redirect } from '../http.js'
+import { SESSION_COOKIE, SESSION_SECONDS, hostOf, json, redirect, logFail } from '../http.js'
 import { signInUser } from '../users.js'
 
 interface Ticket extends Record<string, unknown> {
@@ -39,7 +39,8 @@ export async function POST(req: Request): Promise<Response> {
     const r = await signInUser(t.email, t.company, t.name)
     if (!r.ok) return redirect(`/?auth_error=${r.reason}`)
     if (r.user) role = r.user.role
-  } catch {
+  } catch (e) {
+    logFail('_lib/auth/desktop', e)
     return redirect('/?auth_error=unavailable')
   }
   const session = signToken({ typ: 'session', email: t.email, name: t.name, company: t.company, role }, secret, SESSION_SECONDS)

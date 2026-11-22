@@ -1,5 +1,5 @@
 import { dbConfigured, eq, select } from '../_lib/db.js'
-import { hostOf, json } from '../_lib/http.js'
+import { hostOf, json, logFail } from '../_lib/http.js'
 import { callOs, osConfig } from '../_lib/pivotos.js'
 import { currentUser } from '../_lib/session.js'
 
@@ -50,7 +50,8 @@ export async function GET(req: Request): Promise<Response> {
       if (people.length > 0) signatures[a.id] = people
     }
     return json({ signatures, configured: true })
-  } catch {
+  } catch (e) {
+    logFail('accounts/signatures', e)
     return json({ signatures: {}, error: 'unavailable' }, 503)
   }
 }

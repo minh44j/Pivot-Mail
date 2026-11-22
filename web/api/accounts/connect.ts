@@ -3,7 +3,7 @@ import { setCookie } from '../_lib/cookies.js'
 import { randomToken, sha256b64url, signToken, verifyToken } from '../_lib/crypto.js'
 import { dbConfigured } from '../_lib/db.js'
 import { authUrl } from '../_lib/google.js'
-import { OAUTH_COOKIE, hostOf, json, originOf, redirect } from '../_lib/http.js'
+import { OAUTH_COOKIE, hostOf, json, originOf, redirect, logFail } from '../_lib/http.js'
 import { currentUser, sessionOf, userOf } from '../_lib/session.js'
 import type { SessionClaims } from '../_lib/session.js'
 import { vaultReady } from '../_lib/vault.js'
@@ -31,7 +31,8 @@ export async function POST(req: Request): Promise<Response> {
   let me
   try {
     me = s ? await userOf(s) : null
-  } catch {
+  } catch (e) {
+    logFail('accounts/connect', e)
     return json({ error: 'unavailable' }, 503)
   }
   if (!s || !me) return json({ error: 'session' }, 401)
@@ -64,7 +65,8 @@ export async function GET(req: Request): Promise<Response> {
   let me
   try {
     me = passOk ? await userOf(pass.as as SessionClaims) : await currentUser(req)
-  } catch {
+  } catch (e) {
+    logFail('accounts/connect', e)
     return redirect('/?connect_error=unavailable')
   }
   if (passOk && !me) return redirect('/desktop-account.html#error=session')

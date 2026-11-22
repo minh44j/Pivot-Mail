@@ -1,6 +1,6 @@
 import { adminEmails } from '../_lib/config.js'
 import { dbConfigured, eq, insert, remove, select, update } from '../_lib/db.js'
-import { hostOf, json, originOf } from '../_lib/http.js'
+import { hostOf, json, originOf, logFail } from '../_lib/http.js'
 import { roleFor } from '../_lib/users.js'
 import { currentUser } from '../_lib/session.js'
 import type { Me } from '../_lib/session.js'
@@ -49,7 +49,8 @@ async function guard(req: Request, needOrigin: boolean): Promise<{ me: Me } | Re
     const me = await currentUser(req)
     if (!me || !me.id) return err('session', 401)
     return me.role === 'admin' ? { me } : err('forbidden', 403)
-  } catch {
+  } catch (e) {
+    logFail('users/index', e)
     return err('unavailable', 503)
   }
 }
@@ -86,7 +87,8 @@ export async function GET(req: Request): Promise<Response> {
       shared: sharedBoxes.map((b) => ({ id: b.id, email: b.email, name: b.display_name || b.email, company: b.company })),
       you: g.me.id,
     })
-  } catch {
+  } catch (e) {
+    logFail('users/index', e)
     return err('unavailable', 503)
   }
 }
@@ -148,7 +150,8 @@ export async function PATCH(req: Request): Promise<Response> {
       }
     }
     return json({ ok: true })
-  } catch {
+  } catch (e) {
+    logFail('users/index', e)
     return err('unavailable', 503)
   }
 }

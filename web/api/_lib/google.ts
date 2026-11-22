@@ -90,6 +90,8 @@ export async function refreshAccessToken(p: { refreshToken: string; clientId: st
   })
   const data = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number; error?: string }
   if (res.ok && data.access_token) return { ok: true, accessToken: data.access_token, expiresIn: data.expires_in ?? 3600 }
+  // Logged (Google's short error code only, never a token): a mailbox that silently stops working must show up somewhere.
+  console.error(`[pivot-mail] google token refresh failed: ${res.status} ${String(data.error ?? '').slice(0, 60)}`)
   return { ok: false, revoked: data.error === 'invalid_grant' }
 }
 

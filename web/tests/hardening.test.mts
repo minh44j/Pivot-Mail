@@ -3,6 +3,7 @@ import { GET as session } from '../api/_lib/auth/session.js'
 import { POST as logout } from '../api/_lib/auth/logout.js'
 import { PATCH as usersPatch } from '../api/users/index.js'
 import { signToken } from '../api/_lib/crypto.js'
+import { logFail } from '../api/_lib/http.js'
 import { parseCookies } from '../api/_lib/cookies.js'
 
 let pass = 0, fail = 0
@@ -89,6 +90,18 @@ await new Promise((res) => setTimeout(res, 1100))
 await admin({ id: id(3), status: 'disabled' })
 await admin({ id: id(3), status: 'active' })
 ok('turning access off and on again does not bring a session from before back to life', (await who(fresh)) === 401)
+
+// ---- server failures are written to the log, without keys (audit 2026-11-22: every route swallowed its errors silently)
+{
+  const real = console.error
+  const lines: string[] = []
+  console.error = (...a: unknown[]) => void lines.push(a.join(' '))
+  logFail('accounts/token', new Error('fetch failed: Bearer ya29.a0AfB_byC123secretsecret refresh 1//0gSECRETrefreshTOKENvalue and abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP'))
+  console.error = real
+  const l = lines[0] ?? ''
+  ok('a server failure is logged with where it happened', /\[pivot-mail\] accounts\/token failed: Error: fetch failed/.test(l))
+  ok('...and no key or token reaches the log', !/secret|SECRET|ya29\.a0|abcdefghijklmnopqrstuvwxyz/.test(l))
+}
 
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

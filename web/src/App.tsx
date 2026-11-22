@@ -543,7 +543,8 @@ export default function App() {
 
   /** Bring a folder (or the inboxes of all mailboxes, or a case) up to date. A newer choice cancels an older one still running. */
   const syncTarget = useCallback(
-    async (s: FolderSel, force = false) => {
+    /** False when it failed (the banner then explains); "Sync now" reports it too. */
+    async (s: FolderSel, force = false): Promise<boolean> => {
       const accounts = realAccountsRef.current
       const jobs: { accountId: string; t: Target }[] =
         s.kind === 'all' ? accounts.map((x) => ({ accountId: x.id, t: { kind: 'folder', id: s.id } })) : [{ accountId: s.accountId, t: { kind: s.kind, id: s.id } }]
@@ -594,9 +595,11 @@ export default function App() {
             setSim('syncfail')
           }
         }
+        return false
       } finally {
         if (runId.current === my) setSyncing(false)
       }
+      return true
     },
     [ensureLabels, mergeIn, markReconnect, dropGone],
   )
@@ -630,9 +633,19 @@ export default function App() {
   )
 
   const loadAccounts = useCallback(async (early?: Promise<AuthAccount[] | null>) => {
-    const list = await (early ?? fetchAccounts())
+    let list = await (early ?? fetchAccounts())
     setAccountsTried(true)
-    if (list === null) return
+    // A brief server or network hiccup used to leave the app empty, with no mailboxes and no message: try again in the
+    // background (the app shows meanwhile), then say so.
+    for (const pause of [1500, 4000, 10_000]) {
+      if (list !== null) break
+      await new Promise((r) => window.setTimeout(r, pause))
+      list = await fetchAccounts()
+    }
+    if (list === null) {
+      showToast('Mailboxes did not load. Refresh to try again.')
+      return
+    }
     realAccountsRef.current = list
     setRealAccounts(list)
     setSel((s) => (list.some((a) => a.id === s.accountId) ? s : list[0] ? { accountId: list[0].id, kind: 'folder', id: 'inbox' } : s))
@@ -646,7 +659,7 @@ export default function App() {
         else void getProfile(a.id).then((p) => setHistory(a.id, p.historyId)).catch(() => undefined)
       })
     }
-  }, [checkMailbox, ensureLabels, setHistory, addStored])
+  }, [checkMailbox, ensureLabels, setHistory, addStored, showToast])
   useEffect(() => {
     if (!desktop() || !authUser) return
     let last = 0
@@ -1024,9 +1037,17 @@ export default function App() {
   useEffect(() => {
     if (!realMode || !realIds) return
     let live = true
-    void fetchOsSignatures().then((got) => {
-      if (live && Object.keys(got).length > 0) setOsSigs(got)
-    })
+    // Tried again a few times: one failure at start used to mean mail without the official signature all day, unnoticed.
+    void (async () => {
+      for (const pause of [0, 3000, 15_000, 60_000]) {
+        if (pause) await new Promise((r) => window.setTimeout(r, pause))
+        if (!live) return
+        const got = await fetchOsSignatures()
+        if (got === null) continue
+        if (live && Object.keys(got).length > 0) setOsSigs(got)
+        return
+      }
+    })()
     return () => {
       live = false
     }
@@ -1280,6 +1301,7 @@ export default function App() {
             cap: 100,
             // Results already on this computer are shown as they are; only mail not seen before is fetched.
             refreshNewest: 0,
+            now: true,
             onIds: (all) => {
               for (const id of all) if (known.has(id)) ids.add(id)
               // Nothing known yet: keep the quick local results on screen until Gmail's first matches arrive (no blank list).
@@ -1409,7 +1431,7 @@ export default function App() {
   )
 
   const [when, setWhen] = useState<{ mode: WhenMode; rowIds: string[] } | null>(null)
-  const [undoDelay, setUndoDelay] = usePersisted<string>('pm.undosend', '10', (v) => ['0', '5', '10', '20', '30'].includes(v))
+  const [undoDelay, setUndoDelay] = usePersisted<string>('pm.undosend', '5', (v) => ['0', '5', '10', '20', '30'].includes(v))
   const [pendingSend, setPendingSend] = useState<{ d: ComposeInit; id: string } | null>(null)
   const sendTimer = useRef<number | undefined>(undefined)
   const parseAddrs = (s: string): Person[] =>
@@ -1447,6 +1469,8 @@ export default function App() {
   const outgoing = async (d: ComposeInit, acc: AuthAccount, lenient = false, messageId?: string): Promise<string> => {
     const files: OutAttachment[] = []
     let total = 0
+    // Files forwarded from another mail are fetched from Gmail all at once, not one after another.
+    await Promise.all(d.attachments.filter((at) => !(at.file instanceof File) && at.source).map((at) => ensureBytes(at).catch(() => undefined)))
     for (const at of d.attachments) {
       let bytes: Uint8Array
       if (at.file instanceof File) bytes = new Uint8Array(await at.file.arrayBuffer())
@@ -1504,15 +1528,33 @@ export default function App() {
       if (!found) throw e
       sent = found
     }
-    if (d.gmailDraftId) void deleteDraft(acc.id, d.gmailDraftId).catch(() => undefined)
+    // The Gmail draft it was written from is removed (a few tries): left behind, it looks unsent and could be sent twice.
+    if (d.gmailDraftId) void removeDraftAfterSend(acc.id, d.gmailDraftId)
     mergeIn([fromCompose(d, `${acc.id}:${sent.id}`, 'sent', { threadId: sent.threadId, loaded: true })])
     lastSynced.current.delete(`${acc.id}/folder/sent`)
   }
 
-  /** Keep what was typed as a Gmail draft (created the first time, updated after that). */
+  const removeDraftAfterSend = async (accountId: string, draftId: string) => {
+    for (const pause of [0, 2000, 6000]) {
+      if (pause) await new Promise((r) => window.setTimeout(r, pause))
+      try {
+        await deleteDraft(accountId, draftId)
+        return
+      } catch (e) {
+        if (e instanceof GmailError && e.status === 404) return // already gone
+      }
+    }
+    showToast('Sent. The old draft is still in Drafts — delete it.')
+  }
+
+  /** Keep what was typed as a Gmail draft (created the first time, updated after that). If Gmail cannot keep it, the message opens again: closing never loses text. */
   const saveDraftReal = async (d: ComposeInit, oldId?: string) => {
     const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
-    if (!acc) return
+    if (!acc) {
+      showToast('Draft not saved. Your message is open again.')
+      openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
+      return
+    }
     try {
       const raw = await outgoing(d, acc, true)
       const saved = d.gmailDraftId ? await updateDraft(acc.id, d.gmailDraftId, raw, d.reply?.threadId) : await createDraft(acc.id, raw, d.reply?.threadId)
@@ -1520,7 +1562,8 @@ export default function App() {
       mergeIn([fromCompose(d, `${acc.id}:${saved.message.id}`, 'drafts', { threadId: saved.message.threadId, loaded: true, gmailDraftId: saved.id })])
       showToast('Draft saved in Gmail')
     } catch {
-      showToast('Could not save the draft to Gmail.')
+      showToast('Draft not saved. Your message is open again.')
+      openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
     }
   }
 
@@ -1553,6 +1596,8 @@ export default function App() {
     }
     if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
     setCompose(null)
+    // Forwarded files are fetched during the undo wait, so the send itself does not wait for them.
+    if (realMode) for (const at of d.attachments) if (at.source && !(at.file instanceof File)) void ensureBytes(at).catch(() => undefined)
     const delay = Number(undoDelay)
     const id = `s-${stamp()}`
     if (delay === 0) {
@@ -1922,7 +1967,11 @@ export default function App() {
   const syncNow = () => {
     if (!online || syncing) return
     if (realMode) {
-      void Promise.allSettled([syncTarget(sel, true), pollAll()]).then(() => showToast('Synced'))
+      // Says "Synced" only when it did (the automatic sync waits for 3 failures before it speaks; a button press answers now).
+      const before = failStreak.current
+      void Promise.allSettled([syncTarget(sel, true), pollAll()]).then(([folder, poll]) =>
+        showToast(folder.status === 'rejected' || folder.value === false || poll.status === 'rejected' || failStreak.current > before ? 'Sync failed. Check the connection and try again.' : 'Synced'),
+      )
       return
     }
     setSyncing(true)
@@ -2088,8 +2137,12 @@ export default function App() {
       finish()
     } catch (e) {
       restoreLocal(before)
+      // Some of a many-conversation change may have gone through before one failed. The list is read again from Gmail
+      // (and the "just changed" guard lifted), so what is shown is what Gmail has, not everything put back (audit 2026-11-22).
+      for (const i of mids) recentlyChanged.current.delete(i)
+      if (threads.length > 1) void syncTarget(sel, true).catch(() => undefined)
       if (e instanceof GmailError && e.status === SESSION_ENDED) setSim('expired')
-      else showToast('Gmail did not accept the change, so it was put back. Please try again.')
+      else showToast(threads.length > 1 ? 'Some changes did not go through. List refreshed from Gmail.' : 'Gmail did not accept the change, so it was put back. Please try again.')
     }
   }
 
@@ -2626,7 +2679,14 @@ export default function App() {
         onSignOutAll={
           authUser
             ? () => {
-                void forgetPersonalData().then(() => signOut(true)).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null); restartClean() })
+                // Everywhere: the other devices are signed out first; if that fails, nothing is cleared and the person is told.
+                void signOut(true).then((ok) => {
+                  if (!ok) {
+                    showToast('Could not sign out other devices. Try again.')
+                    return
+                  }
+                  void forgetPersonalData().then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null); restartClean() })
+                })
                 setEntered(false)
               }
             : undefined
@@ -2820,7 +2880,9 @@ export default function App() {
             if (realMode) {
               if (discarded) {
                 if (id) setMessages((prev) => prev.filter((x) => x.id !== id))
-                if (gd) void deleteDraft(compose?.accountId ?? '', gd).catch(() => undefined)
+                if (gd) void deleteDraft(compose?.accountId ?? '', gd).catch((e) => {
+                  if (!(e instanceof GmailError && e.status === 404)) showToast('Draft not deleted in Gmail. Delete it from Drafts.')
+                })
               } else if (draft) void saveDraftReal(draft, id)
             } else if (discarded && id) setMessages((prev) => prev.filter((x) => x.id !== id))
             else if (draft) upsert(fromCompose(draft, id ?? `d-${stamp()}`, 'drafts'))

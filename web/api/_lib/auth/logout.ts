@@ -1,7 +1,7 @@
 import { protocolFor } from '../config.js'
 import { clearCookie } from '../cookies.js'
 import { dbConfigured, eq, insert, update } from '../db.js'
-import { SESSION_COOKIE, hostOf, json, originOf } from '../http.js'
+import { SESSION_COOKIE, hostOf, json, originOf, logFail } from '../http.js'
 import { currentUser } from '../session.js'
 
 /**
@@ -23,7 +23,8 @@ export async function POST(req: Request): Promise<Response> {
       if (!me || !me.id) return json({ ok: false, error: 'session' }, 401, drop)
       await update('app_users', `id=${eq(me.id)}`, { sessions_valid_after: new Date().toISOString() })
       await insert('audit_log', { actor_email: me.email, action: 'session.signout_all', detail: {} })
-    } catch {
+    } catch (e) {
+      logFail('_lib/auth/logout', e)
       return json({ ok: false, error: 'unavailable' }, 503)
     }
   }

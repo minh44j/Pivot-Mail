@@ -1,5 +1,5 @@
 import { dbConfigured, eq, select } from '../_lib/db.js'
-import { hostOf, json } from '../_lib/http.js'
+import { hostOf, json, logFail } from '../_lib/http.js'
 import { currentUser } from '../_lib/session.js'
 
 interface Joined {
@@ -18,7 +18,8 @@ export async function GET(req: Request): Promise<Response> {
       .filter((a): a is NonNullable<Joined['mail_accounts']> => a !== null)
       .map((a) => ({ id: a.id, email: a.email, name: a.display_name || a.email, company: a.company, kind: a.kind, status: a.status, syncWindowDays: a.sync_window_days }))
     return json({ accounts, configured: true })
-  } catch {
+  } catch (e) {
+    logFail('accounts/index', e)
     return json({ accounts: [], error: 'unavailable' }, 503)
   }
 }
