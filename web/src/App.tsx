@@ -10,7 +10,7 @@ import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
 import { BrandLogo } from './components/BrandLogo'
 import { desktop } from './desktop'
-import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchOsSignatures, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
+import { CONNECT_ERRORS, connectPending, connectSettled, disconnectAccount, fetchAccounts, fetchOsSignatures, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
 import { CasePanel } from './components/CasePanel'
@@ -641,14 +641,18 @@ export default function App() {
     if (!desktop() || !authUser) return
     let last = 0
     const onFocus = () => {
-      if (Date.now() - last < 10_000) return
+      // Back from "Add account" in the browser: always look, even right after another focus.
+      if (Date.now() - last < 10_000 && !connectPending()) return
       last = Date.now()
       // Only a real change (a mailbox added or removed in the browser) reloads the mailboxes.
       void fetchAccounts().then((list) => {
         if (!list) return
         const was = realAccountsRef.current.map((x) => `${x.id}:${x.status}`).sort().join()
         const now = list.map((x) => `${x.id}:${x.status}`).sort().join()
-        if (was !== now) void loadAccounts()
+        if (was !== now) {
+          connectSettled()
+          void loadAccounts()
+        }
       })
     }
     window.addEventListener('focus', onFocus)

@@ -115,10 +115,18 @@ export const connectUrl = (company: 'scl' | 'tmc', kind: 'personal' | 'shared'):
  * Management showed a pivotscl.com Google page). So the app's page first asks for a two-minute pass carrying its sign-in and
  * opens the address with the pass. In a browser tab the ordinary link is used (that browser is the one signed in).
  */
+let connectStartedAt = 0
+/** "Add account" was started from this window in the last 15 minutes: the app reloads its mailboxes when it comes back. */
+export const connectPending = (): boolean => Date.now() - connectStartedAt < 15 * 60_000
+export const connectSettled = (): void => {
+  connectStartedAt = 0
+}
+
 export function connectClick(company: 'scl' | 'tmc', kind: 'personal' | 'shared') {
   return (e: { preventDefault(): void }) => {
     if (typeof window === 'undefined' || !(window as unknown as { pivotDesktop?: unknown }).pivotDesktop) return
     e.preventDefault()
+    connectStartedAt = Date.now()
     void (async () => {
       let to = connectUrl(company, kind)
       try {

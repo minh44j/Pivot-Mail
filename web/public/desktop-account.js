@@ -22,7 +22,13 @@
   var msg = document.getElementById('msg')
   if (added) {
     var email = decodeURIComponent(added[1])
-    if (/^[^\s<>@]+@[^\s<>@]+$/.test(email)) msg.textContent = email + ' is added. Go back to the Pivot Mail app: it shows up there in a moment.'
+    if (/^[^\s<>@]+@[^\s<>@]+$/.test(email)) {
+      msg.textContent = email + ' is added. Opening Pivot Mail…'
+      // Straight back to the app, as after signing in (Minhaj 2026-11-22: the browser stayed on this page and the app did not
+      // come forward). The app brings its window to the front and reloads its mailboxes. The button stays for a browser that
+      // asks first ("Open Pivot Mail?") or blocks the switch.
+      location.href = 'pivotmail://show'
+    }
   } else {
     title.textContent = 'The mailbox was not added'
     msg.textContent = (err && TEXT[err[1]]) || 'Something went wrong. Please try again from the Pivot Mail app.'

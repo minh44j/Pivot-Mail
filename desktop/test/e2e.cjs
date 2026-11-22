@@ -114,7 +114,9 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   // does not have to be signed in (regression 2026-11-19: Travel Management showed a pivotscl.com Google page).
   const nOpened = (await opened()).length
   await win.goto(BASE + '/'); await win.waitForSelector('.wl-go', { timeout: 15000 })
-  await win.locator('.wl-go').click(); await win.waitForTimeout(1500)
+  // Clicked from inside the page: the app blocks the page change on purpose (the link opens in the browser), and a
+  // Playwright click would wait for that page change forever (it hung on the Mac and Linux runs, 2026-11-22).
+  await win.evaluate(() => document.querySelector('.wl-go').click()); await win.waitForTimeout(1500)
   const viaButton = (await opened()).slice(nOpened).find((u) => u.includes('/api/accounts/connect?')) || ''
   ok('D71 "Connect" in the app opens the browser with a pass for that company (no separate browser sign-in needed)', /\/api\/accounts\/connect\?company=scl&kind=personal&t=[^&]{40,}/.test(viaButton), viaButton.slice(0, 120))
 
@@ -349,6 +351,16 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close()); await new Promise((r) => setTimeout(r, 500))
   const st = await app.evaluate(({ BrowserWindow }) => ({ n: BrowserWindow.getAllWindows().length, visible: BrowserWindow.getAllWindows()[0] && BrowserWindow.getAllWindows()[0].isVisible() }))
   ok('D14 closing the window keeps Pivot Mail running (hidden, still checking mail)', st.n === 1 && st.visible === false)
+  // "Add account" finished in the browser: its result page opens pivotmail://show, and the hidden app comes back to the front
+  // (Minhaj 2026-11-22: the browser stayed on the page and the app did not come forward). Windows delivers the link to the
+  // running app as a second start; the Mac as an open-url event.
+  const nDialogs = (await app.evaluate(() => global.__dialogs.length))
+  if (process.platform === 'darwin') await app.evaluate(({ app }) => app.emit('open-url', { preventDefault() {} }, 'pivotmail://show'))
+  else await app.evaluate(({ app }) => app.emit('second-instance', {}, ['pm', 'pivotmail://show'], ''))
+  await new Promise((r) => setTimeout(r, 600))
+  const shown = await app.evaluate(({ BrowserWindow }) => ({ visible: BrowserWindow.getAllWindows()[0].isVisible(), dialogs: global.__dialogs.length }))
+  ok('D73 the "mailbox added" page brings the app back to the front (no warning box)', shown.visible && shown.dialogs === nDialogs, JSON.stringify(shown))
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide())
   await app.evaluate(({ app }) => { app.emit('before-quit'); app.quit() }).catch(() => {})
   await app.close().catch(() => {})
 
