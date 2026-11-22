@@ -78,7 +78,7 @@ import { watchForUpdates } from './update'
 import { rememberCopiedEmail } from './emailClipboard'
 import { SMART, smartMatches } from './smart'
 import type { SmartKey } from './smart'
-import { GMAIL_SCOPE, SEARCH_SCOPES, defaultSearchIn } from './searchScope'
+import { GMAIL_SCOPE, SEARCH_SCOPES, defaultSearchIn, isNamedScope } from './searchScope'
 import type { SearchIn } from './searchScope'
 import { inOrder, moveBefore } from './accountOrder'
 import { FolderJump } from './components/FolderJump'
@@ -965,7 +965,7 @@ export default function App() {
   const selKey = `${sel.accountId}|${sel.kind}|${sel.id}`
   // Where a search looks: starts as the open folder, changed under the search box; a new folder starts over.
   const [scopePick, setScopePick] = useState<{ key: string; v: SearchIn } | null>(null)
-  const searchIn: SearchIn = scopePick?.key === selKey ? scopePick.v : defaultSearchIn(sel)
+  const searchIn: SearchIn = scopePick?.key === selKey ? scopePick.v : defaultSearchIn()
   const setSearchIn = (v: SearchIn) => setScopePick({ key: selKey, v })
   /** Is this message in the place the search looks (the open folder, or the scope chosen under the search box)? */
   const inSearchScope = useCallback(
@@ -2562,7 +2562,7 @@ export default function App() {
         saved={saved}
         searchIn={searchIn}
         onSearchIn={setSearchIn}
-        hereLabel={defaultSearchIn(sel) === 'here' ? title : null}
+        hereLabel={isNamedScope(sel) ? null : title}
         onCommit={commitSearch}
         onSave={(q) => setSaved([q, ...saved.filter((x) => x !== q)].slice(0, 12))}
         onRemoveSaved={(q) => setSaved(saved.filter((x) => x !== q))}
@@ -2683,7 +2683,8 @@ export default function App() {
         <MessageList
           chips={queryChips}
           onRemoveChip={removeChip}
-          scopeChip={query.trim() !== '' && searchIn !== defaultSearchIn(sel) ? (searchIn === 'all' ? 'All folders' : searchIn === 'here' ? title : `In ${SEARCH_SCOPES.find((o) => o.id === searchIn)?.label ?? ''}`) : null}
+          scopeChip={query.trim() !== '' ? (searchIn === 'all' ? 'All folders' : searchIn === 'here' ? title : `In ${SEARCH_SCOPES.find((o) => o.id === searchIn)?.label ?? ''}`) : null}
+          showFolder={query.trim() !== '' && searchIn === 'all'}
           rows={rows}
           selectedId={selectedRow?.msg.id ?? selectedId}
           density={density}
@@ -2691,7 +2692,7 @@ export default function App() {
           smartCounts={smartCounts}
           showSmart={showSmart}
           onToggleSmart={toggleSmart}
-          title={title}
+          title={query.trim() !== '' ? 'Results' : title}
           subtitle={sel.kind === 'all' ? `${accountList.length} mailboxes` : (accountList.find((a) => a.id === accountId)?.email ?? '')}
           accountNames={sel.kind === 'all' ? Object.fromEntries(accountList.map((x) => [x.id, x.name])) : undefined}
           picked={pickedRows}

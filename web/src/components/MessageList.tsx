@@ -6,12 +6,15 @@ import { SMART } from '../smart'
 import type { SmartKey } from '../smart'
 import { fmtWhen } from '../when'
 import { Icon } from './Icon'
+import { FOLDER_TAG } from '../searchScope'
 
 interface Props {
   chips: string[]
   onRemoveChip: (tok: string) => void
   /** While searching somewhere other than the open folder: where ("Sent", "All folders") */
   scopeChip: string | null
+  /** Results from all folders: each row names its folder ("Sent"), as Outlook does */
+  showFolder?: boolean
   rows: Row[]
   selectedId: string | null
   density: Density
@@ -56,7 +59,7 @@ function refTag(subject: string, client?: (ref: string) => string | undefined) {
 type Item = { type: 'head'; label: string; key: string } | { type: 'row'; row: Row; key: string }
 
 /** Minimal windowing: only rows near the viewport are in the DOM. */
-export function MessageList({ chips, onRemoveChip, scopeChip, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, refClient, sample = true, onOpen, actions, sync, onSync }: Props) {
+export function MessageList({ chips, onRemoveChip, scopeChip, showFolder, rows, selectedId, density, smart, smartCounts, showSmart, onToggleSmart, title, subtitle, picked, error, onRowClick, onToggle, onBack, onContext, onRowAction, emptyText, accountNames, refClient, sample = true, onOpen, actions, sync, onSync }: Props) {
   const { colours } = useSettings()
   const scroller = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
@@ -256,6 +259,7 @@ export function MessageList({ chips, onRemoveChip, scopeChip, rows, selectedId, 
                       <span className="subject">{msg.subject}</span>
                       {density === 'compact' && refTag(msg.subject, refClient)}
                       {accountNames && <span className="pill acc">{accountNames[msg.accountId]}</span>}
+                      {showFolder && FOLDER_TAG[msg.folder] && <span className={`pill folder-tag f-${msg.folder}`}>{FOLDER_TAG[msg.folder]}</span>}
                       {(msg.attachments.length > 0 || msg.hasAttachments) && (
                         <span className="icon-inline" role="img" aria-label="Has attachments">
                           <Icon name="clip" size={14} />

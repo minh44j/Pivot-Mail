@@ -3879,6 +3879,15 @@ li.slot-end.slot {
 .folder.all-inboxes + .mailbox {
   margin-top: 2px;
 }
+.pill.folder-tag {
+  flex: none;
+  background: var(--fill-2);
+  color: var(--label-2);
+}
+.pill.folder-tag.f-sent {
+  background: color-mix(in srgb, var(--ic-green) 14%, var(--content));
+  color: var(--ink-green);
+}
 .pill.acc {
   background: color-mix(in srgb, var(--ic-teal) 14%, var(--content));
   color: var(--ink-teal);
