@@ -72,6 +72,8 @@ function safeStyle(style: string, mode: StyleMode = 'read', images = false): str
     if (i < 0) continue
     const prop = decl.slice(0, i).trim().toLowerCase()
     let value = decl.slice(i + 1).trim()
+    // "Full window height" (100vh) in the reading frame means the frame's own height, which grows with each measurement: off.
+    if (mode === 'frame') value = value.replace(/\b\d+(?:\.\d+)?(?:d|s|l)?vh\b/gi, 'auto')
     // "!important" is checked without, then put back (mobile layouts in newsletters depend on it).
     const important = frame && /!\s*important\s*$/i.test(value)
     if (important) value = value.replace(/!\s*important\s*$/i, '').trim()
@@ -187,10 +189,24 @@ export interface CleanOptions {
 const TOKEN = /^[A-Za-z_-][\w-]{0,63}$/
 
 const MAX = 400_000
+/** Pictures carried inside one mail, all together (as text) */
+const MAX_PICTURES = 40_000_000
 
 export function sanitizeEmailHtml(input: string, allowImages: boolean, opts: CleanOptions = {}): CleanHtml {
   const frame = opts.frame === true
-  const doc = new DOMParser().parseFromString(`<body>${input.slice(0, MAX)}</body>`, 'text/html')
+  // Pictures pasted into a mail (a screenshot) are carried inside it as text, often more than a megabyte each. They are set
+  // aside before the size limit, which is for the mail's text and layout: cutting through a picture left the whole message
+  // blank (real case: a reply with a pasted screenshot, 2026-11-22).
+  const pictures: string[] = []
+  const mark = `pm-pic-${Math.random().toString(36).slice(2, 10)}:`
+  let room = MAX_PICTURES
+  const lifted = input.replace(/(\ssrc\s*=\s*["']?)(data:image\/(?:png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+)/gi, (all, pre: string, uri: string) => {
+    if (uri.length > room) return all
+    room -= uri.length
+    pictures.push(uri.replace(/\s+/g, ''))
+    return `${pre}${mark}${pictures.length - 1}`
+  })
+  const doc = new DOMParser().parseFromString(`<body>${lifted.slice(0, MAX)}</body>`, 'text/html')
   let blocked = 0
   // Style blocks can sit in the head or anywhere in the body; collected before they are removed below.
   const css = frame ? safeSheet(Array.from(doc.querySelectorAll('style')).map((s) => s.textContent ?? ''), allowImages) : ''
@@ -221,7 +237,10 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean, opts: Cle
       }
 
       if (tag === 'IMG') {
-        const src = el.getAttribute('src') ?? ''
+        const raw = el.getAttribute('src') ?? ''
+        const held = raw.startsWith(mark) ? pictures[Number(raw.slice(mark.length))] : undefined
+        const src = held ?? raw
+        if (held) el.setAttribute('src', held)
         const alt = el.getAttribute('alt') ?? ''
         const embedded = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)
         const remote = /^https:\/\//i.test(src)

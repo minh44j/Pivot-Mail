@@ -28,11 +28,10 @@ function HtmlFrame({ html, css = '' }: { html: string; css?: string }) {
   const [h, setH] = useState(60)
   // Mail is written for a white page. In the dark theme it is shown on a white sheet (with some room around the text) rather than guessed into dark colours.
   const dark = document.documentElement.dataset.theme === 'dark'
-  // "Full window height" in a mail (100vh) would mean the frame's own height and make it grow with every measurement: off.
-  const noVh = (s: string) => s.replace(/\b\d+(?:\.\d+)?(?:d|s|l)?vh\b/gi, 'auto')
-  const safe = noVh(html)
+  // "Full window height" (100vh) is turned off by the cleaner, in style values only (never inside a picture's data).
+  const safe = html
   // The mail's own (cleaned) style sheet comes after the base look so it wins, as in Gmail; the white sheet in dark mode last.
-  const own = css ? `<style>${noVh(css)}</style>` : ''
+  const own = css ? `<style>${css}</style>` : ''
   const sheet = dark ? '<style>html{background:#fff!important}body{padding:12px 14px!important}</style>' : ''
   const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}</style>${own}${sheet}</head><body><div id="pm-mail">${safe}</div></body></html>`
 
