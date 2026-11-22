@@ -26,7 +26,7 @@ import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
 import { fetchChanges } from './gmail/history'
 import type { Changes } from './gmail/history'
 import { applyLabelIds } from './gmail/map'
-import { createLabel, createDraft, deleteDraft, deleteLabel, listDrafts, listPeople, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
+import { createLabel, createDraft, deleteDraft, deleteLabel, getRawMessage, listDrafts, listPeople, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
 import { buildMime, extractInlineImages, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
 import { inlineImageUri } from './gmail/inline'
 import type { OutAttachment } from './gmail/compose'
@@ -1474,6 +1474,7 @@ export default function App() {
         inReplyTo: d.reply?.messageId || undefined,
         references: d.reply?.references || undefined,
         messageId,
+        importance: d.importance,
       }),
     )
   }
@@ -1861,6 +1862,34 @@ export default function App() {
     openCompose({ accountId: t.accountId, subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`, body, attachments: t.attachments })
   }
 
+  /**
+   * Forward as attachment (Minhaj 2026-11-22): the original mail itself, exactly as received (headers, layout, attachments),
+   * goes along as a .eml file; the person receiving it opens it as a mail.
+   */
+  const forwardAsAttachment = async (target?: Message) => {
+    const t = target ?? last
+    if (!t) return
+    let bytes: Uint8Array
+    try {
+      if (realMode) bytes = await getRawMessage(t.accountId, gid(t))
+      else
+        bytes = new TextEncoder().encode(
+          buildMime({ from: t.from, to: t.to, cc: t.cc ?? [], bcc: [], subject: t.subject, html: t.html ?? textToHtml(t.body), text: t.body, attachments: [], date: new Date(t.date) }),
+        )
+    } catch {
+      showToast('Could not get this mail from Gmail. Try again.')
+      return
+    }
+    const name = `${(t.subject || 'Message').replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim().slice(0, 80) || 'Message'}.eml`
+    const file = new File([bytes as BlobPart], name, { type: 'message/rfc822' })
+    openCompose({
+      accountId: t.accountId,
+      subject: /^fwd?:/i.test(t.subject) ? t.subject : `Fwd: ${t.subject}`,
+      body: '',
+      attachments: [{ id: `fwd-${stamp()}`, name, size: file.size, mime: 'message/rfc822', file }],
+    })
+  }
+
   const retry = () => {
     if (retrying) return
     if (realMode) {
@@ -2203,6 +2232,7 @@ export default function App() {
         { type: 'item', label: 'Reply', icon: 'reply', tone: 'blue', onSelect: () => reply(false, m) },
         { type: 'item', label: 'Reply all', icon: 'replyAll', tone: 'blue', onSelect: () => reply(true, m) },
         { type: 'item', label: 'Forward', icon: 'forward', tone: 'blue', onSelect: () => forward(m) },
+        { type: 'item', label: 'Forward as attachment', icon: 'clip', tone: 'blue', onSelect: () => void forwardAsAttachment(m) },
         { type: 'item', label: 'Copy email', icon: 'copy', tone: 'purple', onSelect: () => void copyEmail(m) },
         { type: 'item', label: 'Copy subject', icon: 'copy', onSelect: () => void platform.copyText(m.subject).then((ok) => showToast(ok ? 'Subject copied' : 'Copy was blocked by the browser')) },
         { type: 'item', label: 'Print or save as PDF…', icon: 'download', tone: 'teal', onSelect: () => printThread(m) },

@@ -106,4 +106,6 @@ export interface ComposeInit {
   gmailDraftId?: string
   /** Real mail: reply headers, so the answer joins the conversation */
   reply?: { threadId: string; messageId: string; references: string }
+  /** High or Low importance (default: normal) */
+  importance?: 'high' | 'low'
 }

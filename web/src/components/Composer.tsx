@@ -1,6 +1,5 @@
 import { combo } from '../shortcuts'
 import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import type { Account, Attachment, ComposeInit } from '../types'
 import { applyTemplate } from '../data/templates'
 import { useSettings } from '../settings'
@@ -17,10 +16,12 @@ import { AttachmentPreview } from './AttachmentPreview'
 import { ensureBytes, mockBlob, mockBytes } from '../data/mockfile'
 import { desktop } from '../desktop'
 import { RecipientField } from './RecipientField'
+import { ComposeToolbar } from './ComposeToolbar'
 import { Icon } from './Icon'
 import { WhenDialog } from './WhenDialog'
-import type { IconName } from './Icon'
 import { filesFromPaste, readableFiles } from '../pasteFiles'
+import { cleanPastedHtml, isClipboardPicture, pictureHtml } from '../compose/paste'
+import { saysAttached } from '../compose/attachReminder'
 
 interface Props {
   init: ComposeInit
@@ -90,21 +91,6 @@ function sigInBody(html: string, accounts: Account[], accountId: string): string
 /** Files cannot be stored in the saved draft; only their names and sizes are. */
 const forStorage = (d: ComposeInit): ComposeInit => ({ ...d, attachments: d.attachments.map(({ file: _file, ...a }) => a) })
 
-function FBtn(props: { label: string; active?: boolean; onClick: () => void; icon?: IconName; children?: ReactNode }) {
-  return (
-    <button
-      type="button"
-      className={`fbtn${props.active ? ' on' : ''}`}
-      aria-label={props.label}
-      aria-pressed={props.active}
-      onMouseDown={(e) => e.preventDefault()}
-      onClick={props.onClick}
-    >
-      {props.icon ? <Icon name={props.icon} size={16} /> : props.children}
-    </button>
-  )
-}
-
 export function Composer({ init, accounts, offline, noSchedule, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
@@ -117,7 +103,6 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   const [expanded, setExpanded] = useState(() => readerBox() !== null)
   const [showCc, setShowCc] = useState(Boolean(init.cc.trim()))
   const [showBcc, setShowBcc] = useState(Boolean(init.bcc.trim()))
-  const [fmt, setFmt] = useState({ bold: false, italic: false, underline: false, ul: false, ol: false })
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkUrl, setLinkUrl] = useState('')
   const first = useRef(true)
@@ -131,6 +116,24 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   const sync = () => {
     const el = ed.current
     if (el) setD((p) => ({ ...p, body: el.innerHTML }))
+  }
+
+  /** Pictures put into the text where the caret is (pasted screenshots, Insert picture). Very large ones are attached instead. */
+  const insertPictures = async (files: File[]) => {
+    const big = files.filter((f) => f.size > 8 * 1024 * 1024)
+    for (const f of files.filter((x) => !big.includes(x))) {
+      try {
+        ed.current?.focus()
+        document.execCommand('insertHTML', false, await pictureHtml(f))
+      } catch {
+        big.push(f)
+      }
+    }
+    if (big.length > 0) {
+      void attachFiles(big)
+      onToast(big.length === 1 ? 'Picture too large for the text. Attached.' : 'Pictures too large for the text. Attached.')
+    }
+    sync()
   }
 
   // ---- @-mentions, as in Outlook (Minhaj 2026-11-22): type @ and part of a name, pick the person; the mail shows "@Name" as a
@@ -187,25 +190,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     el.focus()
     document.execCommand(cmd, false, value)
     sync()
-    readFormat()
   }
-
-  const readFormat = () => {
-    const sel = document.getSelection()
-    if (!sel || !ed.current || !sel.anchorNode || !ed.current.contains(sel.anchorNode)) return
-    setFmt({
-      bold: document.queryCommandState('bold'),
-      italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline'),
-      ul: document.queryCommandState('insertUnorderedList'),
-      ol: document.queryCommandState('insertOrderedList'),
-    })
-  }
-
-  useEffect(() => {
-    document.addEventListener('selectionchange', readFormat)
-    return () => document.removeEventListener('selectionchange', readFormat)
-  }, [])
 
   // Replies and forwards: put the caret at the top of the message.
   useEffect(() => {
@@ -227,7 +212,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     if (!raw) return
     try {
       const parsed = JSON.parse(raw) as ComposeInit
-      const body = sanitizeHtml(parsed.body ?? '')
+      const body = sanitizeHtml(parsed.body ?? '', { rich: true })
       if (ed.current) ed.current.innerHTML = body
       setD({ ...parsed, to: asChips(parsed.to), cc: asChips(parsed.cc), bcc: asChips(parsed.bcc), body })
       setShowCc(Boolean(parsed.cc?.trim()))
@@ -425,7 +410,9 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   const sigNow = sigInBody(d.body, accounts, d.accountId)
   const mySigs = accounts.find((a) => a.id === d.accountId)?.signatures ?? []
 
-  const send = (sendAt?: string) => {
+  // "Forgot the attachment?": asked once per send; the answer is Attach files or Send anyway.
+  const [remind, setRemind] = useState<{ sendAt?: string } | null>(null)
+  const send = (sendAt?: string, attachmentChecked = false) => {
     if (!canSend) {
       onToast('Add at least one recipient')
       return
@@ -433,6 +420,10 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     const bad = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => t.trim()).filter(Boolean).filter((t) => !EMAIL_RE.test(bareAddress(t)))
     if (bad.length > 0) {
       onToast(`Fix the highlighted address: ${bad[0]}`)
+      return
+    }
+    if (!attachmentChecked && d.attachments.length === 0 && saysAttached(d.subject, d.body)) {
+      setRemind({ sendAt })
       return
     }
     if (offline) {
@@ -551,6 +542,18 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             <Icon name="clock" size={16} tone="orange" /> Send later
           </button>
         )}
+        <label className={`fchip imp-pick${d.importance ? ` ${d.importance}` : ''}`} title="Importance">
+          <Icon name="importance" size={15} tone={d.importance === 'high' ? 'red' : d.importance === 'low' ? 'blue' : undefined} />
+          <select
+            aria-label="Importance"
+            value={d.importance ?? ''}
+            onChange={(e) => setD((p) => ({ ...p, importance: e.target.value === 'high' || e.target.value === 'low' ? e.target.value : undefined }))}
+          >
+            <option value="">Normal importance</option>
+            <option value="high">High importance</option>
+            <option value="low">Low importance</option>
+          </select>
+        </label>
         <span className="grow" />
         <button type="button" onClick={discard} aria-label="Discard draft">
           <Icon name="trash" size={16} tone="red" />
@@ -614,21 +617,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
         )}
 
         <div className="format-bar" role="toolbar" aria-label="Formatting">
-          <FBtn label={`Bold (${combo('B')})`} active={fmt.bold} onClick={() => exec('bold')}>
-            <b>B</b>
-          </FBtn>
-          <FBtn label={`Italic (${combo('I')})`} active={fmt.italic} onClick={() => exec('italic')}>
-            <i>I</i>
-          </FBtn>
-          <FBtn label={`Underline (${combo('U')})`} active={fmt.underline} onClick={() => exec('underline')}>
-            <u>U</u>
-          </FBtn>
-          <span className="fsep" />
-          <FBtn label="Bulleted list" icon="listBullet" active={fmt.ul} onClick={() => exec('insertUnorderedList')} />
-          <FBtn label="Numbered list" icon="listNumber" active={fmt.ol} onClick={() => exec('insertOrderedList')} />
-          <span className="fsep" />
-          <FBtn label={`Insert link (${combo('K')})`} icon="link" onClick={openLink} />
-          <FBtn label="Clear formatting" icon="clearFormat" onClick={() => exec('removeFormat')} />
+          <ComposeToolbar editor={ed} onChange={sync} onLink={openLink} onPictures={(fs) => void insertPictures(fs)} />
           <span className="fsep" />
           <button type="button" className="fchip fchip-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}>
             <Icon name="clip" size={16} tone="blue" /> Attach
@@ -651,7 +640,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
               ))}
             </select>
           </label>
-          <input ref={fileInput} type="file" multiple hidden onChange={(e) => e.target.files && addFiles(e.target.files)} />
+          <input ref={fileInput} type="file" multiple hidden aria-label="Attach files" onChange={(e) => e.target.files && addFiles(e.target.files)} />
           <span className="grow" />
           {(mySigs.length > 0 || sigNow !== '') && (
             <label className={`fchip sig-pick${sigNow ? ' on' : ''}`}>
@@ -732,15 +721,27 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             }
           }}
           onPaste={(e) => {
-            // Copied files: the compose window (above) attaches them.
-            if (filesFromPaste(e.clipboardData)) return
-            // Paste as plain text: keeps messages clean and blocks pasted markup.
+            const files = filesFromPaste(e.clipboardData)
+            if (files) {
+              // A screenshot or a picture copied from a page goes into the text, as in Outlook; files copied in Explorer or
+              // Finder are attached by the compose window (above).
+              if (files.every(isClipboardPicture)) {
+                e.preventDefault()
+                e.stopPropagation()
+                void insertPictures(files)
+              }
+              return
+            }
             e.preventDefault()
             const pasted = e.clipboardData.getData('text/plain')
+            const html = e.clipboardData.getData('text/html')
             const mine = matchCopiedEmail(pasted)
-            // An email copied with "Copy email" keeps its header block; anything else pastes as plain text.
-            if (mine) document.execCommand('insertHTML', false, sanitizeHtml(mine))
+            // An email copied with "Copy email" keeps its header block. Anything else keeps its formatting (tables, colours,
+            // bold, links, pictures), cleaned of anything unsafe; Ctrl+Shift+V still pastes plain text.
+            if (mine) document.execCommand('insertHTML', false, sanitizeHtml(mine, { rich: true }))
+            else if (html.trim()) document.execCommand('insertHTML', false, cleanPastedHtml(html))
             else document.execCommand('insertText', false, pasted)
+            sync()
           }}
           onKeyDown={(e) => {
             if (mention && mentionList.length > 0 && ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(e.key)) {
@@ -793,6 +794,55 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             document.body,
           )}
         {dragging && <div className="drop-hint">Drop files to attach</div>}
+        {remind &&
+          createPortal(
+            <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && setRemind(null)}>
+              <div
+                className="modal small"
+                role="alertdialog"
+                aria-modal="true"
+                aria-labelledby="att-remind-title"
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') {
+                    e.stopPropagation()
+                    setRemind(null)
+                  }
+                }}
+              >
+                <div className="modal-head">
+                  <h2 id="att-remind-title">Forgot the attachment?</h2>
+                </div>
+                <div className="modal-body">
+                  <p>The mail mentions an attachment, but nothing is attached.</p>
+                  <div className="modal-actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        const r = remind
+                        setRemind(null)
+                        send(r.sendAt, true)
+                      }}
+                    >
+                      Send anyway
+                    </button>
+                    <button
+                      type="button"
+                      className="btn primary"
+                      autoFocus
+                      onClick={() => {
+                        setRemind(null)
+                        fileInput.current?.click()
+                      }}
+                    >
+                      <Icon name="clip" size={16} /> Attach files
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )}
         {preview !== null && d.attachments.length > 0 && (
           <AttachmentPreview
             files={d.attachments}

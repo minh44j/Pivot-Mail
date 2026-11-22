@@ -14,14 +14,14 @@ const DROP = new Set([
   'SVG', 'MATH', 'VIDEO', 'AUDIO', 'SOURCE', 'TRACK', 'CANVAS', 'NOSCRIPT', 'TEMPLATE', 'DIALOG', 'PORTAL', 'MAP', 'AREA',
 ])
 
-const ALLOWED = new Set([
+export const ALLOWED = new Set([
   'A', 'ABBR', 'ADDRESS', 'B', 'BLOCKQUOTE', 'BR', 'CAPTION', 'CENTER', 'CITE', 'CODE', 'COL', 'COLGROUP', 'DD', 'DEL', 'DIV', 'DL', 'DT', 'EM', 'FONT',
   'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'HR', 'I', 'IMG', 'INS', 'LI', 'OL', 'P', 'PRE', 'Q', 'S', 'SMALL', 'SPAN', 'STRIKE', 'STRONG', 'SUB', 'SUP',
   'TABLE', 'TBODY', 'TD', 'TFOOT', 'TH', 'THEAD', 'TR', 'TT', 'U', 'UL',
 ])
 
 /** Attributes that are safe as they are (all values are plain text, never code). */
-const PLAIN_ATTRS = new Set(['align', 'valign', 'width', 'height', 'colspan', 'rowspan', 'border', 'cellpadding', 'cellspacing', 'dir', 'lang', 'bgcolor', 'color', 'size'])
+export const PLAIN_ATTRS = new Set(['align', 'valign', 'width', 'height', 'colspan', 'rowspan', 'border', 'cellpadding', 'cellspacing', 'dir', 'lang', 'bgcolor', 'color', 'size'])
 
 /**
  * Class names are kept only when they mark quoted history (used to fold it and to style it like Outlook). Any other class could
@@ -34,14 +34,34 @@ const CSS_PROPS = new Set([
   'border', 'border-top', 'border-bottom', 'border-left', 'border-right', 'border-collapse', 'vertical-align', 'padding', 'margin', 'white-space',
 ])
 
-function safeStyle(style: string): string {
+/**
+ * Extra properties for text a person writes (pasted from Excel/Word/web, or set with the writing toolbar): fonts, direction
+ * (Arabic), indents and cell borders. Same rules otherwise: no url(), no positioning, no negative sizes.
+ */
+const COMPOSE_PROPS = new Set([
+  ...CSS_PROPS, 'font-family', 'direction', 'text-indent', 'height', 'min-width',
+  'margin-left', 'margin-right', 'margin-top', 'margin-bottom', 'padding-left', 'padding-right', 'padding-top', 'padding-bottom',
+  'border-color', 'border-style', 'border-width', 'border-top-color', 'border-bottom-color', 'border-left-color', 'border-right-color',
+])
+
+/** Safe inline style for the writing window (larger fonts allowed: up to 72 pt). */
+export const composeStyle = (style: string): string => safeStyle(style, true)
+
+function safeStyle(style: string, compose = false): string {
   const out: string[] = []
   for (const decl of style.split(';')) {
     const i = decl.indexOf(':')
     if (i < 0) continue
     const prop = decl.slice(0, i).trim().toLowerCase()
     const value = decl.slice(i + 1).trim()
-    if (!CSS_PROPS.has(prop)) continue
+    // Excel writes a cell's fill as "background: #FFFF00": a plain colour is kept as background-color (never an image).
+    if (compose && prop === 'background' && /^(#[0-9a-f]{3,8}|rgba?\([\d\s,.%]+\)|[a-z]{3,20})$/i.test(value)) {
+      out.push(`background-color: ${value}`)
+      continue
+    }
+    if (!(compose ? COMPOSE_PROPS : CSS_PROPS).has(prop)) continue
+    if (prop === 'direction' && !/^(ltr|rtl)$/i.test(value)) continue
+    if (prop === 'font-family' && !/^[\w\s,'"-]{1,160}$/.test(value)) continue
     if (/url\s*\(|expression|javascript:|@import|[\\<>]|behavior|binding|var\s*\(|calc\s*\(/i.test(value)) continue
     // No negative sizes: a negative margin or padding lets content slide over what is next to it.
     if (/(^|[\s(,])-\s*\d/.test(value)) continue
@@ -50,7 +70,7 @@ function safeStyle(style: string): string {
       if (!m) continue
       const n = Number(m[1])
       const px = m[2] === 'pt' ? n * 1.33 : m[2] === 'em' || m[2] === 'rem' ? n * 16 : m[2] === '%' ? (n / 100) * 16 : n
-      if (px > 40 || px < 8) continue
+      if (px > (compose ? 96 : 40) || px < (compose ? 6 : 8)) continue
     }
     out.push(`${prop}: ${value}`)
   }

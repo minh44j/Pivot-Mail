@@ -414,6 +414,13 @@ export const createLabel = (accountId: string, name: string) =>
 export const renameLabel = (accountId: string, id: string, name: string) => greq<GLabel>(accountId, `/labels/${enc(id)}`, { method: 'PATCH', body: { name }, idempotent: true })
 export const deleteLabel = (accountId: string, id: string) => greq(accountId, `/labels/${enc(id)}`, { method: 'DELETE', idempotent: true })
 
+/** A message exactly as Gmail holds it (its .eml source), for "Forward as attachment". */
+export async function getRawMessage(accountId: string, id: string): Promise<Uint8Array> {
+  const r = await gget<{ raw?: string }>(accountId, `/messages/${encodeURIComponent(id)}`, [['format', 'raw']])
+  if (!r.raw) throw new Error('no source')
+  return b64urlToBytes(r.raw)
+}
+
 export interface Sent {
   id: string
   threadId: string

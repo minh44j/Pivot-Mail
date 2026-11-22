@@ -58,7 +58,12 @@ export function FolderJump({ mode, accounts, folders, cases, caseNames, accountI
 
   const items = useMemo(() => {
     const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean)
-    return words.length > 0 ? all.filter((i) => words.every((w) => `${i.label} ${i.sub}`.toLowerCase().includes(w))) : all
+    if (words.length === 0) return all
+    const hits = all.filter((i) => words.every((w) => `${i.label} ${i.sub}`.toLowerCase().includes(w)))
+    // A folder whose name starts with what was typed comes first ("sent" -> Sent, then All sent), else the usual order.
+    const first = words[0] ?? ''
+    const rank = (i: Item) => (i.label.toLowerCase().startsWith(first) ? 0 : 1)
+    return hits.map((i, n) => ({ i, n })).sort((a, b) => rank(a.i) - rank(b.i) || a.n - b.n).map((x) => x.i)
   }, [all, text])
 
   useEffect(() => input.current?.focus(), [])

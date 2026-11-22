@@ -1,4 +1,4 @@
-import { sanitizeEmailHtml } from './mailhtml'
+import { ALLOWED as RICH_TAGS, PLAIN_ATTRS, composeStyle, sanitizeEmailHtml } from './mailhtml'
 
 /** Small, dependency-free helpers for the rich-text composer. */
 
@@ -55,8 +55,13 @@ export function sigStyle(style: string): string {
   return out.join('; ')
 }
 
-/** Allow-list sanitiser for draft restore and any HTML we did not generate ourselves. */
-export function sanitizeHtml(html: string, opts: { images?: boolean } = {}): string {
+/**
+ * Allow-list sanitiser for draft restore and any HTML we did not generate ourselves.
+ * `rich`: the writing window (Minhaj 2026-11-22: tables, colours, fonts, pictures, Arabic direction must survive a paste and a
+ * saved draft): the reading pane's tag list and safe-style rules (plus fonts, direction, indents), pictures anywhere, the
+ * table and direction attributes. Without it: the small set the signature editor uses.
+ */
+export function sanitizeHtml(html: string, opts: { images?: boolean; rich?: boolean } = {}): string {
   const doc = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html')
   const clean = (node: Node): void => {
     for (const child of Array.from(node.childNodes)) {
@@ -77,31 +82,41 @@ export function sanitizeHtml(html: string, opts: { images?: boolean } = {}): str
         el.innerHTML = inner
         continue
       }
-      // Pictures: only inside a signature (or when the caller is the signature editor). Embedded or https sources only.
+      // Pictures: only inside a signature (or when the caller is the signature editor, or the writing window). Embedded or https
+      // sources only.
       if (el.tagName === 'IMG') {
         const src = el.getAttribute('src') ?? ''
         const okSrc = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=]+$/i.test(src) || /^https:\/\//i.test(src)
-        if (!okSrc || !(opts.images || el.closest('[data-sig]'))) {
+        if (!okSrc || !(opts.images || opts.rich || el.closest('[data-sig]'))) {
           el.remove()
           continue
         }
         const w = (el.getAttribute('width') ?? '').replace(/[^0-9]/g, '').slice(0, 4)
         const h = (el.getAttribute('height') ?? '').replace(/[^0-9]/g, '').slice(0, 4)
         const alt = el.getAttribute('alt') ?? ''
+        const imgStyle = opts.rich ? composeStyle(el.getAttribute('style') ?? '') : ''
         for (const attr of Array.from(el.attributes)) el.removeAttribute(attr.name)
         el.setAttribute('src', src)
+        if (imgStyle) el.setAttribute('style', imgStyle)
         if (w) el.setAttribute('width', w)
         if (h) el.setAttribute('height', h)
         el.setAttribute('alt', alt.slice(0, 120))
         continue
       }
-      if (!ALLOWED.has(el.tagName)) {
+      if (!(opts.rich ? RICH_TAGS : ALLOWED).has(el.tagName)) {
         el.replaceWith(...Array.from(el.childNodes))
         clean(node)
         return
       }
       const inSig = Boolean(opts.images) || Boolean(el.closest('[data-sig]'))
       for (const attr of Array.from(el.attributes)) {
+        if (attr.name === 'style' && opts.rich && !inSig && el.tagName !== 'BR') {
+          const s = composeStyle(attr.value)
+          if (s) el.setAttribute('style', s)
+          else el.removeAttribute('style')
+          continue
+        }
+        if (opts.rich && PLAIN_ATTRS.has(attr.name) && /^[\w\s#%.,-]{0,40}$/.test(attr.value)) continue
         if (attr.name === 'style' && inSig && el.tagName !== 'BR') {
           const s = sigStyle(attr.value)
           if (s) el.setAttribute('style', s)

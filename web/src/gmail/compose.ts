@@ -36,6 +36,8 @@ export interface OutMessage {
   date?: Date
   /** Our own Message-ID (without brackets), so a send that seemed to fail can be looked up before it is repeated */
   messageId?: string
+  /** Marked High or Low importance (Outlook shows a red ! or a blue arrow; Gmail keeps the header) */
+  importance?: 'high' | 'low'
 }
 
 const CRLF = '\r\n'
@@ -148,6 +150,9 @@ export function buildMime(m: OutMessage): string {
     'MIME-Version: 1.0',
   ]
   if (m.messageId) headers.push(`Message-ID: <${clean(m.messageId).replace(/[<>\s]/g, '')}>`)
+  // Importance as Outlook, Apple Mail and Thunderbird read it (three headers, as Outlook itself writes them).
+  if (m.importance === 'high') headers.push('Importance: High', 'X-Priority: 1 (Highest)', 'Priority: urgent')
+  if (m.importance === 'low') headers.push('Importance: Low', 'X-Priority: 5 (Lowest)', 'Priority: non-urgent')
   if (m.inReplyTo) headers.push(`In-Reply-To: ${clean(m.inReplyTo)}`)
   if (m.references) headers.push(`References: ${clean(m.references).split(/\s+/).join(`${CRLF} `)}`)
 
