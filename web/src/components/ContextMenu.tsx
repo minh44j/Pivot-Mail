@@ -32,10 +32,14 @@ export function ContextMenu({ x, y, entries, onClose }: Props) {
     el.style.top = `${Math.max(8, Math.min(y, window.innerHeight - h - 8))}px`
   }, [y, entries.length])
 
+  // The first item takes the focus once, when the menu opens; not again when the app around it redraws (that moved the
+  // arrow-key highlight back to the top every few seconds, the same flaw as the Reference number window, 2026-11-22).
+  useEffect(() => {
+    ref.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
+  }, [])
   useEffect(() => {
     const el = ref.current
     if (!el) return
-    el.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus()
     const onDown = (e: PointerEvent) => {
       if (!el.contains(e.target as Node)) onClose()
     }

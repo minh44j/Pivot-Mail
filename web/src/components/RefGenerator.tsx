@@ -108,8 +108,13 @@ export function RefGenerator({ onClose, anchor, onToast, onNewMail, real }: Prop
   const first = useRef<HTMLInputElement>(null)
 
   const box = useRef<HTMLDivElement>(null)
+  // The caret starts in Client once, when the window opens. It used to be put there again whenever the app around it redrew
+  // (a new onClose each time, every few seconds while mail syncs), so typing in From or Details jumped back to Client
+  // (Minhaj 2026-11-22).
   useEffect(() => {
     first.current?.focus()
+  }, [])
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
