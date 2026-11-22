@@ -23,14 +23,18 @@ blockquote{margin:0;padding:0;border:0}
 `
 
 /** Sanitised HTML in a sandboxed iframe: no scripts, no forms, no top navigation, strict CSP. */
-function HtmlFrame({ html }: { html: string }) {
+function HtmlFrame({ html, css = '' }: { html: string; css?: string }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [h, setH] = useState(60)
   // Mail is written for a white page. In the dark theme it is shown on a white sheet (with some room around the text) rather than guessed into dark colours.
   const dark = document.documentElement.dataset.theme === 'dark'
   // "Full window height" in a mail (100vh) would mean the frame's own height and make it grow with every measurement: off.
-  const safe = html.replace(/\b\d+(?:\.\d+)?(?:d|s|l)?vh\b/gi, 'auto')
-  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}${dark ? 'html{background:#fff}body{padding:12px 14px}' : ''}</style></head><body><div id="pm-mail">${safe}</div></body></html>`
+  const noVh = (s: string) => s.replace(/\b\d+(?:\.\d+)?(?:d|s|l)?vh\b/gi, 'auto')
+  const safe = noVh(html)
+  // The mail's own (cleaned) style sheet comes after the base look so it wins, as in Gmail; the white sheet in dark mode last.
+  const own = css ? `<style>${noVh(css)}</style>` : ''
+  const sheet = dark ? '<style>html{background:#fff!important}body{padding:12px 14px!important}</style>' : ''
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${CSP}"><base target="_blank"><style>${FRAME_CSS}</style>${own}${sheet}</head><body><div id="pm-mail">${safe}</div></body></html>`
 
   /**
    * The frame is as tall as the mail's own content (a wrapper around it), plus the page's padding. Measuring the frame's page
@@ -202,10 +206,11 @@ function FullBody({ msg }: { msg: Message }) {
         const uri = inline[cid.toLowerCase()]
         return uri ? `${pre}${uri}` : all
       })
-      const clean = sanitizeEmailHtml(withImages, true)
-      return { kind: 'html' as const, blocked: clean.blocked, ...splitQuotedHtml(clean.html) }
+      // Frame mode: the mail keeps its own style sheet and layout (it is shown on its own, in the sealed frame).
+      const clean = sanitizeEmailHtml(withImages, true, { frame: true })
+      return { kind: 'html' as const, blocked: clean.blocked, css: clean.css, ...splitQuotedHtml(clean.html) }
     }
-    return { kind: 'text' as const, blocked: 0, ...splitQuotedText(msg.body) }
+    return { kind: 'text' as const, blocked: 0, css: '', ...splitQuotedText(msg.body) }
   }, [msg.html, msg.body, inline])
 
   const hasQuote = view.quoted !== ''
@@ -214,7 +219,7 @@ function FullBody({ msg }: { msg: Message }) {
   return (
     <div className="msg-content">
       {view.kind === 'html' ? (
-        <HtmlFrame html={full} />
+        <HtmlFrame html={full} css={view.css} />
       ) : (
         <div className="msg-body">
           {view.main}

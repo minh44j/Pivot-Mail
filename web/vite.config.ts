@@ -14,7 +14,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       // The app, and the sealed attachment preview page (Word, Excel, PowerPoint, mail, ZIP, TIFF).
-      input: { main: resolve(import.meta.dirname, 'index.html'), preview: resolve(import.meta.dirname, 'preview.html') },
+      input: { index: resolve(import.meta.dirname, 'index.html'), preview: resolve(import.meta.dirname, 'preview.html') },
     },
   },
 })

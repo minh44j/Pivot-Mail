@@ -45,36 +45,108 @@ const COMPOSE_PROPS = new Set([
 ])
 
 /** Safe inline style for the writing window (larger fonts allowed: up to 72 pt). */
-export const composeStyle = (style: string): string => safeStyle(style, true)
+export const composeStyle = (style: string): string => safeStyle(style, 'compose')
 
-function safeStyle(style: string, compose = false): string {
+/**
+ * Reading pane only (the mail sits in its own sealed frame): the ordinary layout of newsletters and notifications, i.e. buttons
+ * with rounded corners, hidden preview lines, columns that stack on a phone, background pictures. Still nothing that can place
+ * content over the app or run code: no positioning, no transforms, no outlines (the warning outline on a misleading link stays).
+ */
+const FRAME_PROPS = new Set([
+  ...COMPOSE_PROPS, 'display', 'float', 'clear', 'background', 'background-image', 'background-position', 'background-size', 'background-repeat',
+  'font', 'font-variant', 'max-height', 'min-height', 'letter-spacing', 'word-spacing', 'word-break', 'word-wrap', 'overflow-wrap', 'overflow', 'overflow-x',
+  'overflow-y', 'text-transform', 'text-overflow', 'text-shadow', 'box-shadow', 'list-style', 'list-style-type', 'list-style-position', 'box-sizing', 'table-layout',
+  'border-spacing', 'opacity', 'visibility', 'text-decoration-line', 'text-decoration-color', 'text-decoration-style', 'mso-hide',
+])
+const FRAME_FAMILY = /^(border(-(top|right|bottom|left))?(-(width|style|color))?|border(-(top|bottom)-(left|right))?-radius|(margin|padding)(-(top|right|bottom|left))?)$/
+const DISPLAY = /^(none|block|inline|inline-block|table|inline-table|table-cell|table-row|table-row-group|table-header-group|table-footer-group|table-caption|table-column|list-item|flex|inline-flex|flow-root)$/i
+
+type StyleMode = 'read' | 'compose' | 'frame'
+
+function safeStyle(style: string, mode: StyleMode = 'read', images = false): string {
+  const compose = mode === 'compose'
+  const frame = mode === 'frame'
   const out: string[] = []
   for (const decl of style.split(';')) {
     const i = decl.indexOf(':')
     if (i < 0) continue
     const prop = decl.slice(0, i).trim().toLowerCase()
-    const value = decl.slice(i + 1).trim()
+    let value = decl.slice(i + 1).trim()
+    // "!important" is checked without, then put back (mobile layouts in newsletters depend on it).
+    const important = frame && /!\s*important\s*$/i.test(value)
+    if (important) value = value.replace(/!\s*important\s*$/i, '').trim()
     // Excel writes a cell's fill as "background: #FFFF00": a plain colour is kept as background-color (never an image).
     if (compose && prop === 'background' && /^(#[0-9a-f]{3,8}|rgba?\([\d\s,.%]+\)|[a-z]{3,20})$/i.test(value)) {
       out.push(`background-color: ${value}`)
       continue
     }
-    if (!(compose ? COMPOSE_PROPS : CSS_PROPS).has(prop)) continue
+    const allowed = frame ? FRAME_PROPS.has(prop) || FRAME_FAMILY.test(prop) : (compose ? COMPOSE_PROPS : CSS_PROPS).has(prop)
+    if (!allowed || !value) continue
     if (prop === 'direction' && !/^(ltr|rtl)$/i.test(value)) continue
-    if (prop === 'font-family' && !/^[\w\s,'"-]{1,160}$/.test(value)) continue
-    if (/url\s*\(|expression|javascript:|@import|[\\<>]|behavior|binding|var\s*\(|calc\s*\(/i.test(value)) continue
-    // No negative sizes: a negative margin or padding lets content slide over what is next to it.
-    if (/(^|[\s(,])-\s*\d/.test(value)) continue
+    if (prop === 'display' && !DISPLAY.test(value)) continue
+    if ((prop === 'font-family' || prop === 'font') && !/^[\w\s,'"./%-]{1,200}$/.test(value)) continue
+    if (prop === 'font' && (value.match(/[\d.]+px/gi) ?? []).some((v) => parseFloat(v) > 120)) continue
+    // Background pictures: https only, and only when pictures in this mail are shown.
+    let probe = value
+    if (frame && /^background(-image)?$/.test(prop)) {
+      const urls = value.match(/url\s*\(\s*(["']?)([^"')]*)\1\s*\)/gi) ?? []
+      if (urls.length > 0 && (!images || !urls.every((u) => /url\s*\(\s*["']?https:\/\/[^\s"'()\\<>]+["']?\s*\)/i.test(u)))) continue
+      for (const u of urls) probe = probe.replace(u, '')
+    }
+    if (/url\s*\(|expression|javascript:|@import|[\\<>]|behavior|binding|var\s*\(|calc\s*\(|attr\s*\(|image-set|element\s*\(/i.test(probe)) continue
+    // No negative sizes: a negative margin or padding lets content slide over what is next to it (tight letter spacing is fine).
+    if (!(frame && /^(letter|word)-spacing$/.test(prop)) && /(^|[\s(,])-\s*\d/.test(probe)) continue
     if (prop === 'font-size') {
       const m = value.match(/^([\d.]+)(px|pt|em|rem|%)?$/i)
       if (!m) continue
       const n = Number(m[1])
       const px = m[2] === 'pt' ? n * 1.33 : m[2] === 'em' || m[2] === 'rem' ? n * 16 : m[2] === '%' ? (n / 100) * 16 : n
-      if (px > (compose ? 96 : 40) || px < (compose ? 6 : 8)) continue
+      // A newsletter's headline can be big; 0 is how mail hides the gaps between side-by-side columns.
+      const [lo, hi] = frame ? [0, 120] : compose ? [6, 96] : [8, 40]
+      if (px > hi || px < lo) continue
     }
-    out.push(`${prop}: ${value}`)
+    out.push(`${prop}: ${value}${important ? ' !important' : ''}`)
   }
   return out.join('; ')
+}
+
+const MAX_CSS = 100_000
+const MEDIA = /^[\w\s():,./-]{1,300}$/
+
+/**
+ * The mail's own style sheet (its <style> blocks), cut down like an inline style: plain rules and screen-size rules only, each
+ * declaration through the same allow-list. Nothing that loads (fonts, imports) and nothing that could close the style block.
+ */
+function safeSheet(sources: string[], images: boolean): string {
+  const text = sources.join('\n').slice(0, MAX_CSS)
+  if (!text.trim()) return ''
+  const scratch = document.implementation.createHTMLDocument('')
+  const el = scratch.createElement('style')
+  el.textContent = text
+  scratch.head.append(el)
+  const sheet = el.sheet
+  if (!sheet) return ''
+  const rules = (list: CSSRuleList, depth: number): string[] => {
+    const out: string[] = []
+    for (const r of Array.from(list)) {
+      if (r instanceof CSSStyleRule) {
+        const sel = r.selectorText
+        if (!sel || sel.length > 1000 || /[<>\\]/.test(sel)) continue
+        const body = safeStyle(r.style.cssText, 'frame', images)
+        if (body) out.push(`${sel}{${body}}`)
+      } else if (r instanceof CSSMediaRule && depth === 0) {
+        const media = r.media.mediaText
+        if (!MEDIA.test(media)) continue
+        const inner = rules(r.cssRules, 1)
+        if (inner.length) out.push(`@media ${media}{${inner.join('')}}`)
+      }
+      // @import, @font-face, @keyframes, @supports and the rest: dropped.
+    }
+    return out
+  }
+  const css = rules(sheet.cssRules, 0).join('\n')
+  // Belt and braces: the sheet is written into a <style> element, which only "</" could end early.
+  return /<\//.test(css) ? '' : css
 }
 
 function safeHref(raw: string): string | null {
@@ -100,13 +172,28 @@ export interface CleanHtml {
   html: string
   /** Remote images that were not loaded */
   blocked: number
+  /** The mail's own style sheet, made safe (reading pane only: opts.frame) */
+  css: string
 }
+
+export interface CleanOptions {
+  /**
+   * The result is shown on its own in the reading pane's sealed frame: the mail keeps its style sheet, class names and fuller
+   * layout. Never for HTML that ends up in the app or in the writing window, where a class name could borrow the app's look.
+   */
+  frame?: boolean
+}
+
+const TOKEN = /^[A-Za-z_-][\w-]{0,63}$/
 
 const MAX = 400_000
 
-export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtml {
+export function sanitizeEmailHtml(input: string, allowImages: boolean, opts: CleanOptions = {}): CleanHtml {
+  const frame = opts.frame === true
   const doc = new DOMParser().parseFromString(`<body>${input.slice(0, MAX)}</body>`, 'text/html')
   let blocked = 0
+  // Style blocks can sit in the head or anywhere in the body; collected before they are removed below.
+  const css = frame ? safeSheet(Array.from(doc.querySelectorAll('style')).map((s) => s.textContent ?? ''), allowImages) : ''
 
   // One node at a time; every node is visited once (an email built from thousands of nested unknown tags cannot freeze the app).
   const clean = (parent: Node): void => {
@@ -139,7 +226,11 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
         const embedded = /^data:image\/(png|jpe?g|gif|webp);base64,[a-z0-9+/=\s]+$/i.test(src)
         const remote = /^https:\/\//i.test(src)
         if (embedded || (remote && allowImages)) {
-          for (const a of Array.from(el.attributes)) if (!['src', 'alt', 'width', 'height'].includes(a.name)) el.removeAttribute(a.name)
+          const style = frame ? safeStyle(el.getAttribute('style') ?? '', 'frame', allowImages) : ''
+          const names = frame ? keepNames(el) : null
+          for (const a of Array.from(el.attributes)) if (!['src', 'alt', 'width', 'height', ...(frame ? ['border', 'align'] : [])].includes(a.name)) el.removeAttribute(a.name)
+          if (style) el.setAttribute('style', style)
+          if (names) setNames(el, names)
           el.setAttribute('referrerpolicy', 'no-referrer')
           el.setAttribute('loading', 'lazy')
         } else {
@@ -154,13 +245,15 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
 
       const style = el.getAttribute('style')
       const keepHref = tag === 'A' ? safeHref(el.getAttribute('href') ?? '') : null
-      const classes = (el.getAttribute('class') ?? '').split(/\s+/).filter((c) => KEEP_CLASSES.has(c))
+      const names = frame ? keepNames(el) : { cls: (el.getAttribute('class') ?? '').split(/\s+/).filter((c) => KEEP_CLASSES.has(c)), id: '' }
+      const face = frame && tag === 'FONT' ? (el.getAttribute('face') ?? '') : ''
       for (const a of Array.from(el.attributes)) {
         if (!PLAIN_ATTRS.has(a.name)) el.removeAttribute(a.name)
       }
-      if (classes.length > 0) el.setAttribute('class', classes.join(' '))
+      setNames(el, names)
+      if (face && /^[\w\s,'"-]{1,160}$/.test(face)) el.setAttribute('face', face)
       if (style) {
-        const s = safeStyle(style)
+        const s = safeStyle(style, frame ? 'frame' : 'read', allowImages)
         if (s) el.setAttribute('style', s)
       }
       if (tag === 'A') {
@@ -195,7 +288,19 @@ export function sanitizeEmailHtml(input: string, allowImages: boolean): CleanHtm
     if (kept) q.setAttribute('style', kept)
     else q.removeAttribute('style')
   }
-  return { html: doc.body.innerHTML, blocked }
+  return { html: doc.body.innerHTML, blocked, css }
+}
+
+/** Class names and id as plain words (frame mode keeps them so the mail's own style sheet applies). */
+function keepNames(el: Element): { cls: string[]; id: string } {
+  const cls = (el.getAttribute('class') ?? '').split(/\s+/).filter((c) => TOKEN.test(c)).slice(0, 20)
+  const id = el.getAttribute('id') ?? ''
+  return { cls, id: TOKEN.test(id) && !/^pm-/i.test(id) ? id : '' } // (pm-…: the reading pane's own wrapper)
+}
+
+function setNames(el: Element, n: { cls: string[]; id: string }): void {
+  if (n.cls.length > 0) el.setAttribute('class', n.cls.join(' '))
+  if (n.id) el.setAttribute('id', n.id)
 }
 
 const QUOTE_SELECTOR = 'blockquote, .gmail_quote, .gmail_extra, #divRplyFwdMsg, #appendonsend, .yahoo_quoted, .moz-cite-prefix, div[type="cite"], [data-quote]'
