@@ -18,6 +18,7 @@ import { RecipientField } from './RecipientField'
 import { Icon } from './Icon'
 import { WhenDialog } from './WhenDialog'
 import type { IconName } from './Icon'
+import { filesFromPaste, readableFiles } from '../pasteFiles'
 
 interface Props {
   init: ComposeInit
@@ -363,6 +364,12 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     if (added.length === 0) return
     setD((prev) => ({ ...prev, attachments: [...prev.attachments, ...added] }))
   }
+  /** Files dropped or pasted from Explorer / Finder: a folder among them cannot be attached and is left out. */
+  const attachFiles = async (files: File[]) => {
+    const { ok, folders } = await readableFiles(files)
+    addFiles(ok)
+    if (folders > 0) onToast(folders === 1 ? "Folders can't be attached." : `${folders} folders can't be attached.`)
+  }
 
   const canSend = d.to.trim().length > 0
   const sigNow = sigInBody(d.body, accounts, d.accountId)
@@ -446,7 +453,15 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
       onDrop={(e) => {
         e.preventDefault()
         setDragging(false)
-        addFiles(e.dataTransfer.files)
+        void attachFiles(Array.from(e.dataTransfer.files))
+      }}
+      onPaste={(e) => {
+        // Files copied in Explorer / Finder (or a screenshot) and pasted anywhere in the compose window: attachments, as in
+        // Outlook. Text pastes go on to the field they were pasted in.
+        const files = filesFromPaste(e.clipboardData)
+        if (!files) return
+        e.preventDefault()
+        void attachFiles(files)
       }}
       onKeyDown={(e) => {
         // Keys from a window shown on top of the composer (the attachment preview, a dialog) reach here too, through React:
@@ -659,6 +674,8 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             }
           }}
           onPaste={(e) => {
+            // Copied files: the compose window (above) attaches them.
+            if (filesFromPaste(e.clipboardData)) return
             // Paste as plain text: keeps messages clean and blocks pasted markup.
             e.preventDefault()
             const pasted = e.clipboardData.getData('text/plain')

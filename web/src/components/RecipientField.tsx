@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { EMAIL_RE, bareAddress, displayName, suggestContacts } from '../data/contacts'
 import { Icon } from './Icon'
+import { filesFromPaste } from '../pasteFiles'
 
 interface Props {
   label: string
@@ -92,6 +93,8 @@ export function RecipientField({ label, value, onChange, autoFocus, rightSlot }:
               commitPending()
             }}
             onPaste={(e) => {
+              // Copied files (Finder also puts their names on the clipboard as text): the compose window attaches them.
+              if (filesFromPaste(e.clipboardData)) return
               const text = e.clipboardData.getData('text/plain')
               if (SEP.test(text)) {
                 e.preventDefault()

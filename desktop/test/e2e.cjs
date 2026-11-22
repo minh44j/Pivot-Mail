@@ -317,6 +317,30 @@ async function browserSignIn(startUrl, email = 'ann@pivotscl.com') {
   console.log('   on the clipboard:', JSON.stringify(onClipboard.map((f) => path.basename(f))))
   ok('D34 Copy puts the real files on the Windows clipboard (3 files, same-name files kept apart, right content)', copied === 3 && onClipboard.length === 3 && JSON.stringify(onClipboard.map((f) => path.basename(f))) === JSON.stringify(['B-L MEDU1234567.pdf', 'packing list.xlsx', 'packing list (2).xlsx']) && fs.readFileSync(onClipboard[0]).subarray(0, 4).toString() === '%PDF' && fs.readFileSync(onClipboard[2], 'utf8') === 'PL')
 
+  // ---- Paste: files copied in File Explorer / Finder reach the page as real files (the compose window attaches them,
+  // as Outlook does; Minhaj 2026-11-22). Real system clipboard, real paste: on Windows the files are put there the way
+  // Explorer does (Set-Clipboard -Path); on the Mac the clipboard still holds D34's Finder-style file list.
+  if (process.platform === 'win32' || process.platform === 'darwin') {
+    let want = [['B-L MEDU1234567.pdf', '%PDF'], ['packing list.xlsx', 'PK'], ['packing list (2).xlsx', 'PL']]
+    if (process.platform === 'win32') {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-paste-'))
+      want = [['Invoice 2041.pdf', '%PDF-1.4 win'], ['Packing list.xlsx', 'PK xlsx']]
+      for (const [n, c] of want) fs.writeFileSync(path.join(dir, n), c)
+      const list = want.map(([n]) => "'" + path.join(dir, n).replace(/'/g, "''") + "'").join(',')
+      require('node:child_process').execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-STA', '-Command', 'Set-Clipboard -LiteralPath ' + list])
+    }
+    await win.evaluate(() => {
+      window.__pasted = null
+      const box = document.createElement('div'); box.contentEditable = 'true'; box.id = 'pm-paste-test'; document.body.appendChild(box); box.focus()
+      box.addEventListener('paste', async (e) => { const files = [...e.clipboardData.files]; window.__pasted = await Promise.all(files.map(async (f) => [f.name, await f.text()])) })
+    })
+    await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.show(); w.focus(); w.webContents.paste() })
+    await win.waitForFunction(() => window.__pasted !== null, null, { timeout: 8000 }).catch(() => {})
+    const got = await win.evaluate(() => window.__pasted)
+    console.log('   pasted files:', JSON.stringify(got))
+    ok('D72 files copied in ' + (process.platform === 'win32' ? 'File Explorer' : 'Finder') + ' and pasted arrive as the real files (names and content)', JSON.stringify(got) === JSON.stringify(want), JSON.stringify(got))
+  }
+
   // ---- a Pivot Mail address that redirects to another site never shows that site in the app window
   await win.evaluate(() => { location.href = '/__test/redirect' }); await win.waitForTimeout(1200)
   ok('D31 a redirect to another website opens in the normal browser; the app window stays on Pivot Mail', (await opened()).includes('https://example.com/landed-elsewhere') && win.url().startsWith(BASE))
