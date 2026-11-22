@@ -1,5 +1,6 @@
 /* oxlint-disable react/preserve-manual-memoization -- the React Compiler is not part of this build; the rule only notes that it would skip this large component */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { OsSignaturePerson } from './auth'
 import type { CSSProperties } from 'react'
 import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row, Signature } from './types'
 import { TEMPLATES } from './data/templates'
@@ -9,7 +10,7 @@ import { StatusBanner, StatusScreen } from './components/StatusBanner'
 import type { Problem } from './problems'
 import { BrandLogo } from './components/BrandLogo'
 import { desktop } from './desktop'
-import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
+import { CONNECT_ERRORS, disconnectAccount, fetchAccounts, fetchOsSignatures, fetchAuthConfig, fetchGmailAccess, fetchGmailProfile, fetchSession, saveTitle, signOut } from './auth'
 import type { AuthAccount, AuthConfig, AuthUser } from './auth'
 import { ConnectDialog } from './components/ConnectDialog'
 import { CasePanel } from './components/CasePanel'
@@ -48,7 +49,7 @@ import { Notices } from './components/Notices'
 import type { HistoryItem } from './components/Toolbar'
 import type { Notice, NoticeKind } from './components/Notices'
 import { sanitizeEmailHtml } from './mailhtml'
-import { escapeHtml, htmlToPlain, textToHtml } from './richtext'
+import { SIG_HTML, escapeHtml, htmlToPlain, textToHtml } from './richtext'
 import { bareAddress, displayName } from './data/contacts'
 import { WhenDialog } from './components/WhenDialog'
 import { fmtWhen } from './when'
@@ -178,6 +179,8 @@ const isSigStore = (v: unknown): v is Record<string, SigSet> =>
     const x = s as SigSet
     return typeof x === 'object' && x !== null && Array.isArray(x.list) && typeof x.newId === 'string' && typeof x.replyId === 'string' && x.list.every((g) => typeof g?.id === 'string' && typeof g.name === 'string' && typeof g.body === 'string')
   })
+const isOsSigs = (v: unknown): v is Record<string, OsSignaturePerson[]> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => Array.isArray(x) && x.every((p) => p && typeof p === 'object' && Array.isArray((p as OsSignaturePerson).options)))
 const isRecord = (v: unknown): v is Record<string, string> => typeof v === 'object' && v !== null && !Array.isArray(v) && Object.values(v).every((x) => typeof x === 'string')
 const isTemplates = (v: unknown): v is Template[] =>
   Array.isArray(v) && v.every((t) => typeof t === 'object' && t !== null && typeof (t as Template).id === 'string' && typeof (t as Template).name === 'string' && typeof (t as Template).body === 'string' && typeof (t as Template).category === 'string')
@@ -954,18 +957,61 @@ export default function App() {
     return () => window.clearTimeout(t)
   }, [realMode, hasReal, selKey, syncTarget])
 
+  /**
+   * The official signature of each mailbox, from Pivot OS (as its /signature page gives it). Used automatically when the
+   * person has not set up a signature of their own on this computer, and always offered in the signature list (kept
+   * up to date: a new job title in Pivot OS reaches every mailbox by itself). Remembered for an instant start.
+   */
+  const [osSigs, setOsSigs] = useStored<Record<string, OsSignaturePerson[]>>('pm.ossigs', {}, isOsSigs)
+  const realIds = realAccounts?.map((x) => x.id).join(',') ?? ''
+  useEffect(() => {
+    if (!realMode || !realIds) return
+    let live = true
+    void fetchOsSignatures().then((got) => {
+      if (live && Object.keys(got).length > 0) setOsSigs(got)
+    })
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realMode, realIds])
   const accounts = useMemo<Account[]>(
     () =>
       accountList.map((a) => {
         const s = sigStore[a.id]
+        const people = osSigs[a.id] ?? []
+        const official: Signature[] = people.flatMap((p) =>
+          p.options.map((o) => ({ id: `os-${p.empId}-${o.key}`, name: people.length > 1 ? `Official · ${p.name} · ${o.label}` : `Official · ${o.label}`, body: SIG_HTML + o.html })),
+        )
+        const fresh = new Map(official.map((g) => [g.id, g]))
         // Not edited yet: the one signature the mailbox always had (or its default) becomes the only entry.
         const legacy = signatures[a.id] ?? a.signature
-        const list: Signature[] = s ? s.list : legacy.trim() ? [{ id: 'main', name: 'Main', body: legacy }] : []
-        const newId = s ? s.newId : (list[0]?.id ?? '')
-        const replyId = s ? s.replyId : newId
+        let list: Signature[]
+        let newId: string
+        let replyId: string
+        if (s) {
+          // Their own set stays theirs; official entries in it are refreshed (or dropped when Pivot OS no longer has
+          // them), and any new official ones are added to choose from.
+          list = s.list.flatMap((g) => (g.id.startsWith('os-') && osSigs[a.id] ? (fresh.has(g.id) ? [fresh.get(g.id) as Signature] : []) : [g]))
+          for (const g of official) if (!list.some((x) => x.id === g.id)) list.push(g)
+          newId = list.some((g) => g.id === s.newId) ? s.newId : ''
+          replyId = list.some((g) => g.id === s.replyId) ? s.replyId : ''
+        } else if (signatures[a.id] === undefined && official.length > 0) {
+          // Nothing set up here (a real mailbox only carries its name as a stand-in): the official signature, on new
+          // mail, replies and forwards.
+          list = official
+          newId = replyId = official[0]?.id ?? ''
+        } else if (legacy.trim()) {
+          list = [{ id: 'main', name: 'Main', body: legacy }, ...official]
+          newId = replyId = 'main'
+        } else {
+          // Nothing set up here: the official signature, on new mail, replies and forwards.
+          list = official
+          newId = replyId = official[0]?.id ?? ''
+        }
         return { ...a, signature: list.find((g) => g.id === newId)?.body ?? '', signatures: list, sigNew: newId, sigReply: replyId }
       }),
-    [accountList, signatures, sigStore],
+    [accountList, signatures, sigStore, osSigs],
   )
   const [accDlg, setAccDlg] = useState<AccountDialogState | null>(null)
   const addAccount = (n: NewAccount) => {

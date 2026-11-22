@@ -2,6 +2,7 @@ import { GET as start } from '../api/_lib/auth/start.js'
 import { GET as callback } from '../api/_lib/auth/callback.js'
 import { GET as session } from '../api/_lib/auth/session.js'
 import { GET as connect, POST as connectPass } from '../api/accounts/connect.js'
+import { GET as osSignatures } from '../api/accounts/signatures.js'
 import { GET as list } from '../api/accounts/index.js'
 import { GET as token } from '../api/accounts/token.js'
 import { POST as disconnect } from '../api/accounts/disconnect.js'
@@ -72,6 +73,7 @@ let claims: Record<string, unknown> = {}
 let grant: { refresh_token?: string; scope?: string } = {}
 let refreshResult: { status: number; body: Record<string, unknown> } = { status: 200, body: { access_token: 'ya29.fresh', expires_in: 3600 } }
 const revoked: string[] = []
+let osHandler: (u: URL, init?: RequestInit) => Response = () => new Response('{}', { status: 404 })
 const realFetch = globalThis.fetch
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
@@ -82,6 +84,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (p.get('grant_type') === 'refresh_token') return new Response(JSON.stringify(refreshResult.body), { status: refreshResult.status })
     return new Response(JSON.stringify({ id_token: `h.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.s`, ...grant }), { status: 200 })
   }
+  if (url.origin === 'https://os.example') return osHandler(url, init)
   if (url.href === 'https://oauth2.googleapis.com/revoke') { revoked.push(new URLSearchParams(String(init?.body)).get('token') ?? ''); return new Response('{}') }
   return realFetch(input as any, init)
 }) as typeof fetch
@@ -284,6 +287,40 @@ ok('...and it is logged as a reconnection', tables.audit_log.some((a) => a.actio
   const r4 = await connect(req(SCL, url))
   const cancelled = await callback(req(SCL, `/api/auth/google/callback?error=access_denied`, { headers: { cookie: `pm_oauth=${encodeURIComponent(cookieOf(r4, 'pm_oauth'))}` } }))
   ok('pass: cancelling on Google\'s page ends on the app\'s result page, not the website\'s sign-in', loc(cancelled) === '/desktop-account.html#error=cancelled')
+}
+
+// ================= official signatures from Pivot OS (2026-11-22) =================
+{
+  const seen: { body: any; headers: Headers }[] = []
+  const HTML = '<table><tr><td><a href="https://pivottmc.com"><img src="https://os.example/sig/PVT010-title.png" width="470" height="150" alt="Ann"></a></td></tr></table>'
+  osHandler = (u, init) => {
+    seen.push({ body: JSON.parse(String(init?.body ?? '{}')), headers: new Headers(init?.headers) })
+    if (u.pathname !== '/api/integrations/pivot-mail/signature') return new Response('{}', { status: 404 })
+    const asked: string[] = seen[seen.length - 1]!.body.mailboxes ?? []
+    return new Response(JSON.stringify({ mailboxes: asked.map((email) => ({ email, people: email === 'ann.travel@pivottmc.com' ? [{ empId: 'PVT010', name: 'Ann', mine: true, options: [{ key: 'title', label: 'Travel Consultant', html: HTML }], phone: { password: 'SECRET-SIP' } }] : [] })) }), { status: 200 })
+  }
+  const annSess = sess('ann@pivotscl.com')
+  delete process.env.PIVOT_OS_URL
+  const off = await osSignatures(req(SCL, '/api/accounts/signatures', annSess))
+  ok('signatures: without the Pivot OS link nothing is asked and nothing changes', ((await off.json()) as any).configured === false && seen.length === 0)
+  process.env.PIVOT_OS_URL = 'https://os.example'
+  process.env.PIVOT_OS_LINK_SECRET = 'k'.repeat(40)
+  ok('signatures: needs a sign-in', (await osSignatures(req(SCL, '/api/accounts/signatures'))).status === 401)
+  const r = await osSignatures(req(SCL, '/api/accounts/signatures', annSess))
+  const j = (await r.json()) as { signatures: Record<string, { empId: string; options: { html: string }[] }[]> }
+  const ann = tables.app_users.find((u) => u.email === 'ann@pivotscl.com')!
+  const annBoxes = tables.mailbox_access.filter((x) => x.user_id === ann.id).map((x) => tables.mail_accounts.find((a) => a.id === x.account_id)?.email).filter((e): e is string => !!e).sort()
+  const asked = [...(seen[seen.length - 1]!.body.mailboxes as string[])].sort()
+  ok('signatures: Pivot OS is asked only about this person\'s own mailboxes', JSON.stringify(asked) === JSON.stringify(annBoxes) && !asked.includes('ops@pivotscl.com'), JSON.stringify([asked, annBoxes]) as any)
+  const h = seen[seen.length - 1]!.headers
+  ok('signatures: the call is signed for this person', h.get('x-pm-actor') === 'ann@pivotscl.com' && /^[0-9a-f]{64}$/.test(h.get('x-pm-signature') ?? '') && h.get('x-pm-company') === 'PIVS')
+  const travelId = tables.mail_accounts.find((a) => a.email === 'ann.travel@pivottmc.com')!.id
+  ok('signatures: the official signature comes back under that mailbox', r.status === 200 && j.signatures[travelId]?.[0]?.options[0]?.html === HTML && Object.keys(j.signatures).length === 1)
+  ok('signatures: nothing but signature fields is passed on (no phone details)', !JSON.stringify(j).includes('SECRET-SIP'))
+  osHandler = () => new Response('{}', { status: 404 })
+  const old = await osSignatures(req(SCL, '/api/accounts/signatures', annSess))
+  ok('signatures: a Pivot OS without this feature yet changes nothing (no error for the person)', old.status === 200 && Object.keys(((await old.json()) as any).signatures).length === 0)
+  delete process.env.PIVOT_OS_URL
 }
 
 console.log(`${pass} pass, ${fail} fail`)

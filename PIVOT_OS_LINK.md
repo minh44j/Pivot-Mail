@@ -12,6 +12,12 @@ Pivot OS checks the person's own permissions.
 - The Details panel shows the client, mode, route and status as Pivot OS has them.
 - Typing an existing number into **I already have a number** still registers it here without asking Pivot OS for a new one.
 
+- **Signatures:** every mailbox signs with its official Pivot OS signature (the same picture signature as Pivot OS's
+  `/signature` page, one choice per job title) on new mail, replies and forwards, without anyone pasting it in. A person
+  who set up their own signature on a computer keeps it there; the official one is offered in the list. Pivot Mail asks
+  `POST /api/integrations/pivot-mail/signature` with the person's own mailboxes only (`/api/accounts/signatures`); until
+  Pivot OS has that endpoint nothing changes.
+
 ## Turning it on (in this order)
 
 1. Merge the Pivot OS branch `claude/pivot-mail-link` and let it deploy.

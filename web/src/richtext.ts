@@ -12,7 +12,9 @@ export function textToHtml(text: string): string {
 }
 
 const DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'NOSCRIPT', 'TEMPLATE', 'SVG', 'MATH', 'FORM', 'INPUT', 'TEXTAREA', 'SELECT', 'BUTTON', 'LINK', 'META', 'TITLE', 'HEAD'])
-const ALLOWED = new Set(['HR', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'BR', 'P', 'DIV', 'BLOCKQUOTE', 'A', 'SPAN'])
+// Tables too: official signatures (Pivot OS) are laid out with them; only their structure is kept (attributes are removed
+// like everywhere else; styles only inside a signature).
+const ALLOWED = new Set(['HR', 'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'BR', 'P', 'DIV', 'BLOCKQUOTE', 'A', 'SPAN', 'TABLE', 'TBODY', 'TR', 'TD'])
 
 export function safeUrl(raw: string): string | null {
   const v = raw.trim()

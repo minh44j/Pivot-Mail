@@ -93,6 +93,20 @@ export async function fetchAccounts(): Promise<AuthAccount[] | null> {
   return r && r.status === 200 && r.data.configured !== false ? r.data.accounts : null
 }
 
+/** One person's official signature choices for a mailbox (from Pivot OS; a shared desk can have several people). */
+export interface OsSignaturePerson {
+  empId: string
+  name: string
+  mine: boolean
+  options: { key: string; label: string; html: string }[]
+}
+
+/** The official signature of each of this person's mailboxes, by mailbox id ({} when Pivot OS is not linked or not reached). */
+export async function fetchOsSignatures(): Promise<Record<string, OsSignaturePerson[]>> {
+  const r = await getJson<{ signatures?: Record<string, OsSignaturePerson[]> }>('/api/accounts/signatures')
+  return r && r.status === 200 && r.data.signatures && typeof r.data.signatures === 'object' ? r.data.signatures : {}
+}
+
 export const connectUrl = (company: 'scl' | 'tmc', kind: 'personal' | 'shared'): string => `/api/accounts/connect?company=${company}&kind=${kind}`
 
 /**
