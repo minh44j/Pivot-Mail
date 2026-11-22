@@ -1431,9 +1431,8 @@ export default function App() {
   )
 
   const [when, setWhen] = useState<{ mode: WhenMode; rowIds: string[] } | null>(null)
-  const [undoDelay, setUndoDelay] = usePersisted<string>('pm.undosend', '5', (v) => ['0', '5', '10', '20', '30'].includes(v))
-  const [pendingSend, setPendingSend] = useState<{ d: ComposeInit; id: string } | null>(null)
-  const sendTimer = useRef<number | undefined>(undefined)
+  /** Messages on their way to Gmail right now ("Sending…" shows while there are any). Sending is instant: no undo wait (Minhaj, 2026-11-22). */
+  const [sendingCount, setSendingCount] = useState(0)
   const parseAddrs = (s: string): Person[] =>
     s
       .split(/[;,\n]/)
@@ -1567,57 +1566,25 @@ export default function App() {
     }
   }
 
-  const finishSend = (d: ComposeInit, id: string) => {
-    setPendingSend((p) => (p?.id === id ? null : p))
-    if (realMode) {
-      void sendReal(d).then(
+  /** Send: goes to Gmail at once (no undo wait). If Gmail refuses, the message opens again exactly as it was. */
+  const sendNow = (d: ComposeInit) => {
+    if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
+    setCompose(null)
+    if (!realMode) {
+      upsert(fromCompose(d, `s-${stamp()}`, 'sent'))
+      showToast('Message sent')
+      return
+    }
+    setSendingCount((n) => n + 1)
+    void sendReal(d)
+      .then(
         () => showToast('Message sent'),
         (e) => {
-          // Nothing is lost: the message opens again exactly as it was.
           showToast(`${sendError(e)} Your message is open again.`)
           openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
         },
       )
-      return
-    }
-    upsert(fromCompose(d, id, 'sent'))
-    showToast('Message sent')
-  }
-  const finishRef = useRef(finishSend)
-  useEffect(() => {
-    finishRef.current = finishSend
-  })
-
-  /** Send: held for the undo delay (Settings), then it moves to Sent. */
-  const sendWithUndo = (d: ComposeInit) => {
-    if (pendingSend) {
-      window.clearTimeout(sendTimer.current)
-      finishSend(pendingSend.d, pendingSend.id)
-    }
-    if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
-    setCompose(null)
-    // Forwarded files are fetched during the undo wait, so the send itself does not wait for them.
-    if (realMode) for (const at of d.attachments) if (at.source && !(at.file instanceof File)) void ensureBytes(at).catch(() => undefined)
-    const delay = Number(undoDelay)
-    const id = `s-${stamp()}`
-    if (delay === 0) {
-      if (realMode) finishSend(d, id)
-      else {
-        upsert(fromCompose(d, id, 'sent'))
-        showToast('Message sent (mock)')
-      }
-      return
-    }
-    setPendingSend({ d, id })
-    sendTimer.current = window.setTimeout(() => finishRef.current(d, id), delay * 1000)
-  }
-  const undoSend = () => {
-    if (!pendingSend) return
-    window.clearTimeout(sendTimer.current)
-    const { d } = pendingSend
-    setPendingSend(null)
-    openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
-    showToast('Sending cancelled. Your message is open again.')
+      .finally(() => setSendingCount((n) => Math.max(0, n - 1)))
   }
   const scheduleSend = (d: ComposeInit, iso: string) => {
     if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
@@ -2582,8 +2549,6 @@ export default function App() {
           }}
           city={city}
           onCity={setCity}
-          undoDelay={undoDelay}
-          onUndoDelay={setUndoDelay}
           onBack={() => setScreen('mail')}
           sim={sim}
           onSim={(p) => {
@@ -2873,7 +2838,7 @@ export default function App() {
           noSchedule={realMode}
           pendingTemplate={pendingTemplate}
           onTemplateUsed={() => setPendingTemplate(null)}
-          onSend={(d, opts) => (opts?.sendAt ? scheduleSend(d, opts.sendAt) : sendWithUndo(d))}
+          onSend={(d, opts) => (opts?.sendAt ? scheduleSend(d, opts.sendAt) : sendNow(d))}
           onClose={(draft, discarded) => {
             const id = compose?.draftId
             const gd = compose?.gmailDraftId
@@ -2973,15 +2938,12 @@ export default function App() {
         />
       )}
       <Notices notices={notices} onDismiss={dismissNotice} lead={
-            pendingSend ? (
+            sendingCount > 0 ? (
               <div className="status-card progress" role="status">
                 <span className="status-card-icon" aria-hidden="true">
                   <span className="spinner" />
                 </span>
-                <span className="status-card-text">Sending…</span>
-                <button type="button" className="status-card-action" onClick={undoSend}>
-                  Undo
-                </button>
+                <span className="status-card-text">{sendingCount > 1 ? `Sending ${sendingCount}…` : 'Sending…'}</span>
               </div>
             ) : null
           } />

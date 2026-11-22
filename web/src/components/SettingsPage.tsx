@@ -42,8 +42,6 @@ interface Props {
   onTitle: (t: string) => Promise<boolean>
   city: string
   onCity: (v: string) => void
-  undoDelay: string
-  onUndoDelay: (v: string) => void
   onBack: () => void
   sim: Problem | null
   onSim: (p: Problem | null) => void
@@ -275,20 +273,6 @@ export function SettingsPage(p: Props) {
               {p.title !== undefined && <TitleRow key={p.title} title={p.title} onSave={p.onTitle} />}
               <Row title="Weather city" hint="Shown next to your name. Only the city name is sent to the weather service. Leave empty to hide it.">
                 <input className="input" value={p.city} maxLength={60} onChange={(e) => p.onCity(e.target.value)} aria-label="Weather city" placeholder="e.g. Riyadh" />
-              </Row>
-              <Row title="Undo send" hint="Hold a sent message for a moment so you can take it back.">
-                <Segmented
-                  label="Undo send delay"
-                  value={p.undoDelay}
-                  onChange={p.onUndoDelay}
-                  options={[
-                    { id: '0', label: 'Off' },
-                    { id: '5', label: '5 s' },
-                    { id: '10', label: '10 s' },
-                    { id: '20', label: '20 s' },
-                    { id: '30', label: '30 s' },
-                  ]}
-                />
               </Row>
               <Row
                 title="Desktop notifications"
