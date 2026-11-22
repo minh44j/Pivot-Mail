@@ -122,6 +122,9 @@ export async function GET(req: Request): Promise<Response> {
       const query: Record<string, string> = { kind: dir, q: short(q.get('q'), 80) }
       const cid = short(q.get('clientId'), 80)
       if (cid) query.clientId = cid
+      // Ports: only the ones the job's mode can use (Pivot OS filters; same as its own generator).
+      const mode = OS_MODE[short(q.get('mode'), 8)]
+      if (dir === 'port' && mode) query.mode = mode
       const r = await callOs<{ results: unknown[] }>(co, g.me.email, 'GET', `/api/integrations/pivot-mail/${kind}/search`, { query })
       return r.ok ? json({ results: r.data.results ?? [] }) : json({ error: 'os', message: r.message }, r.status === 403 ? 403 : 502)
     }
