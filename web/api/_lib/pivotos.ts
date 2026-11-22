@@ -60,9 +60,16 @@ export async function callOs<T>(
       headers: { 'content-type': 'application/json', accept: 'application/json', 'x-pm-timestamp': ts, 'x-pm-actor': actorEmail.toLowerCase(), 'x-pm-company': comp, 'x-pm-signature': signature },
       body: method === 'GET' ? undefined : body,
       signal: AbortSignal.timeout(9000),
+      // Never follow a redirect: Pivot OS redirects a request its sign-in gate does not let through to /login, and following
+      // it hands back the sign-in page with status 200, which used to read as a successful, empty answer (2026-11-22: the
+      // signature route was missing from Pivot OS's machine-route list and every mailbox silently got "no signatures").
+      redirect: 'manual',
     })
-    const data = (await res.json().catch(() => ({}))) as T & { error?: string }
+    const parsed: unknown = await res.json().catch(() => undefined)
+    const data = (parsed && typeof parsed === 'object' ? parsed : {}) as T & { error?: string }
     if (!res.ok) return { ok: false, status: res.status, message: typeof data.error === 'string' ? data.error : 'Pivot OS did not accept the request.' }
+    // A success must carry JSON data; anything else (a web page) is a wrong answer, not an empty one.
+    if (!parsed || typeof parsed !== 'object') return { ok: false, status: 502, message: 'Pivot OS sent an unexpected answer.' }
     return { ok: true, data }
   } catch {
     return { ok: false, status: 502, message: 'Pivot OS could not be reached.' }

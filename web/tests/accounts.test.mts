@@ -317,6 +317,13 @@ ok('...and it is logged as a reconnection', tables.audit_log.some((a) => a.actio
   const travelId = tables.mail_accounts.find((a) => a.email === 'ann.travel@pivottmc.com')!.id
   ok('signatures: the official signature comes back under that mailbox', r.status === 200 && j.signatures[travelId]?.[0]?.options[0]?.html === HTML && Object.keys(j.signatures).length === 1)
   ok('signatures: nothing but signature fields is passed on (no phone details)', !JSON.stringify(j).includes('SECRET-SIP'))
+  // Pivot OS's sign-in gate answering instead of the route (the 2026-11-22 live failure): an error, never "no signatures"
+  osHandler = () => new Response(null, { status: 307, headers: { location: 'https://os.example/login' } })
+  const gated = await osSignatures(req(SCL, '/api/accounts/signatures', annSess))
+  ok('signatures: a redirect to Pivot OS sign-in is reported as an error, not as "no signatures"', gated.status === 502 && typeof ((await gated.json()) as any).error === 'string')
+  osHandler = () => new Response('<!DOCTYPE html><title>Sign in · Pivot OS</title>', { status: 200, headers: { 'content-type': 'text/html' } })
+  const page = await osSignatures(req(SCL, '/api/accounts/signatures', annSess))
+  ok('signatures: a web page answered with 200 is reported as an error, not as "no signatures"', page.status === 502)
   osHandler = () => new Response('{}', { status: 404 })
   const old = await osSignatures(req(SCL, '/api/accounts/signatures', annSess))
   ok('signatures: a Pivot OS without this feature yet changes nothing (no error for the person)', old.status === 200 && Object.keys(((await old.json()) as any).signatures).length === 0)
