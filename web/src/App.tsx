@@ -67,6 +67,7 @@ import { MessageList } from './components/MessageList'
 import { ReadingPane } from './components/ReadingPane'
 import { Composer } from './components/Composer'
 import { Icon } from './components/Icon'
+import { refGeneratorOn } from './features'
 import { ContextMenu } from './components/ContextMenu'
 import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
@@ -3140,7 +3141,7 @@ export default function App() {
           }}
         />
       )}
-      {refOpen && (
+      {refOpen && refGeneratorOn() && (
         <RefGenerator
           anchor={refAnchor}
           onClose={() => setRefOpen(false)}

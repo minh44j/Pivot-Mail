@@ -1,3 +1,4 @@
+import { refGeneratorOn } from '../features'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Density, PaneLayout } from '../types'
@@ -450,18 +451,20 @@ export function Toolbar(p: Props) {
                   <span className="ph" />
                   New mail
                 </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onRef()
-                    close()
-                  }}
-                >
-                  <span className="ph" />
-                  New mail with a reference number
-                </button>
+                {refGeneratorOn() && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="menu-item"
+                    onClick={() => {
+                      p.onRef()
+                      close()
+                    }}
+                  >
+                    <span className="ph" />
+                    New mail with a reference number
+                  </button>
+                )}
               </>
             )}
           </Menu>
@@ -495,6 +498,7 @@ export function Toolbar(p: Props) {
           <Icon name="more" size={18} />
         </button>
         <div className="cb-tools">
+          {refGeneratorOn() && (
           <button
             type="button"
             className="cb"
@@ -509,6 +513,7 @@ export function Toolbar(p: Props) {
             <Icon name="hash" size={17} tone="teal" />
             <span className="cb-label">Ref No.</span>
           </button>
+          )}
           <Menu label="Templates" className="cb" trigger={() => (
             <>
               <Icon name="template" size={17} tone="purple" />
