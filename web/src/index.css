@@ -875,14 +875,14 @@ small {
   height: 40px;
 }
 .msg-body {
-  padding: 4px 0 20px 52px;
+  padding: 4px 0 20px;
   font-size: 14px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   line-height: 1.55;
 }
 .msg .attbar {
-  margin-left: 52px;
+  margin-left: 0;
 }
 .empty-reader {
   align-items: stretch;
@@ -3341,9 +3341,10 @@ kbd {
   gap: 4px;
 }
 
-/* Message content: sandboxed HTML, trimmed history */
+/* Message content: sandboxed HTML, trimmed history. It uses the whole width of the message card, from its left edge
+   (under the sender's picture), as in Outlook; it was indented under the name, a strip of wasted space (Minhaj 2026-11-23). */
 .msg-content {
-  padding: 0 0 16px 52px;
+  padding: 0 0 16px;
 }
 .msg-content .msg-body {
   padding: 4px 0 8px;
@@ -4078,7 +4079,7 @@ li.slot-end.slot {
   display: flex;
   flex-wrap: wrap;
   gap: 2px;
-  margin: 0 0 4px 52px;
+  margin: 0 0 4px;
 }
 .msg-actions button {
   display: inline-flex;
