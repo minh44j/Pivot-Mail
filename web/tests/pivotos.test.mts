@@ -119,6 +119,10 @@ ok('an existing number is registered here without asking Pivot OS for a new one'
 r = await call(GET, H, 'GET', ann, undefined, '?directory=client&q=acme')
 const g1 = osCalls.at(-1)!
 ok('client pick-list: signed GET with the query in the signature', (await r.json()).results[0].id === 'c1' && g1.valid && g1.path === '/api/integrations/pivot-mail/shipping/search?kind=client&q=acme')
+r = await call(GET, H, 'GET', ann, undefined, '?directory=port&q=jed&mode=air')
+ok('port pick-list passes the job mode, so an air job is never offered a seaport (Pivot OS rule, 2026-11-20)', osCalls.at(-1)!.path === '/api/integrations/pivot-mail/shipping/search?kind=port&q=jed&mode=AIR' && osCalls.at(-1)!.valid)
+r = await call(GET, H, 'GET', ann, undefined, '?directory=port&q=jed&mode=junk')
+ok('an unknown mode is not passed on', osCalls.at(-1)!.path === '/api/integrations/pivot-mail/shipping/search?kind=port&q=jed')
 ok('ports are a shipping-only list', (await call(GET, TMC, 'GET', maya, undefined, '?directory=port&q=jed')).status === 400)
 r = await call(GET, TMC, 'GET', maya, undefined, '?directory=sales&clientId=c7')
 ok('travel pick-lists go to the travel endpoint', osCalls.at(-1)!.path === '/api/integrations/pivot-mail/travel/search?kind=sales&q=&clientId=c7' && osCalls.at(-1)!.valid)
