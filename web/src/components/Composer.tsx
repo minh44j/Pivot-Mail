@@ -17,6 +17,7 @@ import { ensureBytes, mockBlob, mockBytes } from '../data/mockfile'
 import { desktop } from '../desktop'
 import { RecipientField } from './RecipientField'
 import { ComposeToolbar } from './ComposeToolbar'
+import { fixMojibake, fixMojibakeHtml } from '../mojibake'
 import { Icon } from './Icon'
 import { WhenDialog } from './WhenDialog'
 import { filesFromPaste, readableFiles } from '../pasteFiles'
@@ -793,9 +794,19 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             const mine = matchCopiedEmail(pasted)
             // An email copied with "Copy email" keeps its header block. Anything else keeps its formatting (tables, colours,
             // bold, links, pictures), cleaned of anything unsafe; Ctrl+Shift+V still pastes plain text.
+            // Text that arrives garbled ("youâ€™re" for "you’re") is repaired as it lands, and the person is told.
+            let fixed = 0
             if (mine) document.execCommand('insertHTML', false, sanitizeHtml(mine, { rich: true }))
-            else if (html.trim()) document.execCommand('insertHTML', false, cleanPastedHtml(html))
-            else document.execCommand('insertText', false, pasted)
+            else if (html.trim()) {
+              const r = fixMojibakeHtml(cleanPastedHtml(html))
+              fixed = r.fixed
+              document.execCommand('insertHTML', false, r.html)
+            } else {
+              const r = fixMojibake(pasted)
+              fixed = r.fixed
+              document.execCommand('insertText', false, r.text)
+            }
+            if (fixed > 0) onToast(`Fixed ${fixed} garbled character${fixed === 1 ? '' : 's'} (like â€™ → ’).`)
             sync()
           }}
           onKeyDown={(e) => {

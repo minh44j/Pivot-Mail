@@ -68,6 +68,7 @@ import { ReadingPane } from './components/ReadingPane'
 import { Composer } from './components/Composer'
 import { Icon } from './components/Icon'
 import { refGeneratorOn } from './features'
+import { fixMojibake, fixMojibakeHtml } from './mojibake'
 import { ContextMenu } from './components/ContextMenu'
 import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
@@ -1744,7 +1745,18 @@ export default function App() {
    * reload, a closed page or a lost connection only delays it. If it cannot even be built (a file to attach again, too big),
    * it opens again exactly as it was.
    */
-  const sendNow = (d: ComposeInit) => {
+  const sendNow = (dIn: ComposeInit) => {
+    let d = dIn
+    // Last check: garbled characters ("youâ€™re") never go to a client. Repaired and said (typed into the subject, or in a
+    // template or an older draft, they would have gone as they were).
+    {
+      const b = fixMojibakeHtml(d.body)
+      const sj = fixMojibake(d.subject)
+      if (b.fixed + sj.fixed > 0) {
+        d = { ...d, body: b.html, subject: sj.text }
+        showToast(`Fixed ${b.fixed + sj.fixed} garbled character${b.fixed + sj.fixed === 1 ? '' : 's'} before sending.`)
+      }
+    }
     if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
     setCompose(null)
     if (!realMode) {

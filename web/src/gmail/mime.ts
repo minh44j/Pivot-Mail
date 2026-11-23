@@ -1,4 +1,5 @@
 /** Turning Gmail API payloads into what the app shows. Pure functions, no network. */
+import { looksUtf8 } from '../mojibake'
 
 export interface GPart {
   partId?: string
@@ -27,9 +28,16 @@ export function b64urlToBytes(data: string): Uint8Array {
   return out
 }
 
+/** Labels that mean "the old Western table": some senders put them on text that is really UTF-8. */
+const WESTERN = /^(us-ascii|ascii|iso-8859-1|iso8859-1|latin1|l1|iso-8859-15|windows-1252|cp1252)$/
+
 function decodeBytes(bytes: Uint8Array, charset?: string): string {
+  const label = (charset ?? 'utf-8').toLowerCase().replace(/^"|"$/g, '')
+  // Labelled Western but in fact UTF-8 (valid, with multi-byte characters): read as UTF-8. Read as labelled it showed
+  // "youâ€™re" for "you’re" (2026-11-23). Real Western text with accents is almost never valid UTF-8, so this does not misfire.
+  if (WESTERN.test(label) && looksUtf8(bytes)) return new TextDecoder('utf-8').decode(bytes)
   try {
-    return new TextDecoder((charset ?? 'utf-8').toLowerCase().replace(/^"|"$/g, '')).decode(bytes)
+    return new TextDecoder(label).decode(bytes)
   } catch {
     return new TextDecoder('utf-8').decode(bytes)
   }
