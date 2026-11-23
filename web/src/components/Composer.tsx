@@ -551,7 +551,49 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             <Icon name="clock" size={16} tone="orange" /> Send later
           </button>
         )}
-        <label className={`fchip imp-pick${d.importance ? ` ${d.importance}` : ''}`} title="Importance">
+        <div className="ctb-extras">
+          <button type="button" className="ctb-ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}>
+            <Icon name="clip" size={16} tone="blue" />
+            <span>Attach</span>
+          </button>
+          <label className="ctb-ghost ctb-select-ghost tpl-pick">
+            <Icon name="template" size={16} tone="blue" />
+            <select
+              aria-label="Insert template"
+              value=""
+              onChange={(e) => {
+                const tpl = templates.find((x) => x.id === e.target.value)
+                if (tpl) insertTemplate(tpl)
+              }}
+            >
+              <option value="">Templates</option>
+              {templates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.category} – {tpl.name}
+                </option>
+              ))}
+            </select>
+            <Icon name="chevron" size={12} />
+          </label>
+          {(mySigs.length > 0 || sigNow !== '') && (
+            <label className={`ctb-ghost ctb-select-ghost sig-pick${sigNow ? ' on' : ''}`}>
+              <span className="sig-pick-label" aria-hidden="true">
+                Signature
+              </span>
+              <select aria-label="Signature" value={sigNow} onChange={(e) => applySignature(e.target.value)}>
+                <option value="">No signature</option>
+                {sigNow === '*' && <option value="*" disabled>Current signature</option>}
+                {mySigs.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name || 'Untitled'}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevron" size={12} />
+            </label>
+          )}
+        </div>
+        <label className={`ctb-ghost ctb-select-ghost imp-pick${d.importance ? ` ${d.importance}` : ''}`} title="Importance">
           <Icon name="importance" size={15} tone={d.importance === 'high' ? 'red' : d.importance === 'low' ? 'blue' : undefined} />
           <select
             aria-label="Importance"
@@ -627,46 +669,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
 
         <div className="format-bar" role="toolbar" aria-label="Formatting">
           <ComposeToolbar editor={ed} onChange={sync} onLink={openLink} onPictures={(fs) => void insertPictures(fs)} />
-          <span className="fsep" />
-          <button type="button" className="fchip fchip-btn" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}>
-            <Icon name="clip" size={16} tone="blue" /> Attach
-          </button>
-          <label className="fchip sig-pick tpl-pick">
-            <span className="sr-only">Insert template</span>
-            <select
-              aria-label="Insert template"
-              value=""
-              onChange={(e) => {
-                const tpl = templates.find((x) => x.id === e.target.value)
-                if (tpl) insertTemplate(tpl)
-              }}
-            >
-              <option value="">Templates…</option>
-              {templates.map((tpl) => (
-                <option key={tpl.id} value={tpl.id}>
-                  {tpl.category} – {tpl.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <input ref={fileInput} type="file" multiple hidden aria-label="Attach files" onChange={(e) => e.target.files && addFiles(e.target.files)} />
-          <span className="grow" />
-          {(mySigs.length > 0 || sigNow !== '') && (
-            <label className={`fchip sig-pick${sigNow ? ' on' : ''}`}>
-              <span className="sig-pick-label" aria-hidden="true">
-                Signature:
-              </span>
-              <select aria-label="Signature" value={sigNow} onChange={(e) => applySignature(e.target.value)}>
-                <option value="">No signature</option>
-                {sigNow === '*' && <option value="*" disabled>Current signature</option>}
-                {mySigs.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.name || 'Untitled'}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
         </div>
         {linkOpen && (
           <div className="link-row">

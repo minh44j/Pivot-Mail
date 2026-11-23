@@ -4992,42 +4992,191 @@ button.ref-chip:hover { background: #cdeee1; }
 .sigset-tablist { display: contents; }
 .sig-pick-label { color: var(--label); }
 
-/* ---- composer text toolbar now also holds Attach and Templates ---- */
-.fchip-btn { display: inline-flex; align-items: center; gap: 6px; border: 0; cursor: pointer; }
-.fchip-btn:hover { background: var(--fill-2); }
-.tpl-pick select { max-width: 150px; }
-.format-bar { gap: 4px; }
-.format-bar .fchip { display: inline-flex; align-items: center; min-height: 32px; }
-.field-links { flex: none; white-space: nowrap; }
-.tpl-pick select { width: 104px; }
-.sig-pick select { max-width: 150px; }
-/* The writing toolbar (about 30 controls) wraps onto a second line rather than spill sideways; compact with a mouse,
-   finger-sized on touch screens. */
-.format-bar { flex-wrap: wrap; row-gap: 2px; }
-.format-bar .grow { min-width: 0; }
-@media (pointer: fine) {
-  .format-bar .fbtn { min-width: 30px; height: 30px; }
-  .format-bar .fsep { margin: 0 3px; }
+/* ---- writing toolbar (2026-11-23 clean-up: "make this clean and nice looking") ----
+   One line of formatting groups; groups that do not fit fold into "More" (ComposeToolbar measures). Attach, Templates and
+   Signature sit at the right and move to their own line only when the window is narrow. Every control is the same quiet
+   "ghost" style: no grey pills, one height, one radius, one type size. */
+.format-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  padding: 4px 0;
 }
-/* Phones: one row that scrolls sideways (as in the Gmail and Outlook apps), so the writing space stays large. */
-@media (max-width: 640px) {
-  .format-bar { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
-  .format-bar::-webkit-scrollbar { display: none; }
-  .format-bar > * { flex: none; }
-  .format-bar .grow { display: none; }
+.ctb-row {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  align-items: center;
+  /* Last resort on a very narrow screen (after everything that can fold has folded): the line scrolls sideways. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
 }
-.ctb-select select {
+.ctb-row::-webkit-scrollbar {
+  display: none;
+}
+.ctb-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+}
+.ctb-group[hidden] {
+  display: none;
+}
+.format-bar .fsep {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  margin: 0 5px;
+  background: var(--separator);
+}
+.format-bar .fbtn {
+  min-width: 30px;
+  width: 30px;
   height: 30px;
-  max-width: 104px;
-  padding: 0 22px 0 8px;
-  border: 1px solid var(--separator);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  padding: 0;
+  border-radius: 6px;
+  color: var(--label);
+  font-size: 15px;
+  line-height: 1;
+  transition: background-color 160ms cubic-bezier(0.22, 1, 0.36, 1), color 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.format-bar .fbtn:hover {
+  background: var(--fill);
+}
+.format-bar .fbtn.on {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-text);
+}
+/* Lists (style, font, size) and the right-hand group: quiet text with a small chevron, a fill on hover. */
+.ctb-select,
+.ctb-ghost {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
   color: var(--label);
   font: inherit;
   font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 160ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.ctb-size select { max-width: 76px; min-width: 68px; }
+.ctb-select:hover,
+.ctb-ghost:hover,
+.ctb-select:focus-within,
+.ctb-ghost:focus-within {
+  background: var(--fill);
+}
+.ctb-select select,
+.ctb-ghost select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 30px;
+  min-height: 30px;
+  margin: 0 -20px 0 0;
+  padding: 0 20px 0 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  outline: none;
+}
+.ctb-select select:focus-visible,
+.ctb-ghost select:focus-visible {
+  outline: none;
+}
+.ctb-select:has(select:focus-visible),
+.ctb-ghost:has(select:focus-visible),
+.ctb-ghost:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.ctb-select > svg,
+.ctb-select-ghost > svg:last-child {
+  flex: none;
+  color: var(--label-2);
+  pointer-events: none;
+}
+.ctb-style select { width: 58px; }
+.ctb-font select { width: 52px; }
+.ctb-size select { width: 50px; }
+/* Lists as wide as what they show (Chrome, Edge and the desktop apps); the widths above are the fallback. */
+@supports (field-sizing: content) {
+  .ctb-select select,
+  .ctb-ghost select {
+    field-sizing: content;
+    width: auto !important;
+  }
+}
+/* Attach, Templates and Signature live in the Send row (as in Outlook), so the formatting line has the whole width. */
+.ctb-extras {
+  display: contents;
+}
+.composer-bar .ctb-ghost {
+  /* As tall as the Send button next to it: finger-sized on small screens, compact on a desktop. */
+  height: auto;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: inherit;
+}
+.composer-bar .ctb-ghost select,
+.composer-bar .imp-pick select {
+  height: 100%;
+  min-height: 0;
+  max-width: 150px;
+  margin: 0 -20px 0 0;
+  padding: 0 20px 0 0;
+  font-size: inherit;
+}
+.composer-bar .tpl-pick select { width: 78px; }
+@media (min-width: 900px) {
+  .composer-bar .ctb-ghost { min-height: 28px; }
+}
+.composer-bar .sig-pick select { width: 64px; }
+.composer-bar .imp-pick select { width: 132px; }
+.composer-bar .ctb-ghost.imp-pick { gap: 6px; }
+.sig-pick-label { color: var(--label-2); font-size: inherit; padding: 0; }
+.composer .sig-pick-label { color: var(--label-2); }
+.sig-pick select { font-weight: 600; }
+/* Touch screens: finger-sized controls. */
+@media (pointer: coarse) {
+  .format-bar .fbtn { width: 40px; min-width: 40px; height: 40px; }
+  .ctb-select, .ctb-ghost, .ctb-select select, .ctb-ghost select { height: 40px; }
+}
+/* "More": the folded groups as a short menu, each with its icon and a tick when on. */
+.ctb-more-item {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+}
+.ctb-more-item span { flex: 1; }
+.ctb-more-lists {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+}
+.ctb-pop .ctb-more-lists .ctb-select {
+  width: auto;
+}
+.ctb-more-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--separator);
+}
+@media (prefers-reduced-motion: reduce) {
+  .format-bar .fbtn, .ctb-select, .ctb-ghost { transition: none; }
+}
 .ctb-pop { min-width: 0; padding: 8px; }
 .ctb-swatches {
   display: grid;

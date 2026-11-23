@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { combo } from '../shortcuts'
@@ -33,7 +33,30 @@ const EMOJI: { name: string; list: string }[] = [
   { name: 'Symbols', list: '❤️ 💙 💚 💛 ⭐ 🌟 ✨ 🔥 🎉 🎊 🏆 🥇 💯 🔔 ➡️ ⬅️ ⬆️ ⬇️ 🔴 🟢 🟡 🔵' },
 ]
 
-type Pop = 'colour' | 'highlight' | 'table' | 'emoji' | 'tableEdit' | null
+type Pop = 'colour' | 'highlight' | 'table' | 'emoji' | 'tableEdit' | 'more' | null
+
+/** A button of a group, as it shows in the "More" menu when its group is folded away. */
+interface MenuItem {
+  label: string
+  icon: IconName
+  on?: boolean
+  run: (e: React.MouseEvent<HTMLButtonElement>) => void
+}
+
+/**
+ * Groups of the toolbar, left to right. `fold` is the order in which a group goes into "More" when the line is too narrow
+ * (1 first); 0 never folds. One clean line instead of a ragged second row (Minhaj 2026-11-23: "make this clean").
+ */
+interface Group {
+  id: string
+  fold: number
+  body: ReactNode
+  menu?: MenuItem[]
+  /** Shown as it is inside "More" (the style, font and size lists) */
+  menuBody?: ReactNode
+}
+
+const MORE_W = 36
 
 interface Props {
   editor: RefObject<HTMLDivElement | null>
@@ -75,7 +98,7 @@ function B(p: TBProps) {
 /** A toolbar list (style, font, size). Opening it remembers the caret; picking acts there. */
 function Pick({ label, options, onPick, onOpen, className = '' }: { label: string; options: { value: string; label: string }[]; onPick: (v: string) => void; onOpen: () => void; className?: string }) {
   return (
-    <label className={`fchip ctb-select ${className}`}>
+    <label className={`ctb-select ${className}`}>
       <select
         aria-label={label}
         value=""
@@ -92,6 +115,7 @@ function Pick({ label, options, onPick, onOpen, className = '' }: { label: strin
           </option>
         ))}
       </select>
+      <Icon name="chevron" size={12} />
     </label>
   )
 }
@@ -101,6 +125,36 @@ export function ComposeToolbar({ editor, onChange, onLink, onPictures }: Props) 
   const picture = useRef<HTMLInputElement>(null)
   const [pop, setPop] = useState<{ kind: Pop; x: number; y: number } | null>(null)
   const [grid, setGrid] = useState({ r: 3, c: 3 })
+  // Groups folded into "More" because the line is too narrow; each group's width is remembered while it shows.
+  const row = useRef<HTMLDivElement>(null)
+  const moreId = useId().replace(/:/g, '')
+  const pictureId = `${moreId}-picture`
+  const widths = useRef<Record<string, number>>({})
+  const [hidden, setHidden] = useState<string[]>([])
+  useLayoutEffect(() => {
+    const el = row.current
+    if (!el) return
+    const fit = () => {
+      for (const g of Array.from(el.querySelectorAll<HTMLElement>('[data-group]'))) if (!g.hidden) widths.current[g.dataset.group ?? ''] = g.offsetWidth
+      const order = Array.from(el.querySelectorAll<HTMLElement>('[data-group]')).map((g) => ({ id: g.dataset.group ?? '', fold: Number(g.dataset.fold ?? 0) }))
+      const room = el.clientWidth
+      let used = order.reduce((n, g) => n + (widths.current[g.id] ?? 0), 0)
+      const out: string[] = []
+      if (used > room) {
+        used += MORE_W
+        for (const g of [...order].filter((x) => x.fold > 0).sort((a, b) => a.fold - b.fold)) {
+          if (used <= room) break
+          out.push(g.id)
+          used -= widths.current[g.id] ?? 0
+        }
+      }
+      setHidden((h) => (h.join() === out.join() ? h : out))
+    }
+    fit()
+    const ro = new ResizeObserver(fit)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const [state, setState] = useState({ bold: false, italic: false, underline: false, strike: false, ul: false, ol: false, align: 'left', rtl: false, inTable: false })
 
   // Remember where the caret was in the mail, so a menu or a list (which takes the focus) acts on that place.
@@ -187,6 +241,15 @@ export function ComposeToolbar({ editor, onChange, onLink, onPictures }: Props) 
     }
   }, [pop])
 
+  // A panel that would run off the bottom of the window opens above its button instead (or fits the window and scrolls).
+  const placePop = (el: HTMLDivElement | null) => {
+    if (!el || !pop) return
+    const h = el.offsetHeight
+    if (pop.y + h <= window.innerHeight - 8) return
+    const above = pop.y - h - 40
+    el.style.top = `${above >= 8 ? above : Math.max(8, window.innerHeight - 8 - h)}px`
+  }
+
   const remember = () => {
     const sel = document.getSelection()
     if (sel && sel.rangeCount > 0 && editor.current?.contains(sel.anchorNode)) saved.current = sel.getRangeAt(0).cloneRange()
@@ -202,47 +265,187 @@ export function ComposeToolbar({ editor, onChange, onLink, onPictures }: Props) 
     { a: 'delTable', label: 'Delete table' },
   ]
 
+  // The "More" menu acts after the menu closes, at the remembered caret.
+  const fromMenu = (it: MenuItem) => (e: React.MouseEvent<HTMLButtonElement>) => {
+    setPop(null)
+    it.run(e)
+  }
+  /** From the More menu, a panel (emoji, table) opens under the More button. */
+  const openAtMore = (kind: Pop, e: React.MouseEvent<HTMLButtonElement>) => {
+    const anchor = e.currentTarget.ownerDocument.querySelector<HTMLElement>(`#${moreId} .ctb-more`) ?? e.currentTarget
+    const r = anchor.getBoundingClientRect()
+    setPop({ kind, x: Math.max(8, Math.min(r.left, window.innerWidth - 300)), y: r.bottom + 4 })
+  }
+  const emojiAt = (e: React.MouseEvent<HTMLButtonElement>) => openAtMore('emoji', e)
+
+  const groups: Group[] = [
+    {
+      id: 'history',
+      fold: 4,
+      body: (
+        <>
+          <B label={`Undo (${combo('Z')})`} icon="undo" onClick={() => run('undo')} />
+          <B label="Redo" icon="redo" onClick={() => run('redo')} />
+        </>
+      ),
+      menu: [
+        { label: 'Undo', icon: 'undo', run: () => run('undo') },
+        { label: 'Redo', icon: 'redo', run: () => run('redo') },
+      ],
+    },
+    {
+      id: 'text',
+      fold: 7,
+      body: (
+        <>
+          <Pick label="Style" options={STYLES.map((x) => ({ value: x.id, label: x.label }))} onOpen={remember} onPick={(v) => run('formatBlock', v, false)} className="ctb-style" />
+          <Pick label="Font" options={FONTS.map((f) => ({ value: f, label: f }))} onOpen={remember} onPick={(v) => run('fontName', v)} className="ctb-font" />
+          <Pick label="Size" options={SIZES.map((n) => ({ value: String(n), label: `${n}` }))} onOpen={remember} onPick={(v) => act((el) => setFontSize(el, Number(v)))} className="ctb-size" />
+        </>
+      ),
+      menuBody: (
+        <>
+          <Pick label="Style" options={STYLES.map((x) => ({ value: x.id, label: x.label }))} onOpen={remember} onPick={(v) => run('formatBlock', v, false)} className="ctb-style" />
+          <Pick label="Font" options={FONTS.map((f) => ({ value: f, label: f }))} onOpen={remember} onPick={(v) => run('fontName', v)} className="ctb-font" />
+          <Pick label="Size" options={SIZES.map((n) => ({ value: String(n), label: `${n}` }))} onOpen={remember} onPick={(v) => act((el) => setFontSize(el, Number(v)))} className="ctb-size" />
+        </>
+      ),
+    },
+    {
+      id: 'marks',
+      fold: 0,
+      body: (
+        <>
+          <B label={`Bold (${combo('B')})`} on={state.bold} onClick={() => run('bold')}>
+            <b>B</b>
+          </B>
+          <B label={`Italic (${combo('I')})`} on={state.italic} onClick={() => run('italic')}>
+            <i>I</i>
+          </B>
+          <B label={`Underline (${combo('U')})`} on={state.underline} onClick={() => run('underline')}>
+            <u>U</u>
+          </B>
+          <B label="Strikethrough" icon="strike" on={state.strike} onClick={() => run('strikeThrough')} />
+          <B label="Text colour" icon="textColor" trigger onClick={(e) => open('colour', e)} />
+          <B label="Highlight" icon="highlight" trigger onClick={(e) => open('highlight', e)} />
+        </>
+      ),
+    },
+    {
+      id: 'align',
+      fold: 3,
+      body: (
+        <>
+          <B label="Align left" icon="alignLeft" on={state.align === 'left' && !state.rtl} onClick={() => run('justifyLeft')} />
+          <B label="Center" icon="alignCenter" on={state.align === 'center'} onClick={() => run('justifyCenter')} />
+          <B label="Align right" icon="alignRight" on={state.align === 'right'} onClick={() => run('justifyRight')} />
+        </>
+      ),
+      menu: [
+        { label: 'Align left', icon: 'alignLeft', on: state.align === 'left' && !state.rtl, run: () => run('justifyLeft') },
+        { label: 'Center', icon: 'alignCenter', on: state.align === 'center', run: () => run('justifyCenter') },
+        { label: 'Align right', icon: 'alignRight', on: state.align === 'right', run: () => run('justifyRight') },
+      ],
+    },
+    {
+      id: 'lists',
+      fold: 5,
+      body: (
+        <>
+          <B label="Bulleted list" icon="listBullet" on={state.ul} onClick={() => run('insertUnorderedList')} />
+          <B label="Numbered list" icon="listNumber" on={state.ol} onClick={() => run('insertOrderedList')} />
+        </>
+      ),
+      menu: [
+        { label: 'Bulleted list', icon: 'listBullet', on: state.ul, run: () => run('insertUnorderedList') },
+        { label: 'Numbered list', icon: 'listNumber', on: state.ol, run: () => run('insertOrderedList') },
+      ],
+    },
+    {
+      id: 'indent',
+      fold: 1,
+      body: (
+        <>
+          <B label="Decrease indent" icon="outdent" onClick={() => run('outdent')} />
+          <B label="Increase indent" icon="indent" onClick={() => run('indent')} />
+        </>
+      ),
+      menu: [
+        { label: 'Decrease indent', icon: 'outdent', run: () => run('outdent') },
+        { label: 'Increase indent', icon: 'indent', run: () => run('indent') },
+      ],
+    },
+    {
+      id: 'direction',
+      fold: 2,
+      body: (
+        <>
+          <B label="Left to right" icon="ltr" onClick={() => act((el) => setDirection(el, 'ltr'))} />
+          <B label="Right to left (Arabic)" icon="rtl" on={state.rtl} onClick={() => act((el) => setDirection(el, 'rtl'))} />
+        </>
+      ),
+      menu: [
+        { label: 'Left to right', icon: 'ltr', run: () => act((el) => setDirection(el, 'ltr')) },
+        { label: 'Right to left (Arabic)', icon: 'rtl', on: state.rtl, run: () => act((el) => setDirection(el, 'rtl')) },
+      ],
+    },
+    {
+      id: 'insert',
+      fold: 6,
+      body: (
+        <>
+          <B label={`Insert link (${combo('K')})`} icon="link" onClick={onLink} />
+          <B label={state.inTable ? 'Table' : 'Insert table'} icon="table" on={state.inTable} trigger onClick={(e) => open(state.inTable ? 'tableEdit' : 'table', e)} />
+          <B label="Insert picture" icon="image" onClick={() => picture.current?.click()} />
+        </>
+      ),
+      menu: [
+        { label: 'Insert link', icon: 'link', run: () => onLink() },
+        { label: state.inTable ? 'Table' : 'Insert table', icon: 'table', on: state.inTable, run: (e) => openAtMore(state.inTable ? 'tableEdit' : 'table', e) },
+        { label: 'Insert picture', icon: 'image', run: (e) => e.currentTarget.ownerDocument.getElementById(pictureId)?.click() },
+      ],
+    },
+    {
+      id: 'extras',
+      fold: 1,
+      body: (
+        <>
+          <B label="Horizontal line" icon="hrule" onClick={() => insert('insertHorizontalRule')} />
+          <B label="Emoji" icon="emoji" trigger onClick={(e) => open('emoji', e)} />
+          <B label="Clear formatting" icon="clearFormat" onClick={() => run('removeFormat')} />
+        </>
+      ),
+      menu: [
+        { label: 'Horizontal line', icon: 'hrule', run: () => insert('insertHorizontalRule') },
+        { label: 'Emoji', icon: 'emoji', run: emojiAt },
+        { label: 'Clear formatting', icon: 'clearFormat', run: () => run('removeFormat') },
+      ],
+    },
+  ]
+  // The groups hold click handlers that read the editor's refs when clicked, never while drawing (the linter cannot tell).
+  // oxlint-disable-next-line react/refs
+  const folded = groups.filter((g) => hidden.includes(g.id))
+
   return (
     <>
-      <B label={`Undo (${combo('Z')})`} icon="undo" onClick={() => run('undo')} />
-      <B label="Redo" icon="redo" onClick={() => run('redo')} />
-      <span className="fsep" />
-      <Pick label="Style" options={STYLES.map((x) => ({ value: x.id, label: x.label }))} onOpen={remember} onPick={(v) => run('formatBlock', v, false)} className="ctb-style" />
-      <Pick label="Font" options={FONTS.map((f) => ({ value: f, label: f }))} onOpen={remember} onPick={(v) => run('fontName', v)} />
-      <Pick label="Size" options={SIZES.map((n) => ({ value: String(n), label: `${n}` }))} onOpen={remember} onPick={(v) => act((el) => setFontSize(el, Number(v)))} className="ctb-size" />
-      <span className="fsep" />
-      <B label={`Bold (${combo('B')})`} on={state.bold} onClick={() => run('bold')}>
-        <b>B</b>
-      </B>
-      <B label={`Italic (${combo('I')})`} on={state.italic} onClick={() => run('italic')}>
-        <i>I</i>
-      </B>
-      <B label={`Underline (${combo('U')})`} on={state.underline} onClick={() => run('underline')}>
-        <u>U</u>
-      </B>
-      <B label="Strikethrough" icon="strike" on={state.strike} onClick={() => run('strikeThrough')} />
-      <B label="Text colour" icon="textColor" trigger onClick={(e) => open('colour', e)} />
-      <B label="Highlight" icon="highlight" trigger onClick={(e) => open('highlight', e)} />
-      <span className="fsep" />
-      <B label="Align left" icon="alignLeft" on={state.align === 'left' && !state.rtl} onClick={() => run('justifyLeft')} />
-      <B label="Center" icon="alignCenter" on={state.align === 'center'} onClick={() => run('justifyCenter')} />
-      <B label="Align right" icon="alignRight" on={state.align === 'right'} onClick={() => run('justifyRight')} />
-      <B label="Decrease indent" icon="outdent" onClick={() => run('outdent')} />
-      <B label="Increase indent" icon="indent" onClick={() => run('indent')} />
-      <B label="Left to right" icon="ltr" on={!state.rtl} onClick={() => act((el) => setDirection(el, 'ltr'))} />
-      <B label="Right to left (Arabic)" icon="rtl" on={state.rtl} onClick={() => act((el) => setDirection(el, 'rtl'))} />
-      <span className="fsep" />
-      <B label="Bulleted list" icon="listBullet" on={state.ul} onClick={() => run('insertUnorderedList')} />
-      <B label="Numbered list" icon="listNumber" on={state.ol} onClick={() => run('insertOrderedList')} />
-      <span className="fsep" />
-      <B label={`Insert link (${combo('K')})`} icon="link" onClick={onLink} />
-      <B label={state.inTable ? 'Table' : 'Insert table'} icon="table" on={state.inTable} trigger onClick={(e) => open(state.inTable ? 'tableEdit' : 'table', e)} />
-      <B label="Insert picture" icon="image" onClick={() => picture.current?.click()} />
-      <B label="Horizontal line" icon="hrule" onClick={() => insert('insertHorizontalRule')} />
-      <B label="Emoji" icon="emoji" trigger onClick={(e) => open('emoji', e)} />
-      <B label="Clear formatting" icon="clearFormat" onClick={() => run('removeFormat')} />
+      <div className="ctb-row" ref={row} id={moreId}>
+        {/* oxlint-disable-next-line react/refs */}
+        {groups.map((g, i) => (
+          <div key={g.id} className="ctb-group" data-group={g.id} data-fold={g.fold} hidden={hidden.includes(g.id)}>
+            {groups.slice(0, i).some((x) => !hidden.includes(x.id)) && <span className="fsep" aria-hidden="true" />}
+            {g.body}
+          </div>
+        ))}
+        {folded.length > 0 && (
+          <div className="ctb-group">
+            <span className="fsep" aria-hidden="true" />
+            <span className="ctb-more"><B label="More formatting" icon="more" trigger on={pop?.kind === 'more'} onClick={(e) => open('more', e)} /></span>
+          </div>
+        )}
+      </div>
       <input
         ref={picture}
+        id={pictureId}
         type="file"
         accept="image/png,image/jpeg,image/gif,image/webp"
         multiple
@@ -259,7 +462,7 @@ export function ComposeToolbar({ editor, onChange, onLink, onPictures }: Props) 
       />
       {pop &&
         createPortal(
-          <div className="ctx att-ctx ctb-pop" role="menu" style={{ left: pop.x, top: pop.y }}>
+          <div key={`${pop.kind}-${pop.x}-${pop.y}`} ref={placePop} className="ctx att-ctx ctb-pop" role="menu" style={{ left: pop.x, top: pop.y, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto' }}>
             {(pop.kind === 'colour' || pop.kind === 'highlight') && (
               <div className="ctb-swatches" aria-label={pop.kind === 'colour' ? 'Text colour' : 'Highlight'}>
                 {(pop.kind === 'colour' ? COLOURS : HIGHLIGHTS).map((c) => (
@@ -334,6 +537,20 @@ export function ComposeToolbar({ editor, onChange, onLink, onPictures }: Props) 
                 >
                   {t.label}
                 </button>
+              ))}
+            {pop.kind === 'more' &&
+              folded.map((g, gi) => (
+                <div key={g.id} className="ctb-more-group" role="group">
+                  {gi > 0 && <div className="ctb-more-sep" />}
+                  {g.menuBody && <div className="ctb-more-lists">{g.menuBody}</div>}
+                  {(g.menu ?? []).map((it) => (
+                    <button key={it.label} type="button" role="menuitem" className={`ctx-item ctb-more-item${it.on ? ' on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={fromMenu(it)}>
+                      <Icon name={it.icon} size={16} />
+                      <span>{it.label}</span>
+                      {it.on && <Icon name="check" size={14} />}
+                    </button>
+                  ))}
+                </div>
               ))}
             {pop.kind === 'emoji' && (
               <div className="ctb-emoji">
