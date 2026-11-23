@@ -74,5 +74,19 @@ await get('boss@pivotscl.com', `from=2026-11-01&to=2026-11-16&tz=Not/AZone`)
 ok('an unknown time zone falls back to UTC', rpcArgs.p_tz === 'UTC')
 ok('bad or reversed or too-long ranges are refused', (await get('boss@pivotscl.com', 'from=x&to=y')).status === 400 && (await get('boss@pivotscl.com', 'from=2026-11-16&to=2026-11-01')).status === 400 && (await get('boss@pivotscl.com', 'from=2025-01-01&to=2026-11-01')).status === 400)
 
+// ---- a send problem from a person's browser reaches the server log (audit 2026-11-23: sends go straight to Gmail, so a
+// failure used to be seen by no one). Numbers and short codes only.
+{
+  const real = console.error
+  const lines: string[] = []
+  console.error = (...a: unknown[]) => void lines.push(a.join(' '))
+  const r = await post('ann@pivotscl.com', { kind: 'sendproblem', code: 400, stage: 'send', attempts: 1, refused: true, why: 'invalidArgument <script>to: boss@x.com' })
+  console.error = real
+  const l = lines[0] ?? ''
+  ok('a refused send is written to the server log with who, the code and the tries', r.status === 200 && /send problem: user=ann@pivotscl\.com stage=send code=400 attempts=1 refused=true/.test(l))
+  ok('...and nothing else gets in (no addresses, no markup)', !/<|boss@x\.com/.test(l))
+  ok('...signed-in people only, from this site only', (await post(null, { kind: 'sendproblem', code: 1 })).status === 401 && (await post('ann@pivotscl.com', { kind: 'sendproblem', code: 1 }, 'https://evil.example')).status === 403)
+}
+
 console.log(`${pass} pass, ${fail} fail`)
 process.exit(fail ? 1 : 0)

@@ -108,4 +108,6 @@ export interface ComposeInit {
   reply?: { threadId: string; messageId: string; references: string }
   /** High or Low importance (default: normal) */
   importance?: 'high' | 'low'
+  /** Opened again after a send that did not go: counts as written (closing keeps it), never as a blank new mail */
+  unsent?: boolean
 }

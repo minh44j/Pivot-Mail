@@ -1,5 +1,5 @@
 /* oxlint-disable react/preserve-manual-memoization -- the React Compiler is not part of this build; the rule only notes that it would skip this large component */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useDeferredValue } from 'react'
 import type { OsSignaturePerson } from './auth'
 import type { CSSProperties } from 'react'
 import type { Account, Attachment, Colour, ComposeInit, Density, FolderId, MobileView, Message, PaneLayout, Person, Row, Signature } from './types'
@@ -26,6 +26,8 @@ import { mergeMessages, queryFor, syncQuery } from './gmail/sync'
 import { fetchChanges } from './gmail/history'
 import type { Changes } from './gmail/history'
 import { applyLabelIds } from './gmail/map'
+import { allJobs, exclusively, putJob, removeJob, retryDelay, clearOutbox } from './outbox'
+import type { OutJob } from './outbox'
 import { createLabel, createDraft, deleteDraft, deleteLabel, getRawMessage, listDrafts, listPeople, modifyMessages, modifyThread, renameLabel, sendRaw, updateDraft } from './gmail/client'
 import { buildMime, extractInlineImages, outgoingHtml, parseRecipients, toRaw } from './gmail/compose'
 import { inlineImageUri } from './gmail/inline'
@@ -64,6 +66,7 @@ import type { FolderSel } from './components/FolderPane'
 import { MessageList } from './components/MessageList'
 import { ReadingPane } from './components/ReadingPane'
 import { Composer } from './components/Composer'
+import { Icon } from './components/Icon'
 import { ContextMenu } from './components/ContextMenu'
 import type { MenuEntry } from './components/ContextMenu'
 import { RefGenerator } from './components/RefGenerator'
@@ -125,6 +128,7 @@ function restartClean(): void {
 /** What a person leaves on this device: the mail copy, an unsent draft, recent searches, personal templates. */
 async function forgetPersonalData(): Promise<void> {
   await platform.cache.clearAll()
+  await clearOutbox()
   for (const k of ['pm.draft', 'pm.recent', 'pm.saved', 'pm.templates', 'pm.stats']) platform.storage.remove(k)
 }
 
@@ -718,13 +722,16 @@ export default function App() {
 
   /** A newer Pivot Mail on the website: reload quietly when nobody is using it, else offer Refresh (see update.ts). */
   const composeOpen = useRef(false)
+  /** Set below, where the outbox lives: is a message being built, waiting or on its way? */
+  const sendBusy = useRef<() => boolean>(() => false)
   useEffect(() => {
     composeOpen.current = compose !== null
   }, [compose])
   useEffect(() => {
     const w = watchForUpdates({
       busy: () => {
-        if (composeOpen.current) return true
+        // A message being built or waiting in the outbox counts as busy: a reload must never cut a send in half.
+        if (composeOpen.current || sendBusy.current()) return true
         const a = document.activeElement as HTMLElement | null
         // Typing somewhere (a form, a signature, a note) counts as busy; the search box does not.
         return !!a && !a.closest('.tb-search') && (a.isContentEditable || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')
@@ -1128,8 +1135,13 @@ export default function App() {
     [customTemplates, colourNames],
   )
 
+  /** Enter in the search box: Gmail's search runs at once (no waiting for the typing pause). */
+  const [searchNowTick, setSearchNowTick] = useState(0)
   const commitSearch = useCallback(
-    (q: string) => setRecent([q, ...recent.filter((x) => x !== q)].slice(0, 8)),
+    (q: string) => {
+      setRecent([q, ...recent.filter((x) => x !== q)].slice(0, 8))
+      setSearchNowTick((n) => n + 1)
+    },
     [setRecent, recent],
   )
   const queryChips = useMemo(() => query.split(/\s+/).filter((t) => /^(from|to|subject|label|has|is):\S+/i.test(t)), [query])
@@ -1280,8 +1292,14 @@ export default function App() {
     }
   }, [realMode, liveQuery, liveKey, accountId, inSearchScope, selKey, addLiveHits, addStored])
   /** Real mail: Gmail's own search (any age). Results appear as they arrive; until then the loaded mail is filtered locally. */
+  const lastTick = useRef(0)
   useEffect(() => {
     if (!realMode || liveQuery === '') return
+    // A search for words typed earlier stops fetching as soon as the words change (it used to keep fetching up to 100
+    // messages' headers, spending Gmail's speed budget, for a search nobody was waiting for — audit 2026-11-23).
+    let cancelled = false
+    const now = searchNowTick !== lastTick.current
+    lastTick.current = searchNowTick
     const t = window.setTimeout(() => {
       const acc = accountId
       const [, kind, id = ''] = selKey.split('|')
@@ -1302,6 +1320,7 @@ export default function App() {
             // Results already on this computer are shown as they are; only mail not seen before is fetched.
             refreshNewest: 0,
             now: true,
+            isCancelled: () => cancelled,
             onIds: (all) => {
               for (const id of all) if (known.has(id)) ids.add(id)
               // Nothing known yet: keep the quick local results on screen until Gmail's first matches arrive (no blank list).
@@ -1315,36 +1334,52 @@ export default function App() {
           })
         }),
       )
-        .then(() => addLiveHits(liveKey, ids))
-        .catch(() => showToast('Gmail search is not available right now. Showing mail already loaded.'))
-    }, 450)
-    return () => window.clearTimeout(t)
-  }, [realMode, liveQuery, liveKey, accountId, searchIn, selKey, ensureLabels, mergeIn, showToast, addLiveHits])
+        .then(() => {
+          if (!cancelled) addLiveHits(liveKey, ids)
+        })
+        .catch(() => {
+          if (!cancelled) showToast('Gmail search is not available right now. Showing mail already loaded.')
+        })
+    }, now ? 0 : 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [realMode, liveQuery, liveKey, accountId, searchIn, selKey, ensureLabels, mergeIn, showToast, addLiveHits, searchNowTick])
 
-  /** Messages of the open folder or label, before search and smart filters. */
-  const scope = useMemo(
-    () =>
-      messages.filter((m) => {
-        if (liveOn) return liveSearch !== null && liveSearch.ids.has(m.id)
-        // Real mail: a folder shows the indexed window only; older mail is reached by search (it may be cached from an earlier search).
-        if (realMode && sel.kind !== 'case' && m.folder !== 'drafts') {
-          const days = realAccounts?.find((x) => x.id === m.accountId)?.syncWindowDays ?? 90
-          if (new Date(m.date).getTime() < now.getTime() - days * 86_400_000) return false
-        }
-        const searching = query.trim() !== ''
-        if (sel.kind === 'all') return searching ? inSearchScope(m) : m.folder === sel.id
-        if (m.accountId !== accountId) return false
-        if (searching) return inSearchScope(m)
-        if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
-        return sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id)
-      }),
-    [messages, accountId, sel, inSearchScope, query, liveOn, liveSearch, realMode, realAccounts, now],
-  )
+  /**
+   * Messages of the open folder or label, before search and smart filters. While typing, the filtering runs a beat behind
+   * the keys (useDeferredValue), so the search box never lags on a large mailbox.
+   */
+  const listQuery = useDeferredValue(query)
+  const scope = useMemo(() => {
+    const searching = listQuery.trim() !== ''
+    const parsed = searching ? parseQuery(listQuery) : null
+    const windowStart = new Map((realAccounts ?? []).map((a) => [a.id, now.getTime() - (a.syncWindowDays ?? 90) * 86_400_000]))
+    const local = (m: Message): boolean => {
+      // Real mail: a folder shows the indexed window only; older mail is reached by search. A search also shows older mail
+      // already on this computer (it used to be hidden until Gmail answered).
+      if (realMode && !searching && sel.kind !== 'case' && m.folder !== 'drafts') {
+        if (Date.parse(m.date) < (windowStart.get(m.accountId) ?? now.getTime() - 90 * 86_400_000)) return false
+      }
+      if (sel.kind === 'all') return searching ? inSearchScope(m) : m.folder === sel.id
+      if (m.accountId !== accountId) return false
+      if (searching) return inSearchScope(m)
+      if (sel.kind === 'case') return m.folder !== 'deleted' && m.subject.includes(sel.id)
+      return sel.kind === 'folder' ? m.folder === sel.id : m.folder === 'inbox' && m.labels.includes(sel.id)
+    }
+    return messages.filter((m) => {
+      // Gmail's matches, plus what matches here: part of a word ("PS26007") matches here but not in Gmail, and those
+      // results used to vanish the moment Gmail answered (audit 2026-11-23).
+      if (liveOn) return (liveSearch !== null && liveSearch.ids.has(m.id)) || (parsed !== null && local(m) && matchesQuery(m, parsed))
+      return local(m)
+    })
+  }, [messages, accountId, sel, inSearchScope, listQuery, liveOn, liveSearch, realMode, realAccounts, now])
   const smartCounts = useMemo(() => Object.fromEntries(SMART.map((d) => [d.id, scope.filter((m) => d.test(m, now)).length])) as Record<SmartKey, number>, [scope, now])
   const toggleSmart = (k: SmartKey) => setSmart((cur) => (cur.includes(k) ? cur.filter((x) => x !== k) : [...cur, k]))
 
   const rows = useMemo<Row[]>(() => {
-    const parsed = parseQuery(query)
+    const parsed = parseQuery(listQuery)
     const active = new Set(smart)
     const inScope = scope.filter((m) => (liveOn || matchesQuery(m, parsed)) && smartMatches(m, active, now))
     inScope.sort((a, b) => b.date.localeCompare(a.date))
@@ -1359,7 +1394,7 @@ export default function App() {
       }
     }
     return Array.from(byThread.values())
-  }, [scope, query, smart, now, threaded, liveOn])
+  }, [scope, listQuery, smart, now, threaded, liveOn])
 
   // The row's newest message changes when a reply arrives; the conversation stays selected.
   const selectedRow = useMemo(() => {
@@ -1422,8 +1457,11 @@ export default function App() {
     select(row.msg.id)
   }, [alertTick, rows, messages, select])
 
+  /** A new message opening over one being written: the one being written is kept as a draft (Composer onDisplaced). */
+  const displacing = useRef(false)
   const openCompose = useCallback(
     (init?: Partial<ComposeInit>) => {
+      displacing.current = composeOpen.current
       setComposeKey((k) => k + 1)
       setCompose({ accountId, to: '', cc: '', bcc: '', subject: '', body: '', attachments: [], ...init })
     },
@@ -1504,54 +1542,188 @@ export default function App() {
   const sendError = (e: unknown): string => {
     const msg = e instanceof Error ? e.message : ''
     if (msg.startsWith('reattach:')) return `Please attach “${msg.slice(9)}” again, then send.`
-    if (msg === 'toolarge') return 'The attachments are over Gmail\'s 25 MB limit.'
+    if (msg === 'toolarge') return 'Over Gmail\'s 25 MB limit.'
+    if (msg === 'no account') return 'This mailbox is no longer connected.'
     if (msg === SEND_UNCONFIRMED) return 'Gmail did not confirm the send. Check Sent before sending again.'
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'You are offline.'
     // The number tells us why next time (2026-11-22: a bare "could not send" left no way to find the cause).
     if (e instanceof GmailError && e.status > 0) return `Gmail could not send the message (error ${e.status}).`
     return 'Gmail could not send the message.'
   }
 
-  const sendReal = async (d: ComposeInit) => {
-    const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
-    if (!acc) throw new Error('no account')
-    // A proper Message-ID: unique, and ending in the sender's own domain (mail systems such as Outlook / Microsoft 365 distrust one without a real domain).
-    const mid = `pm-${crypto.randomUUID()}@${acc.email.split('@')[1] ?? 'pivotmail.com'}`
-    const raw = await outgoing(d, acc, false, mid)
-    let sent: { id: string; threadId: string }
-    try {
-      sent = await sendRaw(acc.id, raw, d.reply?.threadId, mid)
-    } catch (e) {
-      // The connection dropped or Gmail hiccuped: the message may be sent already. Look before anyone repeats it.
-      const maybe = !(e instanceof GmailError) || e.status >= 500
-      const found = maybe ? await findSentByMessageId(acc.id, mid) : null
-      if (!found) throw e
-      sent = found
-    }
-    // The Gmail draft it was written from is removed (a few tries): left behind, it looks unsent and could be sent twice.
-    if (d.gmailDraftId) void removeDraftAfterSend(acc.id, d.gmailDraftId)
-    mergeIn([fromCompose(d, `${acc.id}:${sent.id}`, 'sent', { threadId: sent.threadId, loaded: true })])
-    lastSynced.current.delete(`${acc.id}/folder/sent`)
+  /* ---------- the outbox (src/outbox.ts): every send is stored first, then sent, retried until Gmail has it ---------- */
+  const [outbox, setOutbox] = useState<OutJob[]>([])
+  const outboxRef = useRef<OutJob[]>([])
+  const [outboxActive, setOutboxActive] = useState(false)
+  const refreshOutbox = useCallback(async () => {
+    const jobs = await allJobs()
+    outboxRef.current = jobs
+    setOutbox(jobs)
+  }, [])
+  /** Messages being prepared (files read, message built) before they reach the outbox */
+  const preparing = useRef(0)
+
+  /** Tells the server log about a send that was refused or keeps failing (numbers only; best effort, never in the way). */
+  const reportSendProblem = (job: OutJob, e: unknown, refused: boolean) => {
+    const code = e instanceof GmailError ? e.status : 0
+    const why = e instanceof GmailError ? e.reason || e.message : e instanceof Error ? e.name : 'unknown'
+    void fetch('/api/activity', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'sendproblem', code, stage: job.stage, attempts: job.attempts + 1, refused, why }), keepalive: true }).catch(() => undefined)
   }
 
-  const removeDraftAfterSend = async (accountId: string, draftId: string) => {
-    for (const pause of [0, 2000, 6000]) {
-      if (pause) await new Promise((r) => window.setTimeout(r, pause))
-      try {
-        await deleteDraft(accountId, draftId)
+  /** Gmail refused this message for good: only a person can fix it (address, size, content). Busy, offline, a lost answer: not. */
+  const refusedForGood = (e: unknown): boolean =>
+    e instanceof GmailError && e.status >= 400 && e.status < 500 && ![401, 403, 408, 429, SESSION_ENDED].includes(e.status)
+
+  const sentNow = (job: OutJob, sent: { id: string; threadId: string }) => {
+    mergeIn([fromCompose(job.d, `${job.accountId}:${sent.id}`, 'sent', { threadId: sent.threadId, loaded: true })])
+    lastSynced.current.delete(`${job.accountId}/folder/sent`)
+    showToast('Message sent')
+  }
+
+  /** One job, one step: send it (or confirm Gmail already has it), then remove the draft it came from. */
+  const outboxStep = async (job: OutJob): Promise<void> => {
+    const acc = realAccountsRef.current.find((x) => x.id === job.accountId)
+    if (!acc) {
+      if (realAccountsRef.current.length === 0) {
+        await putJob({ ...job, nextAt: Date.now() + 10_000 }) // mailboxes not loaded yet
         return
+      }
+      await removeJob(job.id)
+      showToast(`${sendError(new Error('no account'))} Your message is open again.`)
+      openCompose({ ...job.d, draftId: job.d.draftId ?? `u-${stamp()}`, unsent: true })
+      return
+    }
+    if (job.stage === 'draft') {
+      try {
+        if (job.gmailDraftId) await deleteDraft(acc.id, job.gmailDraftId)
       } catch (e) {
-        if (e instanceof GmailError && e.status === 404) return // already gone
+        if (!(e instanceof GmailError && e.status === 404)) {
+          const attempts = job.attempts + 1
+          if (attempts < 12) {
+            await putJob({ ...job, attempts, nextAt: Date.now() + retryDelay(attempts) })
+            return
+          }
+          showToast('Sent. The old draft is still in Drafts — delete it.')
+        }
+      }
+      await removeJob(job.id)
+      setMessages((prev) => prev.filter((m) => !(m.accountId === acc.id && m.gmailDraftId === job.gmailDraftId)))
+      return
+    }
+    // Counted BEFORE the request: if the page closes while it is on its way, the next try asks Gmail first (never twice).
+    const tried = job.attempts > 0
+    const attempts = job.attempts + 1
+    await putJob({ ...job, attempts, nextAt: Date.now() + retryDelay(attempts) })
+    try {
+      // A large message went through Gmail's upload address, whose answer the browser cannot read: it is looked for longer.
+      const sent = (tried ? await findSentByMessageId(acc.id, job.messageId, job.raw.length > 4_000_000 ? 10 : 3, job.raw.length > 4_000_000 ? 3000 : 2000) : null) ?? (await sendRaw(acc.id, job.raw, job.threadId, job.messageId))
+      sentNow(job, sent)
+      if (job.gmailDraftId) await putJob({ ...job, stage: 'draft', sentId: sent.id, sentThreadId: sent.threadId, raw: '', attempts: 0, nextAt: 0 })
+      else await removeJob(job.id)
+    } catch (e) {
+      console.warn('[outbox] send step failed', e)
+      if (refusedForGood(e)) {
+        reportSendProblem(job, e, true)
+        await removeJob(job.id)
+        showToast(`${sendError(e)} Your message is open again.`)
+        openCompose({ ...job.d, draftId: job.d.draftId ?? `u-${stamp()}`, unsent: true })
+        return
+      }
+      // The connection dropped or Gmail hiccuped (no answer, or a server error): the message may be in Gmail already. Asked
+      // at once (a few seconds), so the person sees "Message sent" now rather than at the next try.
+      if (!(e instanceof GmailError) || e.status >= 500) {
+        const found = await findSentByMessageId(acc.id, job.messageId, 3, 2000).catch(() => null)
+        if (found) {
+          sentNow(job, found)
+          if (job.gmailDraftId) await putJob({ ...job, stage: 'draft', sentId: found.id, sentThreadId: found.threadId, raw: '', attempts: 0, nextAt: 0 })
+          else await removeJob(job.id)
+          return
+        }
+      }
+      // Busy, offline, a lost answer, the sign-in needs renewing: it stays and goes by itself (the status card says so).
+      if ((attempts === 3 || attempts % 20 === 0) && navigator.onLine !== false) reportSendProblem(job, e, false)
+      await putJob({ ...job, attempts, nextAt: Date.now() + retryDelay(attempts), lastError: sendError(e) })
+      if (e instanceof GmailError && e.status === SESSION_ENDED) setSim('expired')
+    }
+  }
+
+  // The worker always runs the newest step (a step from an older render still saw the mailboxes before they loaded).
+  const stepRef = useRef(outboxStep)
+  useEffect(() => {
+    stepRef.current = outboxStep
+  })
+  const draining = useRef(false)
+  const drainOutbox = useCallback(async () => {
+    if (draining.current || !realMode) return
+    draining.current = true
+    try {
+      await exclusively(async () => {
+        // Each step moves its job on (sent, removed, or tried again later), so this ends.
+        for (let guard = 0; guard < 200; guard++) {
+          const due = (await allJobs()).find((j) => j.nextAt <= Date.now())
+          if (!due) break
+          setOutboxActive(true)
+          await stepRef.current(due)
+          await refreshOutbox()
+        }
+        return null
+      })
+    } finally {
+      draining.current = false
+      setOutboxActive(false)
+      await refreshOutbox()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [realMode, refreshOutbox])
+  const drainRef = useRef(drainOutbox)
+  useEffect(() => {
+    drainRef.current = drainOutbox
+  })
+  // Messages waiting from before (a closed page, a lost connection) go as soon as the mailboxes are known, then on a timer,
+  // when the connection returns and when the window comes back.
+  useEffect(() => {
+    if (!realMode || !realAccounts) return
+    void refreshOutbox().then(() => drainRef.current())
+    const tick = window.setInterval(() => {
+      if (outboxRef.current.length > 0) void drainRef.current()
+    }, 5_000)
+    const kick = () => void drainRef.current()
+    window.addEventListener('online', kick)
+    document.addEventListener('visibilitychange', kick)
+    return () => {
+      window.clearInterval(tick)
+      window.removeEventListener('online', kick)
+      document.removeEventListener('visibilitychange', kick)
+    }
+  }, [realMode, realAccounts, refreshOutbox])
+  useEffect(() => {
+    sendBusy.current = () => preparing.current > 0 || draining.current || outboxRef.current.length > 0
+  })
+  const retryOutboxNow = async () => {
+    for (const j of await allJobs()) await putJob({ ...j, nextAt: 0 })
+    await refreshOutbox()
+    void drainOutbox()
+  }
+  // A browser tab closed while a message is still on its way: the browser asks first (the desktop app keeps running in the
+  // tray, and its outbox goes on after a restart anyway).
+  useEffect(() => {
+    if (desktop()) return
+    const onLeave = (e: BeforeUnloadEvent) => {
+      if (preparing.current > 0 || outboxRef.current.some((j) => j.stage === 'send')) {
+        e.preventDefault()
+        e.returnValue = ''
       }
     }
-    showToast('Sent. The old draft is still in Drafts — delete it.')
-  }
+    window.addEventListener('beforeunload', onLeave)
+    return () => window.removeEventListener('beforeunload', onLeave)
+  }, [])
 
   /** Keep what was typed as a Gmail draft (created the first time, updated after that). If Gmail cannot keep it, the message opens again: closing never loses text. */
-  const saveDraftReal = async (d: ComposeInit, oldId?: string) => {
+  const saveDraftReal = async (d: ComposeInit, oldId?: string, reopen = true) => {
     const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
     if (!acc) {
-      showToast('Draft not saved. Your message is open again.')
-      openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
+      showToast(reopen ? 'Draft not saved. Your message is open again.' : 'Draft not saved.')
+      if (reopen) openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}`, unsent: true })
       return
     }
     try {
@@ -1561,30 +1733,52 @@ export default function App() {
       mergeIn([fromCompose(d, `${acc.id}:${saved.message.id}`, 'drafts', { threadId: saved.message.threadId, loaded: true, gmailDraftId: saved.id })])
       showToast('Draft saved in Gmail')
     } catch {
-      showToast('Draft not saved. Your message is open again.')
-      openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
+      showToast(reopen ? 'Draft not saved. Your message is open again.' : 'Draft not saved. Kept on this computer.')
+      if (reopen) openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}`, unsent: true })
     }
   }
 
-  /** Send: goes to Gmail at once (no undo wait). If Gmail refuses, the message opens again exactly as it was. */
+  /**
+   * Send: the message is built and stored in the outbox at once, then sent (no undo wait). It is safe from that moment: a
+   * reload, a closed page or a lost connection only delays it. If it cannot even be built (a file to attach again, too big),
+   * it opens again exactly as it was.
+   */
   const sendNow = (d: ComposeInit) => {
     if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
     setCompose(null)
     if (!realMode) {
+      platform.storage.remove('pm.draft')
       upsert(fromCompose(d, `s-${stamp()}`, 'sent'))
       showToast('Message sent')
       return
     }
+    preparing.current += 1
     setSendingCount((n) => n + 1)
-    void sendReal(d)
-      .then(
-        () => showToast('Message sent'),
-        (e) => {
-          showToast(`${sendError(e)} Your message is open again.`)
-          openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}` })
-        },
-      )
-      .finally(() => setSendingCount((n) => Math.max(0, n - 1)))
+    void (async () => {
+      try {
+        const acc = realAccountsRef.current.find((x) => x.id === d.accountId)
+        if (!acc) throw new Error('no account')
+        // A proper Message-ID: unique, and ending in the sender's own domain (mail systems such as Outlook / Microsoft 365
+        // distrust one without a real domain). The same one on every try: Gmail can be asked whether it has the message.
+        const mid = `pm-${crypto.randomUUID()}@${acc.email.split('@')[1] ?? 'pivotmail.com'}`
+        const raw = await outgoing(d, acc, false, mid)
+        // Gmail's 25 MB is the message as sent; files grow by about a third in it (the old check counted the files only, and a
+        // 20 MB message was uploaded twice and then reported as "not confirmed" a minute later).
+        if (Math.floor((raw.length * 3) / 4) > 25 * 1024 * 1024) throw new Error('toolarge')
+        const { unsent: _u, ...keep } = d
+        await putJob({ id: mid, accountId: acc.id, raw, messageId: mid, threadId: d.reply?.threadId, gmailDraftId: d.gmailDraftId, d: keep, stage: 'send', attempts: 0, nextAt: 0, createdAt: Date.now() })
+        // The copy kept while writing is no longer needed: the outbox holds the message now.
+        platform.storage.remove('pm.draft')
+        await refreshOutbox()
+        void drainOutbox()
+      } catch (e) {
+        showToast(`${sendError(e)} Your message is open again.`)
+        openCompose({ ...d, draftId: d.draftId ?? `u-${stamp()}`, unsent: true })
+      } finally {
+        preparing.current -= 1
+        setSendingCount((n) => Math.max(0, n - 1))
+      }
+    })()
   }
   const scheduleSend = (d: ComposeInit, iso: string) => {
     if (d.draftId) setMessages((prev) => prev.filter((x) => x.id !== d.draftId))
@@ -2638,12 +2832,20 @@ export default function App() {
         signedInAs={authUser?.email}
         canSwitchRole={!authUser || authUser.role === 'admin'}
         onSignOut={() => {
+          if (authUser && outboxRef.current.some((j) => j.stage === 'send')) {
+            showToast('A message is still sending. Try again in a moment.')
+            return
+          }
           if (authUser) void forgetPersonalData().then(() => signOut()).then(() => { setAuthUser(null); setAuthError(null); setMessages([]); setRealAccounts(null); restartClean() })
           setEntered(false)
         }}
         onSignOutAll={
           authUser
             ? () => {
+                if (outboxRef.current.some((j) => j.stage === 'send')) {
+                  showToast('A message is still sending. Try again in a moment.')
+                  return
+                }
                 // Everywhere: the other devices are signed out first; if that fails, nothing is cleared and the person is told.
                 void signOut(true).then((ok) => {
                   if (!ok) {
@@ -2853,6 +3055,16 @@ export default function App() {
             else if (draft) upsert(fromCompose(draft, id ?? `d-${stamp()}`, 'drafts'))
             setCompose(null)
           }}
+          onDisplaced={(x) => {
+            if (displacing.current) {
+              displacing.current = false
+              if (realMode) void saveDraftReal(x, x.draftId, false)
+              else upsert(fromCompose(x, x.draftId ?? `d-${stamp()}`, 'drafts'))
+              return
+            }
+            // The window went away for another screen (Settings): it comes back exactly as it was left.
+            setCompose((prev) => (prev ? { ...x, draftId: x.draftId ?? `u-${stamp()}`, unsent: true } : prev))
+          }}
           onToast={showToast}
         />
       )}
@@ -2938,14 +3150,36 @@ export default function App() {
         />
       )}
       <Notices notices={notices} onDismiss={dismissNotice} lead={
-            sendingCount > 0 ? (
-              <div className="status-card progress" role="status">
-                <span className="status-card-icon" aria-hidden="true">
-                  <span className="spinner" />
-                </span>
-                <span className="status-card-text">{sendingCount > 1 ? `Sending ${sendingCount}…` : 'Sending…'}</span>
-              </div>
-            ) : null
+            (() => {
+              const waiting = outbox.filter((j) => j.stage === 'send').length
+              const n = waiting + sendingCount
+              if (n === 0) return null
+              // On its way now, or waiting for its next try (offline, Gmail busy, answer lost): then it says so, with Retry now.
+              if (sendingCount > 0 || outboxActive) {
+                return (
+                  <div className="status-card progress" role="status">
+                    <span className="status-card-icon" aria-hidden="true">
+                      <span className="spinner" />
+                    </span>
+                    <span className="status-card-text">{n > 1 ? `Sending ${n}…` : 'Sending…'}</span>
+                  </div>
+                )
+              }
+              const why = outbox.find((j) => j.stage === 'send' && j.lastError)?.lastError
+              return (
+                <div className="status-card progress outbox-wait" role="status">
+                  <span className="status-card-icon" aria-hidden="true">
+                    <Icon name="clock" size={16} tone="orange" />
+                  </span>
+                  <span className="status-card-text">
+                    {n > 1 ? `${n} messages waiting to send.` : 'Message waiting to send.'} {why === 'You are offline.' ? 'Sends when online.' : 'Retrying.'}
+                  </span>
+                  <button type="button" className="status-card-action" onClick={() => void retryOutboxNow()}>
+                    Retry now
+                  </button>
+                </div>
+              )
+            })()
           } />
     </div>
     </>

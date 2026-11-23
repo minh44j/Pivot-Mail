@@ -1,7 +1,7 @@
 import { decodeWords, extractBodies, folderOf, parseAddresses, b64urlToBytes } from '../src/gmail/mime'
 import type { GMessage, GPart } from '../src/gmail/mime'
 import { toMessage, unescapeSnippet } from '../src/gmail/map'
-import { buildBatch, parseBatch, costOf, spend, slowDown, resetBudgets, BURST_UNITS, RATE_UNITS_PER_SECOND, sendRaw, GmailError, SEND_UNCONFIRMED } from '../src/gmail/client'
+import { buildBatch, parseBatch, costOf, spend, slowDown, resetBudgets, BURST_UNITS, RATE_UNITS_PER_SECOND, ACTION_DEBT, sendRaw, GmailError, SEND_UNCONFIRMED } from '../src/gmail/client'
 
 let pass = 0, fail = 0
 const ok = (n: string, c: boolean) => { if (c) pass++; else fail++; console.log((c ? 'PASS ' : 'FAIL ') + n) }
@@ -146,16 +146,19 @@ ok('several Reply-To addresses are all kept', rt?.replyTo?.length === 2)
 
 // ---- staying under Gmail's speed limit (regression 2026-11-19: "too many requests" while 4 mailboxes did their first sync)
 ok('costs follow Gmail\'s table: list/get 5, conversation 10, history 2, labels 1, send 100, batchModify 50', costOf('GET', '/messages') === 5 && costOf('GET', '/messages/abc') === 5 && costOf('GET', '/threads/t1') === 10 && costOf('GET', '/history') === 2 && costOf('GET', '/labels') === 1 && costOf('POST', '/messages/send') === 100 && costOf('POST', '', ) === 100 && costOf('POST', '/messages/batchModify') === 50 && costOf('POST', '/threads/t1/modify') === 10)
-ok('the budget stays under Gmail\'s 250 units a second per mailbox (room for two copies of the app)', RATE_UNITS_PER_SECOND * 5 + BURST_UNITS <= 1250)
+// 2026-11-23: background 80/s + burst 400, actions up to 400 below zero: in any 5 s one copy of the app stays under Gmail's
+// 1,250 even with a search in the middle of the first sync (at 150/500 the sync alone filled it and the search was refused).
+ok('one copy of the app, sync and actions together, stays under Gmail\'s 1,250 units per 5 s', BURST_UNITS + RATE_UNITS_PER_SECOND * 5 + ACTION_DEBT <= 1250)
+ok('...and the background sync alone leaves room for others on a shared mailbox (under 100 a second)', RATE_UNITS_PER_SECOND < 100)
 {
   resetBudgets()
   const t0 = Date.now()
-  for (let i = 0; i < 100; i++) await spend('A', 5) // the newest 100 messages: the burst, at once
+  for (let i = 0; i < 80; i++) await spend('A', 5) // the newest 80 messages: the burst, at once
   const burstMs = Date.now() - t0
   const t1 = Date.now()
-  for (let i = 0; i < 16; i++) await spend('A', 5) // 80 more units: about half a second at 160 a second
+  for (let i = 0; i < 16; i++) await spend('A', 5) // 80 more units: about a second at 80 a second
   const paced = Date.now() - t1
-  ok(`the first 100 messages go at once (${burstMs} ms), then the pace is held (80 units took ${paced} ms)`, burstMs < 50 && paced >= 450 && paced < 850)
+  ok(`the first 80 messages go at once (${burstMs} ms), then the pace is held (80 units took ${paced} ms)`, burstMs < 50 && paced >= 850 && paced < 1300)
   const t2 = Date.now(); await spend('B', 5)
   ok('each mailbox has its own budget', Date.now() - t2 < 20)
   slowDown('B', 700)

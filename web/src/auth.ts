@@ -21,7 +21,9 @@ export interface AuthUser {
 /** The preview and local development have no server: anything that is not JSON counts as "no sign-in here". */
 async function getJson<T>(url: string): Promise<{ status: number; data: T } | null> {
   try {
-    const res = await fetch(url, { credentials: 'same-origin', headers: { accept: 'application/json' } })
+    // 15 s at most: a stalled answer from our server must not hold a send or a sync forever.
+    const signal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(15_000) : undefined
+    const res = await fetch(url, { credentials: 'same-origin', headers: { accept: 'application/json' }, signal })
     if (!(res.headers.get('content-type') ?? '').includes('application/json')) return null
     return { status: res.status, data: (await res.json()) as T }
   } catch {

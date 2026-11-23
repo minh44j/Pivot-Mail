@@ -17,7 +17,7 @@ export function StatusBanner({ kind, detail, real, last, seconds, busy, onRetry 
   const text =
     kind === 'offline'
       ? real
-        ? 'You are offline. You can keep reading the mail on this device. Moving, deleting and sending need a connection, so do those once you are back online.'
+        ? 'You are offline. Reading works. Mail you send goes when you are back online.'
         : 'You are offline. You can keep reading and organising. Changes sync when you reconnect, and sending waits until then.'
       : kind === 'syncfail'
         ? `Couldn't sync with Google${detail ? ` (${detail})` : ''}. Showing mail from ${time}.`

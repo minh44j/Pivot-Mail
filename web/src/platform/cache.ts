@@ -12,7 +12,26 @@ const STORE = 'messages'
 const META = 'meta'
 const MAX_PER_ACCOUNT = 4000
 
+/** One connection for the whole session (it used to open a new one for every read and write). */
+let conn: Promise<IDBDatabase> | null = null
 function open(): Promise<IDBDatabase> {
+  if (!conn) {
+    conn = openDb()
+    conn.then(
+      (db) => {
+        db.onclose = () => (conn = null)
+        db.onversionchange = () => {
+          db.close()
+          conn = null
+        }
+      },
+      () => (conn = null),
+    )
+  }
+  return conn
+}
+
+function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB, 2)
     req.onupgradeneeded = () => {
@@ -52,9 +71,16 @@ async function save(msgs: Message[]): Promise<void> {
     const s = tx.objectStore(STORE)
     for (const m of msgs) s.put(m)
     await done(tx)
-    // Keep each mailbox's copy bounded: drop the oldest beyond the limit.
+    // Keep each mailbox's copy bounded: drop the oldest beyond the limit. Counted first (cheap); the whole copy is read and
+    // sorted only when it is over (it used to be read and sorted after every batch of mail).
     const accounts = new Set(msgs.map((m) => m.accountId))
     for (const id of accounts) {
+      const n = await new Promise<number>((resolve, reject) => {
+        const r = db.transaction(STORE).objectStore(STORE).index('accountId').count(id)
+        r.onsuccess = () => resolve(r.result)
+        r.onerror = () => reject(r.error)
+      })
+      if (n <= MAX_PER_ACCOUNT) continue
       const all = await load(id)
       if (all.length <= MAX_PER_ACCOUNT) continue
       const drop = all.sort((a, b) => a.date.localeCompare(b.date)).slice(0, all.length - MAX_PER_ACCOUNT)

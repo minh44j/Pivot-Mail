@@ -81,6 +81,17 @@ export function parseQuery(q: string): ParsedQuery {
   return parsed
 }
 
+/** A message's searchable text, lower-cased once per message (messages are replaced, never changed, so this stays right). */
+const hayCache = new WeakMap<Message, string>()
+const hayOf = (m: Message): string => {
+  let h = hayCache.get(m)
+  if (h === undefined) {
+    h = `${m.from.name} ${m.from.email} ${m.subject} ${m.body} ${m.attachments.map((a) => a.name).join(' ')}`.toLowerCase()
+    hayCache.set(m, h)
+  }
+  return h
+}
+
 export function matchesQuery(m: Message, p: ParsedQuery): boolean {
   if (p.from && !`${m.from.name} ${m.from.email}`.toLowerCase().includes(p.from)) return false
   if (p.to && !m.to.some((t) => `${t.name} ${t.email}`.toLowerCase().includes(p.to as string))) return false
@@ -90,7 +101,7 @@ export function matchesQuery(m: Message, p: ParsedQuery): boolean {
   if (p.isUnread && !m.unread) return false
   if (p.isFlagged && !m.flagged) return false
   if (p.terms.length > 0) {
-    const hay = `${m.from.name} ${m.from.email} ${m.subject} ${m.body} ${m.attachments.map((a) => a.name).join(' ')}`.toLowerCase()
+    const hay = hayOf(m)
     return p.terms.every((t) => hay.includes(t))
   }
   return true

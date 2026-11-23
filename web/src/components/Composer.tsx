@@ -34,6 +34,8 @@ interface Props {
   onSend: (d: ComposeInit, opts?: { sendAt?: string }) => void
   /** draft: what was typed (kept in Drafts); discarded: delete the open draft */
   onClose: (draft?: ComposeInit, discarded?: boolean) => void
+  /** Another message opened over this one (Reply, a draft): what was typed here, to keep as a draft */
+  onDisplaced?: (draft: ComposeInit) => void
   onToast: (m: string) => void
 }
 
@@ -101,7 +103,7 @@ function keepLocally(d: ComposeInit): 'saved' | 'nopics' | 'failed' {
   return platform.storage.set(DRAFT_KEY, JSON.stringify(forStorage({ ...d, body }))) ? 'nopics' : 'failed'
 }
 
-export function Composer({ init, accounts, offline, noSchedule, pendingTemplate, onTemplateUsed, onSend, onClose, onToast }: Props) {
+export function Composer({ init, accounts, offline, noSchedule, pendingTemplate, onTemplateUsed, onSend, onClose, onDisplaced, onToast }: Props) {
   const { templates } = useSettings()
   const [initialHtml] = useState(() => initialBody(init, accounts))
   const [d, setD] = useState<ComposeInit>(() => ({ ...init, to: asChips(init.to), cc: asChips(init.cc), bcc: asChips(init.bcc), body: initialHtml }))
@@ -118,10 +120,24 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
   const first = useRef(true)
   const latest = useRef(d)
   const finished = useRef(false)
-  const touched = useRef(false)
+  // A message opened again after a send that did not go counts as written: closing it keeps it (it used to count as
+  // untouched, so Esc or Close dropped it without a word — audit 2026-11-23).
+  const touched = useRef(Boolean(init.unsent))
   const ed = useRef<HTMLDivElement>(null)
   const savedRange = useRef<Range | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const fromRemind = useRef(false)
+  // Choosing no file in the picker opened from "Forgot the attachment?": the message has not gone.
+  useEffect(() => {
+    const el = fileInput.current
+    if (!el) return
+    const onCancel = () => {
+      if (fromRemind.current) onToast('Not sent.')
+      fromRemind.current = false
+    }
+    el.addEventListener('cancel', onCancel)
+    return () => el.removeEventListener('cancel', onCancel)
+  }, [onToast])
 
   const sync = () => {
     const el = ed.current
@@ -247,13 +263,29 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     return () => window.clearTimeout(t)
   }, [d])
 
-  // Closing the window keeps what was typed, even inside the 1.2 s autosave delay.
+  // Closing the window keeps what was typed, even inside the 1.2 s autosave delay. When another message opens over this one
+  // (Reply, a draft), what was typed here is also kept as a draft: it used to stay only in this computer's single slot, which
+  // the next message overwrote (audit 2026-11-23).
+  const displacedRef = useRef(onDisplaced)
+  useEffect(() => {
+    displacedRef.current = onDisplaced
+  })
   useEffect(
     () => () => {
-      if (touched.current && !finished.current) keepLocally(latest.current)
+      if (touched.current && !finished.current) {
+        keepLocally(latest.current)
+        const x = latest.current
+        const text = x.body.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').trim()
+        if (x.to.trim() || x.subject.trim() || text || x.attachments.length > 0) displacedRef.current?.(x)
+      }
     },
     [],
   )
+  // A message opened again after a failed send is kept on this computer at once.
+  useEffect(() => {
+    if (init.unsent) keepLocally(init)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /** Insert a template at the caret. An empty message is replaced by the template (signature kept). */
   const insertTemplate = (t: Template) => {
@@ -433,12 +465,10 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
       setRemind({ sendAt })
       return
     }
-    if (offline) {
-      onToast('You are offline. Your message is kept as a draft. Press Send again once you are back online.')
-      return
-    }
+    // Offline: it goes into the outbox and is sent when the connection returns (the copy kept while writing is removed by the
+    // app once the outbox holds the message, never before).
+    if (offline) onToast('You are offline. Sends when online.')
     finished.current = true
-    platform.storage.remove(DRAFT_KEY)
     onSend(d, sendAt ? { sendAt } : undefined)
   }
 
@@ -669,7 +699,20 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
 
         <div className="format-bar" role="toolbar" aria-label="Formatting">
           <ComposeToolbar editor={ed} onChange={sync} onLink={openLink} onPictures={(fs) => void insertPictures(fs)} />
-          <input ref={fileInput} type="file" multiple hidden aria-label="Attach files" onChange={(e) => e.target.files && addFiles(e.target.files)} />
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            aria-label="Attach files"
+            onChange={(e) => {
+              if (e.target.files?.length) addFiles(e.target.files)
+              // From "Forgot the attachment?": the message has not gone; say so (it used to look sent, then sat in Drafts).
+              if (fromRemind.current) onToast(e.target.files?.length ? 'Files attached. Press Send.' : 'Not sent.')
+              fromRemind.current = false
+              e.target.value = ''
+            }}
+          />
         </div>
         {linkOpen && (
           <div className="link-row">
@@ -844,6 +887,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
                       autoFocus
                       onClick={() => {
                         setRemind(null)
+                        fromRemind.current = true
                         fileInput.current?.click()
                       }}
                     >

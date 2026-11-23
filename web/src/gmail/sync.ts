@@ -75,9 +75,14 @@ export async function syncQuery(p: {
 }): Promise<number> {
   const cap = p.cap ?? 500
   // The list and the "with attachments" list are asked for together (one wait instead of two).
-  const [ids, att] = await Promise.all([pageIds(p.accountId, p.query, cap, p.now), pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap, p.now)])
+  // (asked together; mail already on this computer is shown as soon as the main list answers, without waiting for the second)
+  const attP = pageIds(p.accountId, { ...p.query, q: `${p.query.q ?? ''} has:attachment`.trim() }, cap, p.now)
+  attP.catch(() => undefined)
+  const ids = await pageIds(p.accountId, p.query, cap, p.now)
   if (p.isCancelled?.()) return 0
   p.onIds?.(ids.map((x) => `${p.accountId}:${x.id}`))
+  const att = await attP
+  if (p.isCancelled?.()) return 0
   const withAtt = new Set(att.map((x) => x.id))
   const refresh = p.refreshNewest ?? 100
   const need = ids.filter((x, i) => i < refresh || !p.known.has(`${p.accountId}:${x.id}`))

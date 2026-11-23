@@ -6,6 +6,9 @@ import { currentUser } from './_lib/session.js'
  * Activity for the administrator's performance page.
  *  POST {kind:'heartbeat'}                       one active minute (server time)
  *  POST {kind:'stats', stats:[{accountId,day,sent,received}]}   mail counts the person's browser measured in Gmail
+ *  POST {kind:'sendproblem', code, stage, attempts, refused}     a send that Gmail refused or that keeps failing, written to
+ *       the server log (sends go from the browser straight to Gmail, so without this a failure was seen by no one;
+ *       audit 2026-11-23). Only numbers and short codes: never addresses, subjects or content.
  *  GET  ?from=YYYY-MM-DD&to=YYYY-MM-DD&tz=Area/City   administrators only: one row per person per day
  * Mail counts are reported by the person's own browser, so they are advisory: a determined person could change their own numbers.
  */
@@ -56,6 +59,15 @@ export async function POST(req: Request): Promise<Response> {
     if (b.kind === 'heartbeat') {
       const minute = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString()
       await insert('activity_minutes', { user_id: me.id, minute }, 'user_id,minute')
+      return json({ ok: true })
+    }
+
+    if (b.kind === 'sendproblem') {
+      const code = Number.isInteger(b.code) && (b.code as number) >= 0 && (b.code as number) < 1000 ? b.code : -1
+      const stage = b.stage === 'draft' ? 'draft' : 'send'
+      const attempts = Number.isInteger(b.attempts) ? Math.min(Math.max(b.attempts as number, 0), 9999) : -1
+      const why = typeof b.why === 'string' ? b.why.replace(/[^a-z0-9 ._-]/gi, '').slice(0, 60) : ''
+      console.error(`[pivot-mail] send problem: user=${me.email} stage=${stage} code=${code} attempts=${attempts} refused=${b.refused === true} why=${why}`)
       return json({ ok: true })
     }
 

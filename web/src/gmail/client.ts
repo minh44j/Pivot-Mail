@@ -79,14 +79,19 @@ interface Req {
 /* ---------- staying under Gmail's speed limit ---------- */
 
 /**
- * Gmail lets each mailbox spend about 250 "quota units" a second (a moving average that allows short bursts); a message
- * costs 5, a send 100 (Google's published table). Above it Gmail answers "too many requests". Every request here first
- * spends from its mailbox's budget: 150 units a second (room for the desktop app and a browser tab open together) with a
- * burst of 500 (the newest 100 messages), so the first screen of mail still arrives at once and a big first sync then flows steadily under the
- * limit. When Gmail still says "slow down", the whole mailbox pauses (not each request on its own, which made it worse).
+ * Gmail lets each mailbox spend about 250 "quota units" a second (a moving average over a few seconds); a message costs 5,
+ * a send 100 (Google's published table). Above it Gmail answers "too many requests". Every request here first spends from
+ * its mailbox's budget. The background sync gets 80 units a second with a burst of 400 (the newest 80 messages at once);
+ * what a person is waiting for (send, search, open) may go up to 400 below zero on top. In any 5 seconds one copy of the app
+ * therefore stays at or under 400 + 5×80 + 400 = 1,200 of Gmail's 1,250, and in normal use far below: room for a shared
+ * mailbox open by several people and for a search or send in the middle of a sync (audit 2026-11-23: at 150/500 the sync
+ * filled Gmail's allowance by itself, so the first search after opening was refused and waited ~3 s). When Gmail still
+ * says "slow down", the whole mailbox pauses (not each request on its own, which made it worse).
  */
-export const RATE_UNITS_PER_SECOND = 150
-export const BURST_UNITS = 500
+export const RATE_UNITS_PER_SECOND = 80
+export const BURST_UNITS = 400
+/** How far below zero an action may take the budget */
+export const ACTION_DEBT = 400
 const buckets = new Map<string, { tokens: number; at: number; pausedUntil: number }>()
 
 function bucketOf(accountId: string) {
@@ -117,10 +122,16 @@ export async function spend(accountId: string, units: number, now = false): Prom
       await wait(b.pausedUntil - t)
       continue
     }
-    // An action never pushes the debt past one burst: Gmail allows 250 a second, this budget runs at 150.
-    if (now && b.tokens - need >= -BURST_UNITS) {
-      b.tokens -= need
-      return
+    // An action never pushes the debt past one burst: Gmail allows 250 a second, this budget runs at 150. When it would,
+    // it waits only until it fits under that floor again (it used to wait for the budget to refill to +need: a search's
+    // fifth batch after a folder sync waited 3.4 s instead of 0.07 s — audit 2026-11-23).
+    if (now) {
+      if (b.tokens - need >= -ACTION_DEBT) {
+        b.tokens -= need
+        return
+      }
+      await wait(Math.ceil(((need - ACTION_DEBT - b.tokens) / RATE_UNITS_PER_SECOND) * 1000))
+      continue
     }
     if (b.tokens >= need) {
       b.tokens -= need
@@ -172,7 +183,12 @@ async function greq<T>(accountId: string, path: string, o: Req = {}): Promise<T>
     const payload = o.raw ? o.raw.data : o.body !== undefined ? JSON.stringify(o.body) : undefined
     // A small change (delete, move, read) must still reach Gmail if the tab is closed a moment later.
     const keepalive = (o.method ?? 'GET') !== 'GET' && typeof payload === 'string' && payload.length < 60_000
-    const res = await fetch(url, { method: o.method ?? 'GET', headers, body: payload, keepalive })
+    // Every request has a time limit (there was none: after a laptop slept, "Sending…" could stay for minutes). A read gets
+    // 30 s; a change gets 60 s plus a second per 50 KB it carries, so a 30 MB message on a slow line still has ~12 minutes.
+    const size = typeof payload === 'string' ? payload.length : payload instanceof Blob ? payload.size : 0
+    const limit = (o.method ?? 'GET') === 'GET' ? 30_000 : 60_000 + Math.ceil(size / 50_000) * 1000
+    const signal = typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal ? AbortSignal.timeout(limit) : undefined
+    const res = await fetch(url, { method: o.method ?? 'GET', headers, body: payload, keepalive, signal })
     if (res.ok) {
       const text = await res.text()
       return (text ? JSON.parse(text) : {}) as T
