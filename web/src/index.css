@@ -135,6 +135,24 @@ body {
   -webkit-font-smoothing: antialiased;
   overscroll-behavior: none;
 }
+/*
+ * The mail app fills the window exactly and the page itself never scrolls (2026-11-23: after "Show trimmed content" and
+ * scrolling a long mail, the whole app slid up in the Windows app and left a blank white area below). Every list and pane
+ * scrolls inside its own box, so the page has no reason to move; whatever grows inside it is now cut at the window edge
+ * instead of making the page taller. `clip` (unlike `hidden`) also stops a focus or a script from scrolling it. The sign-in
+ * and welcome screens keep normal page scrolling (no .app on them).
+ */
+html:has(.app) {
+  overflow: hidden;
+}
+html:has(.app) body {
+  height: 100%;
+  overflow: clip;
+}
+html:has(.app) #root {
+  height: 100%;
+  overflow: clip;
+}
 button,
 input,
 select,
@@ -843,6 +861,8 @@ small {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Scrolling past the end of a mail stops here; it is never handed on to the page around it. */
+  overscroll-behavior: contain;
   padding: 8px var(--gutter) 24px;
 }
 .msg {
