@@ -1,90 +1,176 @@
-const PATHS = {
-  compose: 'M12 20h9|M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z',
-  trash: 'M4 7h16|M10 11v6|M14 11v6|M6 7l1 13h10l1-13|M9 7V4h6v3',
-  archive: 'M3 4h18v4H3z|M5 8v12h14V8|M10 12h4',
-  reply: 'M9 14L4 9l5-5|M4 9h10a6 6 0 016 6v3',
-  replyAll: 'M7 14L2 9l5-5|M12 14L7 9l5-5|M7 9h8a6 6 0 016 6v3',
-  forward: 'M15 14l5-5-5-5|M20 9H10a6 6 0 00-6 6v3',
-  tag: 'M3 12V4h8l10 10-8 8z|M7.5 8.5h.01',
-  flag: 'M5 21V4|M5 4h13l-2 4 2 4H5',
-  clip: 'M20 11l-8.5 8.5a5 5 0 01-7-7L13 4a3.5 3.5 0 015 5l-8.5 8.5a2 2 0 01-3-3L14 7',
-  search: 'M11 4a7 7 0 100 14 7 7 0 000-14z|M21 21l-5-5',
-  inbox: 'M3 13l3-8h12l3 8|M3 13v6h18v-6|M3 13h5l1 3h6l1-3h5',
-  send: 'M3 11l18-8-8 18-2-8z',
-  draft: 'M6 3h9l4 4v14H6z|M14 3v5h5',
-  chevron: 'M6 9l6 6 6-6',
-  back: 'M15 5l-7 7 7 7',
-  close: 'M6 6l12 12|M18 6L6 18',
-  template: 'M4 4h16v6H4z|M4 14h7v6H4z|M15 14h5|M15 18h5',
-  check: 'M5 12l5 5 9-10',
-  users: 'M9 11a3 3 0 100-6 3 3 0 000 6z|M3 20a6 6 0 0112 0|M16 5a3 3 0 010 6|M18 14a6 6 0 013 6',
-  eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z|M12 15a3 3 0 100-6 3 3 0 000 6z',
-  folder: 'M3 6h7l2 2h9v11H3z',
-  download: 'M12 4v12|M7 11l5 5 5-5|M4 20h16',
-  bell: 'M6 16V11a6 6 0 1112 0v5l2 2H4z|M10 21h4',
-  layout: 'M3 4h18v16H3z|M9 4v16',
-  threads: 'M4 6h16|M4 12h12|M4 18h8',
-  menu: 'M4 6h16|M4 12h16|M4 18h16',
-  lock: 'M6 11h12v9H6z|M8 11V8a4 4 0 018 0v3',
-  listBullet: 'M9 6h11|M9 12h11|M9 18h11|M4 6h.01|M4 12h.01|M4 18h.01',
-  undo: 'M9 14L4 9l5-5|M4 9h11a5 5 0 010 10h-3',
-  redo: 'M15 14l5-5-5-5|M20 9H9a5 5 0 000 10h3',
-  strike: 'M4 12h16|M16 6.5C15.3 5 13.8 4 12 4c-2.5 0-4 1.4-4 3.2 0 1.5 1 2.4 3 3|M8 17.5c.7 1.6 2.2 2.5 4 2.5 2.5 0 4-1.4 4-3.2 0-.7-.2-1.3-.6-1.8',
-  indent: 'M4 6h16|M11 10h9|M11 14h9|M4 18h16|M4 9l3 3-3 3',
-  outdent: 'M4 6h16|M11 10h9|M11 14h9|M4 18h16|M7 9l-3 3 3 3',
-  ltr: 'M10 4v10|M14 4v10|M8 4h9|M10 9a3 3 0 010-5|M4 19h15|M16 16l3 3-3 3',
-  rtl: 'M10 4v10|M14 4v10|M8 4h9|M10 9a3 3 0 010-5|M20 19H5|M8 16l-3 3 3 3',
-  table: 'M3 5h18v14H3z|M3 10h18|M3 15h18|M9 5v14|M15 5v14',
-  image: 'M3 5h18v14H3z|M8.5 10a1.5 1.5 0 100-3 1.5 1.5 0 000 3z|M21 16l-5-5-9 8',
-  hrule: 'M3 12h18|M7 7h10|M7 17h10',
-  emoji: 'M12 3a9 9 0 100 18 9 9 0 000-18z|M8.5 14.5s1.3 2 3.5 2 3.5-2 3.5-2|M9 9.5h.01|M15 9.5h.01',
-  textColor: 'M6 16L12 3l6 13|M8.5 11h7',
-  highlight: 'M9 11l-4 4v3h3l4-4|M9 11l5-5 4 4-5 5z|M14 6l4 4',
-  importance: 'M12 4v10|M12 18.5h.01',
-  listNumber: 'M10 6h10|M10 12h10|M10 18h10|M4 4v4|M3 8h2|M3 14h3l-3 4h3',
-  link: 'M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1|M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1',
-  clearFormat: 'M7 4h12|M13 4l-3 7|M4 20L20 4|M10 14l-1 6',
-  alignLeft: 'M4 6h16|M4 10h10|M4 14h16|M4 18h10',
-  alignCenter: 'M4 6h16|M7 10h10|M4 14h16|M7 18h10',
-  alignRight: 'M4 6h16|M10 10h10|M4 14h16|M10 18h10',
-  sun: 'M12 16a4 4 0 100-8 4 4 0 000 8z|M12 2v2|M12 20v2|M2 12h2|M20 12h2|M4.900 4.900l1.400 1.400|M17.700 17.700l1.400 1.400|M4.900 19.100l1.400-1.400|M17.700 6.300l1.400-1.400',
-  moon: 'M20 14.500A8 8 0 019.500 4 8 8 0 1020 14.500z',
-  cloud: 'M7 18a4 4 0 01-.500-7.970A6 6 0 0118 9.500 4 4 0 0117 18z',
-  rain: 'M7 14a4 4 0 01-.500-7.970A6 6 0 0118 5.500 4 4 0 0117 14z|M8 17l-1 3|M12 17l-1 3|M16 17l-1 3',
-  storm: 'M7 14a4 4 0 01-.500-7.970A6 6 0 0118 5.500 4 4 0 0117 14z|M12 14l-2 4h3l-2 4',
-  fog: 'M6 10a4 4 0 014-4 5 5 0 014.900 4|M3 14h18|M5 18h14',
-  sparkle: 'M12 3l1.800 5.200L19 10l-5.200 1.800L12 17l-1.800-5.200L5 10l5.200-1.800z|M18 16l.6 1.400L20 18l-1.400.6L18 20l-.6-1.400L16 18l1.400-.6z',
-  arrow: 'M5 12h14|M13 6l6 6-6 6',
-  building: 'M4 21V4h10v17|M14 9h6v12|M8 8h2|M8 12h2|M8 16h2|M3 21h18',
-  pin: 'M12 21s7-6 7-11a7 7 0 10-14 0c0 5 7 11 7 11z|M12 12a2 2 0 100-4 2 2 0 000 4z',
-  print: 'M7 9V3h10v6|M7 17H4v-7h16v7h-3|M7 14h10v7H7z',
-  popout: 'M14 4h6v6|M20 4l-9 9|M18 14v6H4V6h6',
-  user: 'M12 12a4 4 0 100-8 4 4 0 000 8z|M4 21a8 8 0 0116 0',
-  more: 'M4.5 12h1.4|M11.3 12h1.4|M18.1 12h1.4',
-  copy: 'M9 9h11v11H9z|M5 15V4h11',
-  settings: 'M12 15a3 3 0 100-6 3 3 0 000 6z|M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z',
-  important: 'M12 4v10|M12 19h.01',
-  hash: 'M5 9h14|M5 15h14|M10 4L8 20|M16 4l-2 16',
-  expand: 'M15 3h6v6|M9 21H3v-6|M21 3l-7 7|M3 21l7-7',
-  collapse: 'M4 14h6v6|M20 10h-6V4|M14 10l7-7|M3 21l7-7',
-  clock: 'M12 3a9 9 0 100 18 9 9 0 000-18z|M12 7v5l3 2',
-  plus: 'M12 5v14|M5 12h14',
-  passport: 'M6 3h12v18H6z|M12 9a3 3 0 100 6 3 3 0 000-6z|M9 18h6',
-  hotel: 'M3 20V8l9-5 9 5v12|M3 20h18|M9 20v-5h6v5|M8 10h.01|M12 10h.01|M16 10h.01',
-  car: 'M4 14l2-6h12l2 6|M3 14h18v4H3z|M6.500 18v2|M17.500 18v2|M7 16h.01|M17 16h.01',
-  ship: 'M3 16l2 4h14l2-4z|M6 16V9h12v7|M9 9V5h6v4|M3 22c2 0 2-1 4.5-1s2.500 1 4.500 1 2.500-1 4.500-1 2.500 1 4.500 1',
-  plane: 'M10.500 13.500L3 11l1-2 8 1 4-6 2 .5-2 7.500 5 1.500v2l-6 .5-2 4-2-.5z',
-  truck: 'M2 6h11v10H2z|M13 9h5l3 3v4h-8z|M6.500 19a1.700 1.700 0 100-3.400 1.700 1.700 0 000 3.400z|M17 19a1.700 1.700 0 100-3.400 1.700 1.700 0 000 3.400z',
-  package: 'M12 3l8 4v10l-8 4-8-4V7z|M4 7l8 4 8-4|M12 11v10',
-  boxes: 'M12 3l9 4.500-9 4.500-9-4.500z|M3 12l9 4.500 9-4.500|M3 16.500L12 21l9-4.500',
-  clearance: 'M12 3l8 3v6c0 4.500-3.500 8-8 9-4.500-1-8-4.500-8-9V6z|M8.500 12l2.500 2.500 4.500-5',
+import {
+  ArchiveBoxIcon,
+  ArrowDownTrayIcon,
+  ArrowRightIcon,
+  ArrowTopRightOnSquareIcon,
+  ArrowUturnLeftIcon,
+  ArrowUturnRightIcon,
+  ArrowsPointingInIcon,
+  ArrowsPointingOutIcon,
+  Bars3BottomLeftIcon,
+  Bars3BottomRightIcon,
+  Bars3Icon,
+  BellIcon,
+  BoltIcon,
+  BuildingOffice2Icon,
+  BuildingOfficeIcon,
+  ChatBubbleLeftRightIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronLeftIcon,
+  ClockIcon,
+  CloudIcon,
+  Cog6ToothIcon,
+  CubeIcon,
+  DocumentDuplicateIcon,
+  DocumentTextIcon,
+  EllipsisHorizontalIcon,
+  ExclamationCircleIcon,
+  EyeIcon,
+  FaceSmileIcon,
+  FlagIcon,
+  FolderIcon,
+  HashtagIcon,
+  IdentificationIcon,
+  InboxIcon,
+  LinkIcon,
+  ListBulletIcon,
+  LockClosedIcon,
+  MagnifyingGlassIcon,
+  MapPinIcon,
+  MinusIcon,
+  MoonIcon,
+  NumberedListIcon,
+  PaintBrushIcon,
+  PaperAirplaneIcon,
+  PaperClipIcon,
+  PencilSquareIcon,
+  PhotoIcon,
+  PlusIcon,
+  PrinterIcon,
+  RectangleGroupIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  Square3Stack3DIcon,
+  StrikethroughIcon,
+  SunIcon,
+  TableCellsIcon,
+  TagIcon,
+  TrashIcon,
+  TruckIcon,
+  UserIcon,
+  UsersIcon,
+  ViewColumnsIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline'
+import type { ComponentType, SVGProps } from 'react'
+
+/**
+ * The app's icons: Heroicons, outline, 24 px grid (Minhaj, 2026-11-24: "update all our icons in heroicons").
+ * The names stay the same, so every screen keeps working; only the drawing changes.
+ */
+type Hero = ComponentType<SVGProps<SVGSVGElement> & { title?: string }>
+
+const HERO = {
+  compose: PencilSquareIcon,
+  trash: TrashIcon,
+  archive: ArchiveBoxIcon,
+  reply: ArrowUturnLeftIcon,
+  forward: ArrowUturnRightIcon,
+  tag: TagIcon,
+  flag: FlagIcon,
+  clip: PaperClipIcon,
+  search: MagnifyingGlassIcon,
+  inbox: InboxIcon,
+  send: PaperAirplaneIcon,
+  draft: DocumentTextIcon,
+  chevron: ChevronDownIcon,
+  back: ChevronLeftIcon,
+  close: XMarkIcon,
+  template: RectangleGroupIcon,
+  check: CheckIcon,
+  users: UsersIcon,
+  eye: EyeIcon,
+  folder: FolderIcon,
+  download: ArrowDownTrayIcon,
+  bell: BellIcon,
+  layout: ViewColumnsIcon,
+  threads: ChatBubbleLeftRightIcon,
+  menu: Bars3Icon,
+  lock: LockClosedIcon,
+  listBullet: ListBulletIcon,
+  undo: ArrowUturnLeftIcon,
+  redo: ArrowUturnRightIcon,
+  strike: StrikethroughIcon,
+  table: TableCellsIcon,
+  image: PhotoIcon,
+  hrule: MinusIcon,
+  emoji: FaceSmileIcon,
+  highlight: PaintBrushIcon,
+  importance: ExclamationCircleIcon,
+  listNumber: NumberedListIcon,
+  link: LinkIcon,
+  alignLeft: Bars3BottomLeftIcon,
+  alignRight: Bars3BottomRightIcon,
+  sun: SunIcon,
+  moon: MoonIcon,
+  cloud: CloudIcon,
+  storm: BoltIcon,
+  sparkle: SparklesIcon,
+  arrow: ArrowRightIcon,
+  building: BuildingOffice2Icon,
+  pin: MapPinIcon,
+  print: PrinterIcon,
+  popout: ArrowTopRightOnSquareIcon,
+  user: UserIcon,
+  more: EllipsisHorizontalIcon,
+  copy: DocumentDuplicateIcon,
+  settings: Cog6ToothIcon,
+  important: ExclamationCircleIcon,
+  hash: HashtagIcon,
+  expand: ArrowsPointingOutIcon,
+  collapse: ArrowsPointingInIcon,
+  clock: ClockIcon,
+  plus: PlusIcon,
+  passport: IdentificationIcon,
+  hotel: BuildingOfficeIcon,
+  truck: TruckIcon,
+  package: CubeIcon,
+  boxes: Square3Stack3DIcon,
+  clearance: ShieldCheckIcon,
+} satisfies Record<string, Hero>
+
+/**
+ * Heroicons has no drawing for these. Each is drawn here in Heroicons' own style (24 px grid, 1.5 stroke, round ends), so
+ * the whole set still reads as one family. Paths are separated by "|".
+ */
+const CLOUD = 'M2.25 13.5a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.332-7.257 3 3 0 0 0-3.758-3.848 5.25 5.25 0 0 0-10.233 2.33A4.502 4.502 0 0 0 2.25 13.5Z'
+const DRAWN = {
+  replyAll: 'M7.5 15 1.5 9l6-6|M12 15 6 9l6-6|M6 9h9a6 6 0 0 1 0 12h-3',
+  indent: 'M3.75 6.75h16.5|M11.25 12h9|M3.75 17.25h16.5|M3.75 9.75 6.75 12l-3 2.25',
+  outdent: 'M3.75 6.75h16.5|M11.25 12h9|M3.75 17.25h16.5|M6.75 9.75 3.75 12l3 2.25',
+  ltr: 'M9.75 3.75v9|M13.5 3.75v9|M8.25 3.75h7.5|M9.75 8.25a2.25 2.25 0 0 1 0-4.5|M3.75 18.75h15.75|M17.25 16.5l2.25 2.25-2.25 2.25',
+  rtl: 'M9.75 3.75v9|M13.5 3.75v9|M8.25 3.75h7.5|M9.75 8.25a2.25 2.25 0 0 1 0-4.5|M20.25 18.75H4.5|M6.75 16.5 4.5 18.75 6.75 21',
+  alignCenter: 'M3.75 6.75h16.5|M3.75 12h16.5|M8.25 17.25h7.5',
+  textColor: 'M6.75 15.75 12 3.75l5.25 12|M8.4 12h7.2|M4.5 20.25h15',
+  clearFormat: 'M6.75 4.5h10.5|M12 4.5 9 16.5|M4.5 4.5l15 15',
+  rain: `${CLOUD}|M8.25 20.25 7.5 21.75|M12.75 20.25 12 21.75|M17.25 20.25l-.75 1.5`,
+  fog: 'M3.75 8.25h16.5|M3 12h18|M3.75 15.75h16.5|M6.75 19.5h10.5',
+  car: 'M4.5 13.5l1.5-4.5a1.5 1.5 0 0 1 1.42-1.03h9.16a1.5 1.5 0 0 1 1.42 1.03l1.5 4.5|M3.75 13.5h16.5v3.75H3.75z|M6.75 17.25v1.5|M17.25 17.25v1.5|M7.5 15.375h.008|M16.5 15.375h.008',
+  ship: 'M3 15l1.6 4.2a2 2 0 0 0 1.9 1.3h11a2 2 0 0 0 1.9-1.3L21 15H3z|M5.25 15V9h13.5v6|M9 9V5.25h6V9|M12 5.25V3',
+  plane: 'M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z',
 } as const
 
-export type IconName = keyof typeof PATHS
+export type IconName = keyof typeof HERO | keyof typeof DRAWN
 
 export type Tone = 'red' | 'orange' | 'blue' | 'purple' | 'green' | 'teal' | 'gray'
 
-export function Icon({ name, size = 18, tone }: { name: IconName; size?: number; tone?: Tone }) {
+export function Icon({ name, size = 18, tone, className: extra }: { name: IconName; size?: number; tone?: Tone; className?: string }) {
+  const className = [tone ? `ic ic-${tone}` : '', extra ?? ''].filter(Boolean).join(' ') || undefined
+  if (name in HERO) {
+    const C = HERO[name as keyof typeof HERO] as Hero
+    return <C width={size} height={size} className={className} aria-hidden="true" focusable="false" />
+  }
   return (
     <svg
       width={size}
@@ -92,14 +178,14 @@ export function Icon({ name, size = 18, tone }: { name: IconName; size?: number;
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
-      className={tone ? `ic ic-${tone}` : undefined}
+      className={className}
     >
-      {PATHS[name].split('|').map((d) => (
+      {DRAWN[name as keyof typeof DRAWN].split('|').map((d) => (
         <path key={d} d={d} />
       ))}
     </svg>

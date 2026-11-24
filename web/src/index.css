@@ -4581,6 +4581,14 @@ a.btn.google.real:hover {
 .reader-head { flex-wrap: nowrap; padding: 14px 20px 10px; border-bottom: 0; }
 .reader-head h2 { font-size: 22px; font-weight: 700; }
 .reader-actions { flex: none; align-items: center; gap: 2px; }
+/* Narrow screens (phones, a narrow window): the subject keeps the full line and the buttons go on the line below. With
+   Reply / Reply all / Forward on the subject row (2026-11-22) the buttons took 354 of 390 px on a phone and the subject was
+   squeezed to one letter per line (found 2026-11-24). */
+@media (max-width: 760px) {
+  .reader-head { flex-wrap: wrap; row-gap: 4px; }
+  .reader-head h2 { flex: 1 1 0; min-width: 0; font-size: 20px; }
+  .reader-actions { flex: 1 1 100%; flex-wrap: wrap; }
+}
 .reader-actions .ra-icon { display: grid; place-items: center; width: 36px; min-height: 36px; padding: 0; color: var(--label-2); }
 .reader-actions .ra-icon:hover { color: var(--label); }
 .reader-body { display: flex; flex: 1; min-height: 0; }

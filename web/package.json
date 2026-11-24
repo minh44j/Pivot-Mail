@@ -12,6 +12,7 @@
     "check:api": "tsc -p api/tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@heroicons/react": "2.2.0",
     "@kenjiuno/msgreader": "1.29.0",
     "docx-preview": "0.4.1",
     "jszip": "3.10.2",
