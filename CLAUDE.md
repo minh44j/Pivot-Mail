@@ -10,11 +10,12 @@ Numbers and pick-lists come from Pivot OS through `web/api/cases/index.ts` → `
 the form here, `web/src/cases.ts`, `web/api/cases/index.ts`, a case in `web/tests/pivotos.test.mts`,
 and the Pivot OS side (its app route AND its pivot-mail route; Pivot OS has a parity test for those).
 
-## ⚠️ Reference Generator is HIDDEN for now (Minhaj, 2026-11-23)
+## Reference Generator on/off switch
 
-"Hide the reference generator button for a while, as we are updating the section. I will tell you once it's done."
-Switch: `web/src/features.ts` `REF_GENERATOR = false` (hides the Ref No. button and "New mail with a reference number").
-Turn it back on (`true`) only when Minhaj says the update is done — and then apply the Reference Generator parity rule
-above to whatever changed in Pivot OS.
+Hidden 2026-11-23 while Pivot OS updated it; shown again 2026-11-24 at Minhaj's word ("Show the ref number generator"),
+after mirroring what changed in Pivot OS meanwhile (#504: pivot-mail mint reads `cargo`, port search reads `mode`; #508:
+lookup also returns typed places — same fields). Switch: `web/src/features.ts` `REF_GENERATOR` (false hides the Ref No.
+button and "New mail with a reference number"). Change it only when Minhaj asks; when turning it back on, apply the
+parity rule above to whatever changed in Pivot OS meanwhile.
 
 Write to Minhaj in plain, everyday English; he is not a developer.

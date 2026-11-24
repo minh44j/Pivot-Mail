@@ -194,6 +194,8 @@ export async function POST(req: Request): Promise<Response> {
                 destination: d.destination || null,
                 originPortId: id80(os.originPortId),
                 destinationPortId: id80(os.destinationPortId),
+                // Pivot OS's pivot-mail mint route reads it since 2026-11-23 (#504, same input as its app route)
+                cargo: d.cargo || null,
                 notes,
                 salesEmployeeId: id80(os.salesEmployeeId),
               },

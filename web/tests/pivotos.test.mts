@@ -79,11 +79,12 @@ const ann = who('ann@pivotscl.com', 'scl')
 const maya = who('maya@pivottmc.com', 'tmc')
 
 // ---- shipping: the number comes from Pivot OS
-let r = await call(POST, H, 'POST', ann, { client: 'Acme Trading LLC', details: { scope: 'freight-clearance', mode: 'air', origin: 'Dubai (DXB)', destination: 'Riyadh (RUH)', salesperson: 'Amir' }, notes: 'urgent', os: { clientId: 'c1', originPortId: 'p1', destinationPortId: 'p2', salesEmployeeId: 'e9', evil: 'x' } })
+let r = await call(POST, H, 'POST', ann, { client: 'Acme Trading LLC', details: { scope: 'freight-clearance', mode: 'air', origin: 'Dubai (DXB)', destination: 'Riyadh (RUH)', salesperson: 'Amir', cargo: '2 pallets, documents' }, notes: 'urgent', os: { clientId: 'c1', originPortId: 'p1', destinationPortId: 'p2', salesEmployeeId: 'e9', evil: 'x' } })
 let j = await r.json()
 ok('linked: the case takes the number Pivot OS issued', r.status === 201 && j.case.ref === 'PS2600892' && j.case.provisional === false && j.subject === 'PS2600892 - ACME')
 const m = osCalls.at(-1)!
 ok('the call is signed, for this person and Pivot Shipping', m.valid && m.actor === 'ann@pivotscl.com' && m.company === 'PIVS' && m.method === 'POST' && m.path === '/api/integrations/pivot-mail/shipping/mint')
+ok('the cargo note goes to Pivot OS (its mint route reads it since #504)', m.body.cargo === '2 pallets, documents')
 ok('the form is mapped to Pivot OS words (air → AIR, FULL scope, picked ids kept, notes sent)', m.body.mode === 'AIR' && m.body.scope === 'FULL' && m.body.clientId === 'c1' && m.body.originPortId === 'p1' && m.body.destinationPortId === 'p2' && m.body.salesEmployeeId === 'e9' && m.body.notes === 'urgent' && m.body.evil === undefined)
 ok('no number is made locally while linked', !('p_company' in (counters as any)) && Object.keys(counters).length === 0)
 ok('the case is saved here with its source', T.cases!.length === 1 && T.cases![0]!.ref_source === 'pivot_os')
