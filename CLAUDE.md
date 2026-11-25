@@ -12,8 +12,8 @@ and the Pivot OS side (its app route AND its pivot-mail route; Pivot OS has a pa
 
 ## Reference Generator on/off switch
 
-Hidden 2026-11-23 while Pivot OS updated it; shown again 2026-11-24 at Minhaj's word ("Show the ref number generator"),
-after mirroring what changed in Pivot OS meanwhile (#504: pivot-mail mint reads `cargo`, port search reads `mode`; #508:
+**Currently HIDDEN** (Minhaj, 2026-11-25: "please hide the ref gen button"). History: hidden 2026-11-23 while Pivot OS
+updated it; shown again 2026-11-24 ("Show the ref number generator"), after mirroring what changed in Pivot OS meanwhile (#504: pivot-mail mint reads `cargo`, port search reads `mode`; #508:
 lookup also returns typed places — same fields). Switch: `web/src/features.ts` `REF_GENERATOR` (false hides the Ref No.
 button and "New mail with a reference number"). Change it only when Minhaj asks; when turning it back on, apply the
 parity rule above to whatever changed in Pivot OS meanwhile.
