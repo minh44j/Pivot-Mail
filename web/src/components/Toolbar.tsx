@@ -2,13 +2,10 @@ import { refGeneratorOn } from '../features'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Density, PaneLayout } from '../types'
-import type { Template } from '../data/templates'
-import { useSettings } from '../settings'
 import { initials } from '../util'
 import { BrandLogo } from './BrandLogo'
 import { Icon } from './Icon'
 import { SearchBox } from './SearchBox'
-import type { IconName, Tone } from './Icon'
 import type { Notice } from './Notices'
 import type { Weather } from '../weather'
 import type { RefAnchor } from './RefGenerator'
@@ -29,7 +26,6 @@ interface Props {
   query: string
   onQuery: (q: string) => void
   onNew: () => void
-  onTemplate: (t: Template) => void
   onThreaded: (v: boolean) => void
   onPane: (p: PaneLayout) => void
   onDensity: (d: Density) => void
@@ -62,21 +58,6 @@ interface Props {
   onCommit: (q: string) => void
   onSave: (q: string) => void
   onRemoveSaved: (q: string) => void
-  /** Command bar: acts on the open message or the selected messages */
-  bar: {
-    enabled: boolean
-    unread: boolean
-    flagged: boolean
-    onReply: () => void
-    onReplyAll: () => void
-    onForward: () => void
-    onArchive: () => void
-    onDelete: () => void
-    onToggleRead: () => void
-    onToggleFlag: () => void
-    onMove: () => void
-    onMore: (x: number, y: number) => void
-  }
   history: HistoryItem[]
   unseen: number
   onSeen: () => void
@@ -152,22 +133,9 @@ function Check(props: { checked: boolean; label: string; role: 'menuitemcheckbox
   )
 }
 
-/** One command bar button: icon and label side by side. */
-function Cmd(props: { icon: IconName; tone?: Tone; label: string; onClick: () => void; disabled?: boolean; pressed?: boolean }) {
-  return (
-    <button type="button" className="cb" onClick={props.onClick} disabled={props.disabled} aria-pressed={props.pressed}>
-      <Icon name={props.icon} size={17} tone={props.tone} />
-      <span className="cb-label">{props.label}</span>
-    </button>
-  )
-}
-
 const ago = (d: Date): string => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 export function Toolbar(p: Props) {
-  const { templates } = useSettings()
-  const categories = Array.from(new Set(templates.map((t) => t.category)))
-  const b = p.bar
   const first = p.userName.trim().split(/\s+/)[0] || 'there'
   const notifLabel =
     p.notifications === 'granted'
@@ -180,13 +148,73 @@ export function Toolbar(p: Props) {
 
   return (
     <header className="topbar" aria-label="Mail toolbar">
+      {/* One row (Minhaj 2026-11-26): the message-action ribbon is gone; every action lives next to the mail (subject row,
+          hover buttons, right-click, ⋯) and Templates in the New mail window. Menu button and logo above the folders, then
+          New mail, search and the person's own controls. */}
       <div className="tp-brand">
+        <button type="button" className="cb-hamburger" onClick={p.onToggleFolders} aria-label={p.foldersOpen ? 'Hide folders' : 'Show folders'} aria-pressed={p.foldersOpen}>
+          <Icon name="menu" size={20} />
+        </button>
         <h1 className="logo-h1">
           <BrandLogo />
         </h1>
       </div>
 
       <div className="tp-main">
+        <div className="newsplit">
+        <button type="button" className="nm-btn" onClick={p.onNew} aria-label="New mail">
+          <Icon name="plus" size={16} />
+          <span>New mail</span>
+        </button>
+        <Menu label="More ways to start a message" className="newsplit-more" trigger={() => <Icon name="chevron" size={14} />}>
+          {(close) => (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="menu-item"
+                onClick={() => {
+                  p.onNew()
+                  close()
+                }}
+              >
+                <span className="ph" />
+                New mail
+              </button>
+              {refGeneratorOn() && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="menu-item"
+                  onClick={() => {
+                    p.onRef()
+                    close()
+                  }}
+                >
+                  <span className="ph" />
+                  New mail with a reference number
+                </button>
+              )}
+            </>
+          )}
+        </Menu>
+      </div>
+          {refGeneratorOn() && (
+        <button
+          type="button"
+          className="cb tp-ref"
+          data-ref-anchor
+          aria-haspopup="dialog"
+          aria-expanded={p.refOpen}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            p.onRef({ left: r.left, right: r.right, bottom: r.bottom })
+          }}
+        >
+          <Icon name="hash" size={17} tone="teal" />
+          <span className="cb-label">Ref No.</span>
+        </button>
+        )}
         <SearchBox
           query={p.query}
           onQuery={p.onQuery}
@@ -427,128 +455,6 @@ export function Toolbar(p: Props) {
         </div>
       </div>
 
-      <div className="tp-new">
-        <button type="button" className="cb-hamburger" onClick={p.onToggleFolders} aria-label={p.foldersOpen ? 'Hide folders' : 'Show folders'} aria-pressed={p.foldersOpen}>
-          <Icon name="menu" size={20} />
-        </button>
-        <div className="newsplit">
-          <button type="button" className="nm-btn" onClick={p.onNew} aria-label="New mail">
-            <Icon name="plus" size={16} />
-            <span>New mail</span>
-          </button>
-          <Menu label="More ways to start a message" className="newsplit-more" trigger={() => <Icon name="chevron" size={14} />}>
-            {(close) => (
-              <>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="menu-item"
-                  onClick={() => {
-                    p.onNew()
-                    close()
-                  }}
-                >
-                  <span className="ph" />
-                  New mail
-                </button>
-                {refGeneratorOn() && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="menu-item"
-                    onClick={() => {
-                      p.onRef()
-                      close()
-                    }}
-                  >
-                    <span className="ph" />
-                    New mail with a reference number
-                  </button>
-                )}
-              </>
-            )}
-          </Menu>
-        </div>
-      </div>
-
-      <div className="cmdbar" role="toolbar" aria-label="Message actions">
-        <div className="cb-scroll">
-          <Cmd icon="reply" tone="blue" label="Reply" onClick={b.onReply} disabled={!b.enabled} />
-          <Cmd icon="replyAll" tone="blue" label="Reply all" onClick={b.onReplyAll} disabled={!b.enabled} />
-          <Cmd icon="forward" tone="blue" label="Forward" onClick={b.onForward} disabled={!b.enabled} />
-          <span className="cb-sep" aria-hidden="true" />
-          <Cmd icon="archive" tone="purple" label="Archive" onClick={b.onArchive} disabled={!b.enabled} />
-          <Cmd icon="trash" tone="red" label="Delete" onClick={b.onDelete} disabled={!b.enabled} />
-          <Cmd icon="eye" tone="blue" label={b.unread ? 'Mark as read' : 'Mark as unread'} onClick={b.onToggleRead} disabled={!b.enabled} />
-          <Cmd icon="flag" tone="orange" label={b.flagged ? 'Remove flag' : 'Flag'} onClick={b.onToggleFlag} disabled={!b.enabled} pressed={b.flagged} />
-          <Cmd icon="folder" tone="teal" label="Move to" onClick={b.onMove} disabled={!b.enabled} />
-        </div>
-        {/* Outside the scrolling row: on a narrow window the actions that do not fit are still one click away (the message menu). */}
-        <button
-          type="button"
-          className="cb cb-more"
-          aria-label="More actions"
-          aria-haspopup="menu"
-          disabled={!b.enabled}
-          onClick={(e) => {
-            const r = e.currentTarget.getBoundingClientRect()
-            b.onMore(Math.max(8, r.right - 230), r.bottom + 4)
-          }}
-        >
-          <Icon name="more" size={18} />
-        </button>
-        <div className="cb-tools">
-          {refGeneratorOn() && (
-          <button
-            type="button"
-            className="cb"
-            data-ref-anchor
-            aria-haspopup="dialog"
-            aria-expanded={p.refOpen}
-            onClick={(e) => {
-              const r = e.currentTarget.getBoundingClientRect()
-              p.onRef({ left: r.left, right: r.right, bottom: r.bottom })
-            }}
-          >
-            <Icon name="hash" size={17} tone="teal" />
-            <span className="cb-label">Ref No.</span>
-          </button>
-          )}
-          <Menu label="Templates" className="cb" trigger={() => (
-            <>
-              <Icon name="template" size={17} tone="purple" />
-              <span className="cb-label">Templates</span>
-              <Icon name="chevron" size={12} />
-            </>
-          )}>
-            {(close) => (
-              <>
-                {categories.map((cat, i) => (
-                  <div key={cat}>
-                    {i > 0 && <div className="menu-sep" role="separator" />}
-                    <div className="menu-head">{cat}</div>
-                    {templates.filter((t) => t.category === cat).map((t) => (
-                      <button
-                        key={t.id}
-                        type="button"
-                        role="menuitem"
-                        className="menu-item"
-                        onClick={() => {
-                          p.onTemplate(t)
-                          close()
-                        }}
-                      >
-                        <span className="ph" />
-                        {t.name}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </>
-            )}
-          </Menu>
-        </div>
-      </div>
     </header>
   )
 }

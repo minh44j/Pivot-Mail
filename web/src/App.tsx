@@ -2830,10 +2830,6 @@ export default function App() {
         density={density}
         notifications={notif}
         onNew={() => openCompose()}
-        onTemplate={(t) => {
-          if (!compose) openCompose()
-          setPendingTemplate(t)
-        }}
         onThreaded={setThreaded}
         onPane={setPane}
         onDensity={setDensity}
@@ -2890,23 +2886,6 @@ export default function App() {
         onClearHistory={() => setNoticeLog([])}
         foldersOpen={foldersOpen}
         onToggleFolders={() => setFoldersOpen(!foldersOpen)}
-        bar={{
-          enabled: Boolean(selectedRow) || multi,
-          unread: multi ? messages.some((m) => rowsToMids(pickedRows).includes(m.id) && m.unread) : Boolean(selectedRow?.unread),
-          flagged: multi ? messages.filter((m) => rowsToMids(pickedRows).includes(m.id)).every((m) => m.flagged) : Boolean(selectedRow?.msg.flagged),
-          onReply: () => reply(false),
-          onReplyAll: () => reply(true),
-          onForward: () => forward(),
-          onArchive: () => runOp(selRows(), { kind: 'archive' }),
-          onDelete: () => runOp(selRows(), { kind: 'delete' }),
-          onToggleRead: () => runOp(selRows(), { kind: 'toggleRead' }),
-          onToggleFlag: () => runOp(selRows(), { kind: 'toggleFlag' }),
-          onMove: () => setJump('move'),
-          onMore: (x, y) => {
-            const id = selectedRow?.msg.id ?? pickedRows[0]
-            if (id) setCtx({ id, x, y })
-          },
-        }}
       />
       {(!online || sim === 'syncfail' || sim === 'ratelimit') && (
         <StatusBanner kind={!online ? 'offline' : sim === 'ratelimit' ? 'ratelimit' : 'syncfail'} real={realMode} detail={syncDetail} last={lastSync} seconds={wait} busy={retrying} onRetry={retry} />

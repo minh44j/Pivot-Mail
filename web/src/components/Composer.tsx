@@ -201,7 +201,8 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     sel.addRange(r)
     const href = safeUrl(c.email)
     if (!href) return setMention(null)
-    document.execCommand('insertHTML', false, `<a href="${escapeHtml(href)}">@${escapeHtml(c.name)}</a>&nbsp;`)
+    // No underline (Minhaj 2026-11-26): a mention reads as a coloured name, here and for the person who receives it.
+    document.execCommand('insertHTML', false, `<a href="${escapeHtml(href)}" style="text-decoration: none">@${escapeHtml(c.name)}</a>&nbsp;`)
     setMention(null)
     const all = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => bareAddress(t.trim()).toLowerCase())
     if (!all.includes(c.email.toLowerCase())) {

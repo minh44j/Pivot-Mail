@@ -174,7 +174,8 @@ export function signatureText(signature: string): string {
 export function signatureHtml(signature: string): string {
   const body = signatureBody(signature)
   const hasContent = isHtmlSignature(signature) ? /<img\b/i.test(body) || signatureText(signature).trim() !== '' : signature.trim() !== ''
-  return hasContent ? `<div data-sig="1" contenteditable="false"><br>-- <br>${body}</div>` : ''
+  // No "-- " line above it (Minhaj 2026-11-26): the signature follows the text directly, after one blank line.
+  return hasContent ? `<div data-sig="1" contenteditable="false"><br>${body}</div>` : ''
 }
 
 /** Plain text of an HTML body (line breaks kept), for previews and plain-text copies. */
