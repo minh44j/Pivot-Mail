@@ -202,7 +202,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
     const href = safeUrl(c.email)
     if (!href) return setMention(null)
     // No underline (Minhaj 2026-11-26): a mention reads as a coloured name, here and for the person who receives it.
-    document.execCommand('insertHTML', false, `<a href="${escapeHtml(href)}" style="text-decoration: none">@${escapeHtml(c.name)}</a>&nbsp;`)
+    document.execCommand('insertHTML', false, `<a href="${escapeHtml(href)}" style="text-decoration: none">${escapeHtml(c.name)}</a>&nbsp;`)
     setMention(null)
     const all = [d.to, d.cc, d.bcc].flatMap((v) => v.split(/[;,\n]/)).map((t) => bareAddress(t.trim()).toLowerCase())
     if (!all.includes(c.email.toLowerCase())) {
@@ -565,7 +565,11 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
       <div className="composer-head">
         <strong className="grow ellipsis">{d.subject || 'New message'}</strong>
         <span className={saved === 'failed' || saved === 'nopics' ? 'save-warn' : 'muted'}>
-          {saved === 'saving' ? 'Saving…' : saved === 'saved' ? 'Draft saved' : saved === 'nopics' ? 'Saved without pictures' : saved === 'failed' ? 'Not saved. Storage full.' : ''}
+          {saved === 'saving' ? (
+            <>
+              Saving… <span className="save-spin" aria-hidden="true" />
+            </>
+          ) : saved === 'saved' ? 'Draft saved' : saved === 'nopics' ? 'Saved without pictures' : saved === 'failed' ? 'Not saved. Storage full.' : ''}
         </span>
         <button type="button" className="icon-btn only-desktop" onClick={toggleExpanded} aria-label={expanded ? 'Restore size' : 'Expand to reading pane size'}>
           <Icon name={expanded ? 'collapse' : 'expand'} />
@@ -578,16 +582,19 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
         <button type="button" className="primary" onClick={() => send()} disabled={!canSend}>
           <Icon name="send" size={16} /> Send
         </button>
+        <span className="cbar-div" aria-hidden="true" />
         {!noSchedule && (
           <button type="button" onClick={() => (canSend ? setLater(true) : onToast('Add at least one recipient'))} aria-haspopup="dialog">
             <Icon name="clock" size={16} tone="orange" /> Send later
           </button>
         )}
+        {!noSchedule && <span className="cbar-div" aria-hidden="true" />}
         <div className="ctb-extras">
           <button type="button" className="ctb-ghost" onMouseDown={(e) => e.preventDefault()} onClick={() => fileInput.current?.click()}>
             <Icon name="clip" size={16} tone="blue" />
             <span>Attach</span>
           </button>
+          <span className="cbar-div" aria-hidden="true" />
           <label className="ctb-ghost ctb-select-ghost tpl-pick">
             <Icon name="template" size={16} tone="blue" />
             <select
@@ -607,6 +614,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             </select>
             <Icon name="chevron" size={12} />
           </label>
+          {(mySigs.length > 0 || sigNow !== '') && <span className="cbar-div" aria-hidden="true" />}
           {(mySigs.length > 0 || sigNow !== '') && (
             <label className={`ctb-ghost ctb-select-ghost sig-pick${sigNow ? ' on' : ''}`}>
               <span className="sig-pick-label" aria-hidden="true">
@@ -625,6 +633,7 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
             </label>
           )}
         </div>
+        <span className="cbar-div" aria-hidden="true" />
         <label className={`ctb-ghost ctb-select-ghost imp-pick${d.importance ? ` ${d.importance}` : ''}`} title="Importance">
           <Icon name="importance" size={15} tone={d.importance === 'high' ? 'red' : d.importance === 'low' ? 'blue' : undefined} />
           <select
@@ -638,7 +647,8 @@ export function Composer({ init, accounts, offline, noSchedule, pendingTemplate,
           </select>
         </label>
         <span className="grow" />
-        <button type="button" onClick={discard} aria-label="Discard draft">
+        <span className="cbar-div" aria-hidden="true" />
+        <button type="button" className="cbar-trash" onClick={discard} aria-label="Discard draft">
           <Icon name="trash" size={16} tone="red" />
         </button>
       </div>
