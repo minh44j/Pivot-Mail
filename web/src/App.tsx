@@ -1504,6 +1504,9 @@ export default function App() {
   }
   const upsert = (m: Message) => setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev.map((x) => (x.id === m.id ? m : x)) : [m, ...prev]))
 
+  /** Gmail: attachments up to 25 MB together; the whole message as sent up to 35 MB (Gmail API maximum). */
+  const MAX_FILES_BYTES = 25 * 1024 * 1024
+  const MAX_MESSAGE_BYTES = 35 * 1024 * 1024
   /** Everything the composer holds, as the raw email Gmail sends. */
   const outgoing = async (d: ComposeInit, acc: AuthAccount, lenient = false, messageId?: string): Promise<string> => {
     const files: OutAttachment[] = []
@@ -1521,7 +1524,7 @@ export default function App() {
       total += bytes.length
       files.push({ name: at.name, mime: at.mime, bytes })
     }
-    if (total > 25 * 1024 * 1024) throw new Error('toolarge')
+    if (total > MAX_FILES_BYTES) throw new Error('toolarge')
     const inlineOut = extractInlineImages(outgoingHtml(d.body))
     return toRaw(
       buildMime({
@@ -1775,9 +1778,10 @@ export default function App() {
         // distrust one without a real domain). The same one on every try: Gmail can be asked whether it has the message.
         const mid = `pm-${crypto.randomUUID()}@${acc.email.split('@')[1] ?? 'pivotmail.com'}`
         const raw = await outgoing(d, acc, false, mid)
-        // Gmail's 25 MB is the message as sent; files grow by about a third in it (the old check counted the files only, and a
-        // 20 MB message was uploaded twice and then reported as "not confirmed" a minute later).
-        if (Math.floor((raw.length * 3) / 4) > 25 * 1024 * 1024) throw new Error('toolarge')
+        // Two of Gmail's limits: the files themselves up to 25 MB (checked in outgoing), and the message as sent up to 35 MB
+        // (files grow by about a third when a mail is built). This used to compare the built message with 25 MB, so any
+        // mail with more than ~18 MB of files was refused (2026-11-26: a 24 MB visa-documents file could not be sent).
+        if (Math.floor((raw.length * 3) / 4) > MAX_MESSAGE_BYTES) throw new Error('toolarge')
         const { unsent: _u, ...keep } = d
         await putJob({ id: mid, accountId: acc.id, raw, messageId: mid, threadId: d.reply?.threadId, gmailDraftId: d.gmailDraftId, d: keep, stage: 'send', attempts: 0, nextAt: 0, createdAt: Date.now() })
         // The copy kept while writing is no longer needed: the outbox holds the message now.
